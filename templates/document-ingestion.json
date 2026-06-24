@@ -1,0 +1,30 @@
+{
+  "name": "Document Ingestion",
+  "description": "Ingests documents from webhook, classifies, extracts metadata, stores in Vault",
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "recap.classify",
+        "position": { "x": 100, "y": 200 },
+        "config": { "content": "{{trigger.payload.content}}" }
+      },
+      {
+        "id": "node_2",
+        "type": "vault.create_document",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "title": "{{trigger.payload.title}}",
+          "content": "{{trigger.payload.content}}",
+          "tags": ["{{node_1.output.category}}"]
+        }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" }
+    ],
+    "variables": {},
+    "metadata": { "name": "Document Ingestion", "tags": ["documents", "ingestion"] }
+  }
+}

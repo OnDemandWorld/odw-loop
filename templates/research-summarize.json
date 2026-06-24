@@ -1,0 +1,26 @@
+{
+  "name": "Research Summarize",
+  "description": "Searches Vault for documents, summarizes with LLM, stores result",
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "vault.search",
+        "position": { "x": 100, "y": 200 },
+        "config": { "query": "{{trigger.payload.query}}" }
+      },
+      {
+        "id": "node_2",
+        "type": "generic.rest_call",
+        "position": { "x": 400, "y": 200 },
+        "config": { "path": "/summarize", "body": { "text": "{{node_1.output.documents}}" } }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" }
+    ],
+    "variables": {},
+    "metadata": { "name": "Research Summarize", "tags": ["research"] }
+  }
+}

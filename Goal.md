@@ -15,3 +15,4 @@ Constraints:
 - Verify current status from the repository state, Git history, and DEVELOPMENT.md before making changes.
 - Work in small checkpoints; after each checkpoint, verify what changed and what remains.
 - Only mark the goal complete when the implementation, verification, and documentation updates are all done.
+- all agents and subagents should be using kimi-k2.7-code model

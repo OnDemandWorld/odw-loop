@@ -1,0 +1,22 @@
+# Loop Sandbox — gVisor-based isolated code execution (§15.2)
+FROM python:3.11-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs npm curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js LTS if not available
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - || true
+
+WORKDIR /opt/sandbox
+COPY apps/sandbox/ ./
+
+EXPOSE 4000
+ENV LOOP_SANDBOX_MEMORY_MB=256
+ENV LOOP_SANDBOX_CPU_SECONDS=30
+
+# Non-root user
+RUN useradd -m sandbox && chown -R sandbox:sandbox /opt/sandbox
+USER sandbox
+
+CMD ["node", "src/server.ts"]

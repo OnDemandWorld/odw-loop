@@ -1,0 +1,31 @@
+{
+  "name": "@loop/workflow-authoring",
+  "version": "1.0.0",
+  "description": "Workflow CRUD, topology validation, and graph operations",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@loop/types": "workspace:*",
+    "@loop/state": "workspace:*",
+    "@loop/versioning": "workspace:*",
+    "@loop/observability": "workspace:*",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  }
+}

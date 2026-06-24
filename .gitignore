@@ -21,6 +21,11 @@ dist/
 
 # Build artifacts
 *.tsbuildinfo
+.turbo/
+
+# Local data
+data/
+loop.db
 
 # Logs
 *.log

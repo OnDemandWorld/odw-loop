@@ -1,0 +1,57 @@
+# Core tier — Docker Compose (§15.4)
+version: '3.8'
+
+services:
+  loop-app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+    image: loop-app:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - loop-data:/var/lib/loop
+      - loop-git:/var/lib/loop/git
+    environment:
+      - LOOP_PORT=3000
+      - LOOP_HOST=0.0.0.0
+      - LOOP_ENV=production
+      - LOOP_DB_TYPE=sqlite
+      - LOOP_DB_PATH=/var/lib/loop/loop.db
+      - LOOP_DATA_DIR=/var/lib/loop
+      - LOOP_ENCRYPTION_KEY=${LOOP_ENCRYPTION_KEY:-dev-key-change-me-please-32chars!}
+      - LOOP_JWT_SECRET=${LOOP_JWT_SECRET:-dev-jwt-secret-change-me}
+      - LOOP_LOG_LEVEL=info
+    depends_on:
+      loop-sandbox:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  loop-sandbox:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sandbox
+    image: loop-sandbox:latest
+    volumes:
+      - sandbox-tmp:/tmp/sandbox
+    environment:
+      - LOOP_SANDBOX_MEMORY_MB=256
+      - LOOP_SANDBOX_CPU_SECONDS=30
+      - LOOP_SANDBOX_PORT=4000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  loop-data:
+  loop-git:
+  sandbox-tmp:

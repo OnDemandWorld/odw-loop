@@ -1,0 +1,23 @@
+# Loop Control Plane — Scale tier multi-instance management
+FROM node:20-alpine AS builder
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9.4.0 --activate
+COPY . .
+RUN pnpm install --frozen-lockfile || pnpm install
+RUN pnpm build
+
+FROM node:20-alpine AS runtime
+WORKDIR /app
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/control-plane/dist ./apps/control-plane/dist
+COPY --from=builder /app/apps/control-plane/package.json ./apps/control-plane/
+COPY --from=builder /app/packages/types/dist ./packages/types/dist
+COPY --from=builder /app/packages/types/package.json ./packages/types/
+COPY --from=builder /app/packages/state/dist ./packages/state/dist
+COPY --from=builder /app/packages/state/package.json ./packages/state/
+COPY --from=builder /app/packages/observability/dist ./packages/observability/dist
+COPY --from=builder /app/packages/observability/package.json ./packages/observability/
+
+EXPOSE 3001
+USER node
+CMD ["node", "apps/control-plane/dist/server.js"]

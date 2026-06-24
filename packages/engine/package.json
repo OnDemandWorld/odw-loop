@@ -1,0 +1,30 @@
+{
+  "name": "@loop/engine",
+  "version": "1.0.0",
+  "description": "Execution engine with DAG scheduler, state machine, retry, and circuit breaker",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@loop/types": "workspace:*",
+    "@loop/state": "workspace:*",
+    "@loop/connectors": "workspace:*",
+    "@loop/observability": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  }
+}

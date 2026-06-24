@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: |
+          pnpm test:unit
+          pnpm test:integration
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker images
+        run: |
+          docker build -t ghcr.io/ondemandworld/loop-app:${{ steps.version.outputs.version }} -f docker/Dockerfile.app .
+          docker build -t ghcr.io/ondemandworld/loop-app:latest -f docker/Dockerfile.app .
+          docker build -t ghcr.io/ondemandworld/loop-sandbox:${{ steps.version.outputs.version }} -f docker/Dockerfile.sandbox .
+          docker build -t ghcr.io/ondemandworld/loop-sandbox:latest -f docker/Dockerfile.sandbox .
+          docker push ghcr.io/ondemandworld/loop-app:${{ steps.version.outputs.version }}
+          docker push ghcr.io/ondemandworld/loop-app:latest
+          docker push ghcr.io/ondemandworld/loop-sandbox:${{ steps.version.outputs.version }}
+          docker push ghcr.io/ondemandworld/loop-sandbox:latest
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          generate_release_notes: true

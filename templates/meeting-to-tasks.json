@@ -1,0 +1,34 @@
+{
+  "name": "Meeting → Tasks → KB",
+  "description": "Extracts action items from meeting transcripts, creates Desk tasks, and stores summaries in Vault",
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "recap.extract_action_items",
+        "position": { "x": 100, "y": 200 },
+        "config": { "transcript_id": "{{trigger.payload.transcript_id}}" },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 }
+      },
+      {
+        "id": "node_2",
+        "type": "desk.create_task",
+        "position": { "x": 400, "y": 200 },
+        "config": { "title": "{{node_1.output.action_item_title}}" }
+      },
+      {
+        "id": "node_3",
+        "type": "vault.create_document",
+        "position": { "x": 400, "y": 400 },
+        "config": { "title": "Meeting Summary", "content": "{{node_1.output.summary}}" }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_1", "source_port": "output", "target": "node_3", "target_port": "input" }
+    ],
+    "variables": {},
+    "metadata": { "name": "Meeting → Tasks → KB", "tags": ["meetings", "productivity"] }
+  }
+}

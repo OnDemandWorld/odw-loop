@@ -1,0 +1,30 @@
+{
+  "name": "@loop/connectors",
+  "version": "1.0.0",
+  "description": "Connector interface, registry, and ODW agent adapters (Vault, Desk, Recap)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@loop/types": "workspace:*",
+    "@loop/observability": "workspace:*",
+    "@loop/secrets": "workspace:*",
+    "undici": "^6.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  }
+}

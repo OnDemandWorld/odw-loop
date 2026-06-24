@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../packages/types" },
+    { "path": "../../packages/state" },
+    { "path": "../../packages/engine" },
+    { "path": "../../packages/connectors" },
+    { "path": "../../packages/triggers" },
+    { "path": "../../packages/secrets" },
+    { "path": "../../packages/egress" },
+    { "path": "../../packages/observability" },
+    { "path": "../../packages/llm" },
+    { "path": "../../packages/workflow-authoring" },
+    { "path": "../../packages/versioning" }
+  ]
+}

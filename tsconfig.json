@@ -1,0 +1,19 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/types" },
+    { "path": "packages/observability" },
+    { "path": "packages/state" },
+    { "path": "packages/secrets" },
+    { "path": "packages/versioning" },
+    { "path": "packages/connectors" },
+    { "path": "packages/llm" },
+    { "path": "packages/egress" },
+    { "path": "packages/workflow-authoring" },
+    { "path": "packages/engine" },
+    { "path": "packages/triggers" },
+    { "path": "apps/api" },
+    { "path": "apps/sandbox" },
+    { "path": "apps/control-plane" }
+  ]
+}
