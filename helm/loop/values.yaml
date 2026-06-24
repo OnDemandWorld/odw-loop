@@ -1,0 +1,165 @@
+# Default values for Loop deployment
+# Scale tier: multi-instance Kubernetes deployment
+
+# Global settings
+global:
+  environment: production
+  encryptionKey: ""  # Required: AES-256 master key
+  jwtSecret: ""      # Required: JWT signing secret
+
+# Loop API (main application)
+api:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/ondemandworld/loop-app
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilization: 70
+    targetMemoryUtilization: 80
+  env:
+    LOOP_PORT: "3000"
+    LOOP_HOST: "0.0.0.0"
+    LOOP_LOG_LEVEL: "info"
+    LOOP_ENV: "production"
+    LOOP_DB_TYPE: "postgres"
+    LOOP_MAX_CONCURRENT: "200"
+    LOOP_EXECUTION_TIMEOUT_MS: "600000"
+    LOOP_METRICS_ENABLED: "true"
+    LOOP_OTEL_ENABLED: "true"
+
+# Loop Sandbox (code execution)
+sandbox:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/ondemandworld/loop-sandbox
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 4000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  runtimeClassName: gvisor  # Requires gVisor runtime class
+  poolSize: 5
+  env:
+    LOOP_SANDBOX_MEMORY_MB: "256"
+    LOOP_SANDBOX_CPU_SECONDS: "30"
+
+# Loop Control Plane (Scale tier management)
+controlPlane:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/ondemandworld/loop-control-plane
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3001
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# PostgreSQL (database)
+postgresql:
+  enabled: true
+  auth:
+    username: loop
+    password: ""  # Set via secret
+    database: loop
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+
+# Redis (cache/queue for Scale tier)
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: ""  # Set via secret
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+# Ingress
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: loop.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Monitoring
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+  prometheusRule:
+    enabled: false
+
+# OpenTelemetry
+otel:
+  enabled: false
+  endpoint: "http://otel-collector:4317"
+
+# ODW Agent connections
+odw:
+  vault:
+    url: ""
+    apiKey: ""
+  desk:
+    url: ""
+    apiKey: ""
+  recap:
+    url: ""
+    apiKey: ""
+
+# LLM providers
+llm:
+  primary: "ollama"
+  ollama:
+    url: "http://ollama:11434"
+  fallbackChain: "ollama,openai,anthropic"

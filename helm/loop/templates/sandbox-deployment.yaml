@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-sandbox
+  labels:
+    app.kubernetes.io/name: loop-sandbox
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.sandbox.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loop-sandbox
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: loop-sandbox
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- if .Values.sandbox.runtimeClassName }}
+      runtimeClassName: {{ .Values.sandbox.runtimeClassName }}
+      {{- end }}
+      containers:
+        - name: sandbox
+          image: "{{ .Values.sandbox.image.repository }}:{{ .Values.sandbox.image.tag }}"
+          imagePullPolicy: {{ .Values.sandbox.image.pullPolicy }}
+          ports:
+            - containerPort: 4000
+              protocol: TCP
+          env:
+            - name: LOOP_SANDBOX_MEMORY_MB
+              value: {{ .Values.sandbox.env.LOOP_SANDBOX_MEMORY_MB | quote }}
+            - name: LOOP_SANDBOX_CPU_SECONDS
+              value: {{ .Values.sandbox.env.LOOP_SANDBOX_CPU_SECONDS | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.sandbox.resources | nindent 12 }}

@@ -1,0 +1,22 @@
+Loop has been deployed successfully!
+
+To access the Loop API:
+  kubectl port-forward svc/{{ .Release.Name }}-api 3000:3000
+  Then open http://localhost:3000
+
+To access the Control Plane:
+  kubectl port-forward svc/{{ .Release.Name }}-control-plane 3001:3001
+
+Check deployment status:
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+View logs:
+  kubectl logs -l app.kubernetes.io/name=loop-api
+
+For production use:
+1. Set global.encryptionKey and global.jwtSecret in values.yaml or via --set
+2. Configure PostgreSQL password via postgresql.auth.password
+3. Set up ODW agent connections (odw.vault.url, etc.)
+4. Configure LLM providers (llm.primary, llm.ollama.url, etc.)
+5. Enable ingress for external access
+6. Set up monitoring (monitoring.serviceMonitor.enabled: true)

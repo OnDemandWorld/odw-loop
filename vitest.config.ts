@@ -4,8 +4,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['tests/unit/**/*.test.ts', 'packages/**/*.test.ts'],
-    exclude: ['node_modules', 'dist', 'tests/integration', 'tests/e2e'],
+    include: ['tests/unit/**/*.test.ts', 'packages/*/tests/**/*.test.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**', 'tests/integration', 'tests/e2e'],
     coverage: {
       reporter: ['text', 'json', 'html'],
       thresholds: {

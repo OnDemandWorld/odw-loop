@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    app.kubernetes.io/name: loop-api
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loop-api
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: loop-api
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LOOP_PORT
+              value: {{ .Values.api.env.LOOP_PORT | quote }}
+            - name: LOOP_HOST
+              value: {{ .Values.api.env.LOOP_HOST | quote }}
+            - name: LOOP_LOG_LEVEL
+              value: {{ .Values.api.env.LOOP_LOG_LEVEL | quote }}
+            - name: LOOP_ENV
+              value: {{ .Values.api.env.LOOP_ENV | quote }}
+            - name: LOOP_DB_TYPE
+              value: {{ .Values.api.env.LOOP_DB_TYPE | quote }}
+            - name: LOOP_DB_HOST
+              value: "{{ .Release.Name }}-postgresql"
+            - name: LOOP_DB_PORT
+              value: "5432"
+            - name: LOOP_DB_NAME
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: LOOP_DB_USER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: LOOP_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-db-secret
+                  key: password
+            - name: LOOP_REDIS_URL
+              value: "redis://{{ .Release.Name }}-redis-master:6379"
+            - name: LOOP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: encryptionKey
+            - name: LOOP_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: jwtSecret
+            - name: LOOP_SANDBOX_URL
+              value: "http://{{ .Release.Name }}-sandbox:{{ .Values.sandbox.service.port }}"
+            - name: LOOP_MAX_CONCURRENT
+              value: {{ .Values.api.env.LOOP_MAX_CONCURRENT | quote }}
+            - name: LOOP_EXECUTION_TIMEOUT_MS
+              value: {{ .Values.api.env.LOOP_EXECUTION_TIMEOUT_MS | quote }}
+            - name: LOOP_METRICS_ENABLED
+              value: {{ .Values.api.env.LOOP_METRICS_ENABLED | quote }}
+            - name: LOOP_OTEL_ENABLED
+              value: {{ .Values.api.env.LOOP_OTEL_ENABLED | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: loop
+description: Loop — Orchestration layer for the ODW.ai sovereign agent suite
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - workflow
+  - orchestration
+  - automation
+  - odw
+home: https://github.com/OnDemandWorld/odw-loop
+sources:
+  - https://github.com/OnDemandWorld/odw-loop
+maintainers:
+  - name: ODW.ai Team
