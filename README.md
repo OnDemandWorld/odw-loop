@@ -1,4 +1,4 @@
-# Loop
+# ODW Loop
 
 > Workflow orchestration engine for the ODW.ai sovereign agent suite
 
@@ -8,7 +8,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-green)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-Loop is a production-ready workflow orchestration platform that connects ODW's sovereign agents (Vault, Desk, Recap) into automated, multi-step workflows. Built as a TypeScript monorepo with a Fastify backend, React Flow canvas, and comprehensive test coverage.
+ODW Loop is a production-ready workflow orchestration platform that connects ODW's sovereign agents (Vault, Desk, Recap) into automated, multi-step workflows. Built as a TypeScript monorepo with a Fastify backend, React Flow canvas, and comprehensive test coverage.
 
 ## 🎯 Overview
 
@@ -395,9 +395,9 @@ This repository is designed for AI-assisted development. Key guidelines:
 # 3. Add tests in tests/integration/api/
 ```
 
-## 📄 License
+## License
 
-Apache 2.0 - See [LICENSE](LICENSE) for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
