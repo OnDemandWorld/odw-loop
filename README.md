@@ -18,7 +18,7 @@ ODW Loop is a production-ready workflow orchestration platform that connects ODW
 
 ## Status
 
-⚠️ **Early release.** ODW [Name] is an early, functional release — core features work, but it is not yet hardened for production. We are refining every module toward a first full public release in **Q3 2026**. Until then, it is best used as a foundation to build on with AI coding agents (see below).
+⚠️ **Early release.** ODW Loop is an early, functional release — core features work, but it is not yet hardened for production. We are refining every module toward a first full public release in **Q3 2026**. Until then, it is best used as a foundation to build on with AI coding agents (see below).
 
 **Key Features:**
 - 🎨 Visual workflow builder with React Flow canvas
@@ -400,7 +400,7 @@ This repository is designed for AI-assisted development. Key guidelines:
 ```
 
 ## Working with AI agents
-This repository is built to be extended with AI coding agents. Rather than a turnkey product, ODW [Name] is a working, well-structured codebase you can clone and adapt to your own needs with an agent like Claude Code. The repo includes agent context files (e.g. `CLAUDE.md`) and clear architecture docs so an agent can quickly understand the structure and help you customise, integrate, and extend it. To get started: clone the repo, open it with your coding agent, point it at this README and the docs, and describe what you want to build.
+This repository is built to be extended with AI coding agents. Rather than a turnkey product, ODW Loop is a working, well-structured codebase you can clone and adapt to your own needs with an agent like Claude Code. The repo includes agent context files (e.g. `CLAUDE.md`) and clear architecture docs so an agent can quickly understand the structure and help you customise, integrate, and extend it. To get started: clone the repo, open it with your coding agent, point it at this README and the docs, and describe what you want to build.
 
 ## License
 
