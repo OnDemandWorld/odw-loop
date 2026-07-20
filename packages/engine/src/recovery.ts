@@ -22,12 +22,15 @@ export class ExecutionRecovery {
       const lastCompleted = nodeExecs.filter((n) => n.status === 'succeeded').pop();
 
       if (lastCompleted) {
-        // Recoverable — re-queue from last successful node
+        // Recoverable — reset to pending so the scheduler can re-queue
+        // from the last successful node on next execution cycle.
+        await this.store.executions.updateStatus(execution.id, {
+          status: 'pending',
+        });
         logger.info(
           { executionId: execution.id, lastNode: lastCompleted.node_id },
-          'Recovering execution from last successful node',
+          'Recovered execution — reset to pending for re-queue from last successful node',
         );
-        // In a full implementation, we'd re-queue the execution here
         recovered++;
       } else {
         // Not recoverable — mark as failed

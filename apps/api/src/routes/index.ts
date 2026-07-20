@@ -2,7 +2,7 @@
  * Route registration — all API endpoints from TSD §5.
  */
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { SqliteStateStore } from '@loop/state';
 import type { ConnectorRegistry } from '@loop/connectors';
 import type { WorkflowAuthoringService } from '@loop/workflow-authoring';
@@ -11,6 +11,26 @@ import type { TriggerDispatcher, WebhookTriggerHandler, ManualTriggerHandler } f
 import type { EgressEngine } from '@loop/egress';
 import type { SecretsManager } from '@loop/secrets';
 import type { LoopConfig } from '../config.js';
+
+/** Extract the request ID attached by the requestIdHook middleware. */
+function getRequestId(request: FastifyRequest): string {
+  return (request as unknown as Record<string, unknown>)['requestId'] as string ?? 'unknown';
+}
+
+/**
+ * Extract the acting user from the request.
+ * Currently reads from x-user-id header (set by auth gateway / JWT middleware).
+ * Falls back to 'system' when no user context is available.
+ */
+function getActor(request: FastifyRequest): string {
+  const userId = request.headers['x-user-id'] as string | undefined;
+  return userId ?? 'system';
+}
+
+/** Build a standard response meta block. */
+function meta(request: FastifyRequest, extra?: Record<string, unknown>) {
+  return { request_id: getRequestId(request), timestamp: new Date().toISOString(), ...extra };
+}
 
 export interface RouteDeps {
   store: SqliteStateStore;
@@ -30,14 +50,15 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   app.post('/api/v1/workflows', async (request, reply) => {
     const body = request.body as { name: string; description?: string; definition: unknown; tags?: string[] };
+    const actor = getActor(request);
     const workflow = await deps.authoring.create({
       name: body.name,
       description: body.description,
       definition: body.definition as never,
       tags: body.tags,
-      created_by: 'system', // TODO: extract from auth context
+      created_by: actor,
     });
-    return reply.status(201).send({ success: true, data: workflow, meta: { request_id: 'todo', timestamp: new Date().toISOString() } });
+    return reply.status(201).send({ success: true, data: workflow, meta: meta(request) });
   });
 
   app.get('/api/v1/workflows', async (request) => {
@@ -47,40 +68,42 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       parseInt(query['page'] ?? '1', 10),
       parseInt(query['per_page'] ?? '20', 10),
     );
-    return { success: true, data: result.data, meta: { total: result.total, page: result.page, per_page: result.per_page, total_pages: result.total_pages, request_id: 'todo', timestamp: new Date().toISOString() } };
+    return { success: true, data: result.data, meta: meta(request, { total: result.total, page: result.page, per_page: result.per_page, total_pages: result.total_pages }) };
   });
 
   app.get('/api/v1/workflows/:id', async (request) => {
     const { id } = request.params as { id: string };
     const workflow = await deps.authoring.getById(id);
-    return { success: true, data: workflow, meta: { request_id: 'todo', timestamp: new Date().toISOString() } };
+    return { success: true, data: workflow, meta: meta(request) };
   });
 
   app.put('/api/v1/workflows/:id', async (request) => {
     const { id } = request.params as { id: string };
     const body = request.body as Record<string, unknown>;
-    const workflow = await deps.authoring.update(id, { ...body, updated_by: 'system' } as never);
-    return { success: true, data: workflow, meta: { request_id: 'todo', timestamp: new Date().toISOString() } };
+    const actor = getActor(request);
+    const workflow = await deps.authoring.update(id, { ...body, updated_by: actor } as never);
+    return { success: true, data: workflow, meta: meta(request) };
   });
 
   app.delete('/api/v1/workflows/:id', async (request) => {
     const { id } = request.params as { id: string };
     await deps.authoring.archive(id);
-    return { success: true, data: { status: 'archived' }, meta: { request_id: 'todo', timestamp: new Date().toISOString() } };
+    return { success: true, data: { status: 'archived' }, meta: meta(request) };
   });
 
   app.post('/api/v1/workflows/:id/execute', async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as { payload?: Record<string, unknown> };
-    const executionId = await deps.manualHandler.trigger(id, body?.payload ?? {}, 'system');
-    return reply.status(202).send({ success: true, data: { execution_id: executionId, status: 'pending' }, meta: { request_id: 'todo', timestamp: new Date().toISOString() } });
+    const actor = getActor(request);
+    const executionId = await deps.manualHandler.trigger(id, body?.payload ?? {}, actor);
+    return reply.status(202).send({ success: true, data: { execution_id: executionId, status: 'pending' }, meta: meta(request) });
   });
 
   app.post('/api/v1/workflows/:id/validate', async (request) => {
     const { id } = request.params as { id: string };
     const workflow = await deps.authoring.getById(id);
     const result = await deps.authoring.validate(workflow.definition);
-    return { success: true, data: result, meta: { request_id: 'todo', timestamp: new Date().toISOString() } };
+    return { success: true, data: result, meta: meta(request) };
   });
 
   // ─── Executions (§5.4) ──────────────────────────────────────────────────
@@ -91,20 +114,20 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       { workflow_id: query['workflow_id'], status: query['status'] },
       { page: parseInt(query['page'] ?? '1', 10), per_page: parseInt(query['per_page'] ?? '20', 10) },
     );
-    return { success: true, data: result.data, meta: { total: result.total, page: result.page, per_page: result.per_page, total_pages: result.total_pages, request_id: 'todo', timestamp: new Date().toISOString() } };
+    return { success: true, data: result.data, meta: meta(request, { total: result.total, page: result.page, per_page: result.per_page, total_pages: result.total_pages }) };
   });
 
   app.get('/api/v1/executions/:id', async (request) => {
     const { id } = request.params as { id: string };
     const execution = await deps.store.executions.getById(id);
     const nodeExecutions = await deps.store.nodeExecutions.listByExecution(id);
-    return { success: true, data: { ...execution, nodes: nodeExecutions }, meta: { request_id: 'todo', timestamp: new Date().toISOString() } };
+    return { success: true, data: { ...execution, nodes: nodeExecutions }, meta: meta(request) };
   });
 
   app.post('/api/v1/executions/:id/cancel', async (request) => {
     const { id } = request.params as { id: string };
     await deps.store.executions.updateStatus(id, { status: 'cancelled' });
-    return { success: true, data: { status: 'cancelled' }, meta: { request_id: 'todo', timestamp: new Date().toISOString() } };
+    return { success: true, data: { status: 'cancelled' }, meta: meta(request) };
   });
 
   // ─── Triggers (§5.5) ────────────────────────────────────────────────────
@@ -118,13 +141,13 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       trigger_type: body.trigger_type as 'cron',
       config: body.config,
     });
-    return reply.status(201).send({ success: true, data: trigger, meta: { request_id: 'todo', timestamp: new Date().toISOString() } });
+    return reply.status(201).send({ success: true, data: trigger, meta: meta(request) });
   });
 
   app.get('/api/v1/workflows/:id/triggers', async (request) => {
     const { id: workflowId } = request.params as { id: string };
     const triggers = await deps.store.triggers.listByWorkflow(workflowId);
-    return { success: true, data: triggers, meta: { request_id: 'todo', timestamp: new Date().toISOString() } };
+    return { success: true, data: triggers, meta: meta(request) };
   });
 
   // ─── Webhooks (§5.7) ────────────────────────────────────────────────────
@@ -142,9 +165,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   // ─── Connectors (§5.6) ──────────────────────────────────────────────────
 
-  app.get('/api/v1/connectors', async () => {
+  app.get('/api/v1/connectors', async (request) => {
     const connectors = await deps.store.connectors.list();
-    return { success: true, data: connectors, meta: { request_id: 'todo', timestamp: new Date().toISOString() } };
+    return { success: true, data: connectors, meta: meta(request) };
   });
 
   // ─── System / admin endpoints ────────────────────────────────────────────
@@ -155,6 +178,6 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       { actor: query['actor'], action: query['action'] },
       { page: parseInt(query['page'] ?? '1', 10), per_page: parseInt(query['per_page'] ?? '50', 10) },
     );
-    return { success: true, data: result.data, meta: { total: result.total, page: result.page, per_page: result.per_page, total_pages: result.total_pages, request_id: 'todo', timestamp: new Date().toISOString() } };
+    return { success: true, data: result.data, meta: meta(request, { total: result.total, page: result.page, per_page: result.per_page, total_pages: result.total_pages }) };
   });
 }

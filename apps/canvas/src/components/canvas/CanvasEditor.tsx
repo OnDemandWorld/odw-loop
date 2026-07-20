@@ -9,6 +9,8 @@ import ReactFlow, {
   type Connection,
   type Edge,
   type Node,
+  type NodeChange,
+  type EdgeChange,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { ConnectorNode } from './nodes/ConnectorNode';
@@ -43,7 +45,7 @@ export function CanvasEditor({ initialNodes = [], initialEdges = [], onNodesChan
   );
 
   const handleNodesChange = useCallback(
-    (changes: any) => {
+    (changes: NodeChange[]) => {
       onNodesChangeInternal(changes);
       onNodesChange?.(nodes);
     },
@@ -51,7 +53,7 @@ export function CanvasEditor({ initialNodes = [], initialEdges = [], onNodesChan
   );
 
   const handleEdgesChange = useCallback(
-    (changes: any) => {
+    (changes: EdgeChange[]) => {
       onEdgesChangeInternal(changes);
       onEdgesChange?.(edges);
     },

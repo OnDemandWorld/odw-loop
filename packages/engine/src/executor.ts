@@ -50,7 +50,7 @@ export class ExecutionExecutor {
 
       if (sortedNodes.length === 0) {
         // Empty workflow succeeds immediately
-        await this.completeExecution(executionId, 'succeeded', startTime);
+        await this.completeExecution(executionId, 'succeeded', startTime, undefined, ctx.workflowId);
         return;
       }
 
@@ -59,10 +59,10 @@ export class ExecutionExecutor {
         await this.executeNode(node, ctx, definition);
       }
 
-      await this.completeExecution(executionId, 'succeeded', startTime);
+      await this.completeExecution(executionId, 'succeeded', startTime, undefined, ctx.workflowId);
     } catch (err) {
       logger.error({ executionId, error: String(err) }, 'Execution failed');
-      await this.completeExecution(executionId, 'failed', startTime, String(err));
+      await this.completeExecution(executionId, 'failed', startTime, String(err), ctx.workflowId);
       throw err;
     } finally {
       metrics.activeExecutions.dec();
@@ -132,7 +132,14 @@ export class ExecutionExecutor {
 
     const adapter = this.connectors.getAdapter(connectorType);
     if (!adapter) {
-      // Control nodes or unknown types — return input as output
+      // Control nodes (e.g. "control.condition") pass through input as output.
+      // Unknown connector types are logged as warnings for debuggability.
+      if (!connectorType.startsWith('control')) {
+        logger.warn(
+          { nodeId: node.id, nodeType: node.type, connectorType },
+          'No adapter registered for connector type — passing input as output',
+        );
+      }
       return input;
     }
 
@@ -176,7 +183,7 @@ export class ExecutionExecutor {
     });
   }
 
-  private async completeExecution(executionId: string, status: 'succeeded' | 'failed', startTime: number, error?: string): Promise<void> {
+  private async completeExecution(executionId: string, status: 'succeeded' | 'failed', startTime: number, error?: string, workflowId?: string): Promise<void> {
     const duration = Date.now() - startTime;
     await this.store.executions.updateStatus(executionId, {
       status,
@@ -184,7 +191,7 @@ export class ExecutionExecutor {
       duration_ms: duration,
       error,
     });
-    metrics.executionsTotal.inc({ workflow_id: '', status });
-    metrics.executionDuration.observe({ workflow_id: '' }, duration / 1000);
+    metrics.executionsTotal.inc({ workflow_id: workflowId ?? 'unknown', status });
+    metrics.executionDuration.observe({ workflow_id: workflowId ?? 'unknown' }, duration / 1000);
   }
 }

@@ -1,6 +1,12 @@
 import React from 'react';
 import type { Node } from 'reactflow';
 
+interface RetryConfig {
+  max_attempts?: number;
+  backoff?: string;
+  initial_delay_ms?: number;
+}
+
 interface NodeConfigPanelProps {
   node: Node | null;
   onConfigChange: (nodeId: string, config: Record<string, unknown>) => void;
@@ -55,10 +61,10 @@ export function NodeConfigPanel({ node, onConfigChange }: NodeConfigPanelProps) 
           <div style={{ marginTop: '8px', padding: '8px', background: '#f9fafb', borderRadius: '6px' }}>
             <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Retry Configuration</div>
             <div style={{ fontSize: '11px', color: '#6b7280' }}>
-              Max attempts: {(node.data.retry as any).max_attempts ?? 3}
+              Max attempts: {(node.data.retry as RetryConfig).max_attempts ?? 3}
             </div>
             <div style={{ fontSize: '11px', color: '#6b7280' }}>
-              Backoff: {(node.data.retry as any).backoff ?? 'exponential'}
+              Backoff: {(node.data.retry as RetryConfig).backoff ?? 'exponential'}
             </div>
           </div>
         )}

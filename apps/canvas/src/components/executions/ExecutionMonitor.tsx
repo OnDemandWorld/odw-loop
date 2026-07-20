@@ -10,6 +10,16 @@ interface NodeStatus {
   error?: string;
 }
 
+interface ExecutionData {
+  id: string;
+  workflow_id: string;
+  workflow_version: number;
+  trigger_type: string;
+  status: string;
+  duration_ms?: number;
+  nodes?: NodeStatus[];
+}
+
 interface ExecutionMonitorProps {
   executionId: string;
 }
@@ -23,7 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function ExecutionMonitor({ executionId }: ExecutionMonitorProps) {
-  const [execution, setExecution] = useState<any>(null);
+  const [execution, setExecution] = useState<ExecutionData | null>(null);
   const [nodes, setNodes] = useState<NodeStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +52,7 @@ export function ExecutionMonitor({ executionId }: ExecutionMonitorProps) {
           setNodes((prev) => prev.map((n) => n.node_id === message.node_id ? { ...n, status: message.status, completed_at: message.timestamp, output: message.output, error: message.error } : n));
           break;
         case 'execution_completed':
-          setExecution((prev: any) => prev ? { ...prev, status: message.status } : null);
+          setExecution((prev) => prev ? { ...prev, status: message.status } : null);
           break;
       }
     };

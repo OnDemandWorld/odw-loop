@@ -40,14 +40,23 @@ export class CronTriggerHandler {
 
     const task = cron.schedule(config.expression, async () => {
       const executionId = randomUUID();
+      // Read the current workflow version at fire time (not registration time)
+      // so that updated workflows execute their latest definition.
+      let workflowVersion = 1;
+      try {
+        const workflow = await this.store.workflows.getById(workflowId);
+        if (workflow) workflowVersion = workflow.version;
+      } catch {
+        logger.warn({ workflowId }, 'Failed to read workflow version, defaulting to 1');
+      }
       await this.store.executions.create({
         id: executionId,
         workflow_id: workflowId,
-        workflow_version: 1,
+        workflow_version: workflowVersion,
         trigger_type: 'cron',
         trigger_payload: { scheduled_at: new Date().toISOString() },
       });
-      logger.info({ triggerId, executionId }, 'Cron trigger fired');
+      logger.info({ triggerId, executionId, workflowVersion }, 'Cron trigger fired');
     }, {
       timezone: config.timezone ?? 'UTC',
       scheduled: true,
