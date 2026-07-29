@@ -1,0 +1,100 @@
+{
+  "name": "Content Review Pipeline",
+  "description": "Multi-stage content review: classifies content type, applies conditional routing based on category, stores approved content, and notifies stakeholders",
+  "trigger": {
+    "type": "webhook",
+    "config": { "secret": "{{secrets.content_webhook_secret}}" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "recap.classify",
+        "position": { "x": 100, "y": 250 },
+        "config": {
+          "content": "{{trigger.payload.content}}",
+          "categories": ["blog_post", "technical_doc", "marketing", "internal_memo"]
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 20000
+      },
+      {
+        "id": "node_2",
+        "type": "control.condition",
+        "position": { "x": 400, "y": 250 },
+        "config": {
+          "condition": "{{node_1.output.category}} == 'technical_doc' || {{node_1.output.category}} == 'internal_memo'",
+          "true_port": "auto_approve",
+          "false_port": "needs_review"
+        }
+      },
+      {
+        "id": "node_3",
+        "type": "vault.create_document",
+        "position": { "x": 700, "y": 100 },
+        "config": {
+          "title": "{{trigger.payload.title}}",
+          "content": "{{trigger.payload.content}}",
+          "tags": ["{{node_1.output.category}}", "auto-approved"],
+          "folder": "/published/{{node_1.output.category}}"
+        },
+        "retry": { "max_attempts": 2, "backoff": "fixed", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      },
+      {
+        "id": "node_4",
+        "type": "control.approval",
+        "position": { "x": 700, "y": 400 },
+        "config": {
+          "approvers": ["{{variables.content_reviewer}}"],
+          "message": "Content review requested: {{trigger.payload.title}} (Type: {{node_1.output.category}})",
+          "timeout_hours": 24
+        },
+        "timeout_ms": 86400000
+      },
+      {
+        "id": "node_5",
+        "type": "vault.create_document",
+        "position": { "x": 1000, "y": 400 },
+        "config": {
+          "title": "{{trigger.payload.title}}",
+          "content": "{{trigger.payload.content}}",
+          "tags": ["{{node_1.output.category}}", "reviewed", "approved"],
+          "folder": "/published/{{node_1.output.category}}"
+        },
+        "retry": { "max_attempts": 2, "backoff": "fixed", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      },
+      {
+        "id": "node_6",
+        "type": "desk.send_notification",
+        "position": { "x": 1300, "y": 250 },
+        "config": {
+          "channel": "{{variables.content_channel}}",
+          "title": "📝 Content Published: {{trigger.payload.title}}",
+          "body": "Type: {{node_1.output.category}}\nStatus: Published to Vault\nFolder: /published/{{node_1.output.category}}",
+          "priority": "normal"
+        },
+        "timeout_ms": 10000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "auto_approve", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_2", "source_port": "needs_review", "target": "node_4", "target_port": "input" },
+      { "id": "e4", "source": "node_4", "source_port": "approved", "target": "node_5", "target_port": "input" },
+      { "id": "e5", "source": "node_3", "source_port": "output", "target": "node_6", "target_port": "input" },
+      { "id": "e6", "source": "node_5", "source_port": "output", "target": "node_6", "target_port": "input" }
+    ],
+    "variables": {
+      "content_reviewer": { "type": "string", "default": "content-lead" },
+      "content_channel": { "type": "string", "default": "#content-ops" }
+    },
+    "metadata": {
+      "name": "Content Review Pipeline",
+      "description": "Classify → condition (auto-approve internal / review external) → store → notify",
+      "tags": ["content", "review", "publishing"]
+    }
+  }
+}

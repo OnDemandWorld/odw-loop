@@ -56,6 +56,19 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   const store = new SqliteStateStore(conn);
   await store.initialise();
 
+  // Seed a default system user (required for FK constraints on created_by)
+  const existingSystemUser = await store.users.getById('system');
+  if (!existingSystemUser) {
+    await store.users.create({
+      id: 'system',
+      username: 'system',
+      password_hash: '',
+      email: 'system@loop.internal',
+      role: 'admin',
+      display_name: 'System',
+    });
+  }
+
   // ─── Services ────────────────────────────────────────────────────────────
 
   const connectors = new ConnectorRegistry();

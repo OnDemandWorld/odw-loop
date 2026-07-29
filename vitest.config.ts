@@ -1,6 +1,22 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'node:path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@loop/types': resolve(__dirname, 'packages/types/src/index.ts'),
+      '@loop/observability': resolve(__dirname, 'packages/observability/src/index.ts'),
+      '@loop/state': resolve(__dirname, 'packages/state/src/index.ts'),
+      '@loop/connectors': resolve(__dirname, 'packages/connectors/src/index.ts'),
+      '@loop/engine': resolve(__dirname, 'packages/engine/src/index.ts'),
+      '@loop/versioning': resolve(__dirname, 'packages/versioning/src/index.ts'),
+      '@loop/triggers': resolve(__dirname, 'packages/triggers/src/index.ts'),
+      '@loop/workflow-authoring': resolve(__dirname, 'packages/workflow-authoring/src/index.ts'),
+      '@loop/egress': resolve(__dirname, 'packages/egress/src/index.ts'),
+      '@loop/llm': resolve(__dirname, 'packages/llm/src/index.ts'),
+      '@loop/secrets': resolve(__dirname, 'packages/secrets/src/index.ts'),
+    },
+  },
   test: {
     globals: true,
     environment: 'node',

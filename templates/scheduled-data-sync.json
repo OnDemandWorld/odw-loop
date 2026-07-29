@@ -1,0 +1,75 @@
+{
+  "name": "Scheduled Data Sync",
+  "description": "Periodically syncs documents between Vault folders: searches for stale documents, enriches with RAG metadata, and updates records",
+  "trigger": {
+    "type": "cron",
+    "config": { "expression": "0 2 * * *", "timezone": "UTC" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "vault.search",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "query": "metadata_enriched:false",
+          "filters": { "status": "published", "limit": 50 }
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 2000 },
+        "timeout_ms": 20000
+      },
+      {
+        "id": "node_2",
+        "type": "vault.rag_query",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "question": "Generate structured metadata (category, key_entities, summary) for this document",
+          "context": "{{node_1.output.documents}}",
+          "output_format": "json"
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 3000 },
+        "timeout_ms": 90000
+      },
+      {
+        "id": "node_3",
+        "type": "vault.update_document",
+        "position": { "x": 700, "y": 200 },
+        "config": {
+          "id": "{{node_1.output.document_id}}",
+          "metadata": {
+            "enriched": true,
+            "category": "{{node_2.output.category}}",
+            "key_entities": "{{node_2.output.key_entities}}",
+            "auto_summary": "{{node_2.output.summary}}",
+            "enriched_at": "{{trigger.payload.scheduled_at}}"
+          }
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      },
+      {
+        "id": "node_4",
+        "type": "vault.manage_tags",
+        "position": { "x": 1000, "y": 200 },
+        "config": {
+          "document_id": "{{node_1.output.document_id}}",
+          "add_tags": ["enriched", "{{node_2.output.category}}"],
+          "remove_tags": ["needs-enrichment"]
+        },
+        "timeout_ms": 10000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "output", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_3", "source_port": "output", "target": "node_4", "target_port": "input" }
+    ],
+    "variables": {},
+    "metadata": {
+      "name": "Scheduled Data Sync",
+      "description": "Nightly 2AM: find unenriched docs → RAG metadata extraction → update → re-tag",
+      "tags": ["data-sync", "enrichment", "scheduled"]
+    }
+  }
+}

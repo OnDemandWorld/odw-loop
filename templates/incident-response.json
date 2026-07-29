@@ -1,0 +1,73 @@
+{
+  "name": "Incident Response",
+  "description": "Webhook-triggered incident triage: classifies severity, branches on critical vs normal, parallel fan-out for critical (notify + create task + log)",
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "recap.classify",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "content": "{{trigger.payload.alert_message}}",
+          "categories": ["critical", "warning", "info"]
+        }
+      },
+      {
+        "id": "node_2",
+        "type": "control.branch",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "condition": "{{node_1.output.category}} == critical"
+        }
+      },
+      {
+        "id": "node_3",
+        "type": "desk.send_notification",
+        "position": { "x": 700, "y": 100 },
+        "config": {
+          "channel": "incidents-critical",
+          "message": "CRITICAL: {{trigger.payload.alert_message}}"
+        }
+      },
+      {
+        "id": "node_4",
+        "type": "desk.create_task",
+        "position": { "x": 700, "y": 250 },
+        "config": {
+          "title": "INCIDENT: {{trigger.payload.alert_message}}",
+          "priority": "urgent",
+          "assignee": "{{trigger.payload.on_call}}"
+        }
+      },
+      {
+        "id": "node_5",
+        "type": "vault.create_document",
+        "position": { "x": 700, "y": 400 },
+        "config": {
+          "title": "Incident Log - {{trigger.payload.alert_id}}",
+          "content": "{{trigger.payload.alert_message}}",
+          "tags": ["incident", "critical"]
+        }
+      },
+      {
+        "id": "node_6",
+        "type": "desk.send_notification",
+        "position": { "x": 700, "y": 550 },
+        "config": {
+          "channel": "incidents-general",
+          "message": "{{node_1.output.category}}: {{trigger.payload.alert_message}}"
+        }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "true", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_2", "source_port": "true", "target": "node_4", "target_port": "input" },
+      { "id": "e4", "source": "node_2", "source_port": "true", "target": "node_5", "target_port": "input" },
+      { "id": "e5", "source": "node_2", "source_port": "false", "target": "node_6", "target_port": "input" }
+    ],
+    "variables": {},
+    "metadata": { "name": "Incident Response", "description": "Severity-based incident triage with parallel critical response", "tags": ["incidents", "ops", "conditional"] }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "name": "Daily Standup Report",
+  "description": "Generates a daily standup report by gathering active tasks, summarizing progress, and sending a notification to the team channel",
+  "trigger": {
+    "type": "cron",
+    "config": { "expression": "0 9 * * 1-5", "timezone": "UTC" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "vault.search",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "query": "status:active type:task",
+          "filters": { "updated_within": "24h" }
+        },
+        "retry": { "max_attempts": 2, "backoff": "fixed", "initial_delay_ms": 2000 },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_2",
+        "type": "recap.summarize",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "content": "{{node_1.output.documents}}",
+          "format": "bullet_points",
+          "max_length": 500
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 30000
+      },
+      {
+        "id": "node_3",
+        "type": "desk.send_notification",
+        "position": { "x": 700, "y": 200 },
+        "config": {
+          "channel": "{{variables.team_channel}}",
+          "title": "Daily Standup Report — {{trigger.payload.scheduled_at}}",
+          "body": "{{node_2.output.summary}}",
+          "priority": "normal"
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 2000 },
+        "timeout_ms": 15000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "output", "target": "node_3", "target_port": "input" }
+    ],
+    "variables": {
+      "team_channel": { "type": "string", "default": "#engineering" }
+    },
+    "metadata": {
+      "name": "Daily Standup Report",
+      "description": "Weekday 9AM standup summary from Vault tasks, delivered via Desk notification",
+      "tags": ["productivity", "reporting", "daily"]
+    }
+  }
+}

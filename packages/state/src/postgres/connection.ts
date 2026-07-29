@@ -2,7 +2,7 @@
  * PostgreSQL connection management with connection pooling.
  */
 
-import { drizzle, type NodePostgresDriver } from 'drizzle-orm/node-postgres';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { createLogger } from '@loop/observability';
 import * as schema from '../schema.js';
@@ -10,7 +10,7 @@ import * as schema from '../schema.js';
 const logger = createLogger({ name: 'loop:state:postgres', component: 'state' });
 
 export interface PostgresConnection {
-  db: NodePostgresDriver<typeof schema>;
+  db: NodePgDatabase<typeof schema>;
   pool: Pool;
   close(): Promise<void>;
 }

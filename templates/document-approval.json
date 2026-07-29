@@ -1,0 +1,63 @@
+{
+  "name": "Document Approval Pipeline",
+  "description": "Human-in-the-loop approval: receives document via webhook, routes to reviewer, branches on approval/rejection, notifies submitter",
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "vault.create_document",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "title": "{{trigger.payload.title}}",
+          "content": "{{trigger.payload.content}}",
+          "tags": ["pending-review"]
+        }
+      },
+      {
+        "id": "node_2",
+        "type": "control.approval",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "reviewer": "{{trigger.payload.reviewer}}",
+          "document_id": "{{node_1.output.document_id}}",
+          "timeout_hours": 48
+        }
+      },
+      {
+        "id": "node_3",
+        "type": "control.branch",
+        "position": { "x": 700, "y": 200 },
+        "config": {
+          "condition": "{{node_2.output.approved}} == true"
+        }
+      },
+      {
+        "id": "node_4",
+        "type": "desk.send_notification",
+        "position": { "x": 1000, "y": 100 },
+        "config": {
+          "recipient": "{{trigger.payload.submitter}}",
+          "message": "Your document has been approved and published."
+        }
+      },
+      {
+        "id": "node_5",
+        "type": "desk.send_notification",
+        "position": { "x": 1000, "y": 350 },
+        "config": {
+          "recipient": "{{trigger.payload.submitter}}",
+          "message": "Your document was rejected. Reason: {{node_2.output.reason}}"
+        }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "output", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_3", "source_port": "true", "target": "node_4", "target_port": "input" },
+      { "id": "e4", "source": "node_3", "source_port": "false", "target": "node_5", "target_port": "input" }
+    ],
+    "variables": {},
+    "metadata": { "name": "Document Approval Pipeline", "description": "Approval workflow with branching on reviewer decision", "tags": ["approval", "human-in-the-loop", "documents"] }
+  }
+}

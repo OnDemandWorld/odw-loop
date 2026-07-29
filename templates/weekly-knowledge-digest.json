@@ -1,0 +1,53 @@
+{
+  "name": "Weekly Knowledge Digest",
+  "description": "Cron-triggered weekly RAG digest: searches Vault for recent documents, summarizes key findings, stores digest and notifies team",
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "vault.search",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "query": "updated_since:7d",
+          "limit": 50
+        }
+      },
+      {
+        "id": "node_2",
+        "type": "recap.summarize",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "content": "{{node_1.output.documents}}",
+          "prompt": "Create a weekly knowledge digest highlighting key updates, new insights, and important changes from these documents."
+        }
+      },
+      {
+        "id": "node_3",
+        "type": "vault.create_document",
+        "position": { "x": 700, "y": 100 },
+        "config": {
+          "title": "Weekly Digest - {{trigger.payload.week_label}}",
+          "content": "{{node_2.output.summary}}",
+          "tags": ["digest", "weekly", "auto-generated"]
+        }
+      },
+      {
+        "id": "node_4",
+        "type": "desk.send_notification",
+        "position": { "x": 700, "y": 300 },
+        "config": {
+          "channel": "{{trigger.payload.channel}}",
+          "message": "{{node_2.output.summary}}"
+        }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "output", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_2", "source_port": "output", "target": "node_4", "target_port": "input" }
+    ],
+    "variables": {},
+    "metadata": { "name": "Weekly Knowledge Digest", "description": "Automated weekly RAG-based knowledge summary from Vault", "tags": ["knowledge", "cron", "rag", "weekly"] }
+  }
+}

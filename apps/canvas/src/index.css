@@ -2,7 +2,148 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: #0b1220;
+  color: #e2e8f0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Layered ambient background: subtle grid + radial glows */
+.app-bg {
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(34, 211, 238, 0.07), transparent 60%),
+    radial-gradient(700px 420px at -10% 110%, rgba(59, 130, 246, 0.06), transparent 60%),
+    radial-gradient(600px 400px at 50% 120%, rgba(167, 139, 250, 0.05), transparent 60%),
+    #0b1220;
+}
+
+.grid-overlay {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 20%, black 30%, transparent 75%);
+}
+
+@layer components {
+  .panel {
+    @apply bg-ink-800/80 border border-ink-700/70 rounded-lg shadow-panel backdrop-blur-sm;
+  }
+
+  .panel-hover {
+    @apply transition-all duration-200 hover:border-ink-600 hover:bg-ink-750 hover:-translate-y-px;
+  }
+
+  .stat-value {
+    @apply font-display font-bold text-3xl tracking-tight text-ink-100;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-md font-display font-semibold text-sm
+      bg-volt text-ink-950 transition-all duration-150
+      hover:shadow-glow hover:brightness-110 active:scale-[0.98]
+      disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-ink-300
+      border border-ink-700 bg-ink-800/60 transition-all duration-150
+      hover:text-ink-100 hover:border-ink-600 hover:bg-ink-750 active:scale-[0.98]
+      disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-rose-300
+      border border-rose-900/60 bg-rose-950/30 transition-all duration-150
+      hover:text-rose-200 hover:border-rose-800 hover:bg-rose-950/60 active:scale-[0.98];
+  }
+
+  .input {
+    @apply w-full px-3 py-2 rounded-md bg-ink-900/80 border border-ink-700 text-sm text-ink-100
+      placeholder:text-ink-500 outline-none transition-colors duration-150
+      focus:border-volt/60 focus:ring-2 focus:ring-volt/15;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-ink-400
+      transition-all duration-150 hover:text-ink-100 hover:bg-ink-750/80;
+  }
+
+  .nav-link-active {
+    @apply text-volt bg-volt-glow border border-volt/20 hover:bg-volt-glow hover:text-volt;
+  }
+
+  .tag {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium
+      bg-ink-750 border border-ink-700 text-ink-300;
+  }
+
+  .th {
+    @apply px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-400
+      border-b border-ink-700/70 font-display;
+  }
+
+  .td {
+    @apply px-4 py-3 text-sm text-ink-200 border-b border-ink-800/80;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2b3a52;
+  border-radius: 6px;
+  border: 2px solid #0b1220;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3d4f6b;
+}
+
+/* React Flow dark theming */
+.react-flow__background {
+  background: transparent;
+}
+.react-flow__minimap {
+  background: #0f172a !important;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.react-flow__controls {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #1e293b;
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+}
+.react-flow__controls button {
+  background: #131c2e !important;
+  border-bottom: 1px solid #1e293b !important;
+  fill: #94a3b8 !important;
+}
+.react-flow__controls button:hover {
+  background: #182338 !important;
+}
+.react-flow__edge-path {
+  stroke: #3d4f6b;
+  stroke-width: 1.5;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #22d3ee;
+}
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  border: 2px solid #0b1220;
 }

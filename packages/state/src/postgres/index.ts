@@ -56,66 +56,73 @@ export class PostgresStateStore implements StateStore {
   workflows = {
     create: async (data: { id: string; name: string; description: string; definition: WorkflowDefinition; created_by: string; tags?: string[] }) => {
       const now = new Date().toISOString();
-      await this.db.insert(schema.workflows).values({
-        id: data.id, name: data.name, description: data.description,
-        definition: JSON.stringify(data.definition) as never,
-        version: 1, status: 'draft',
-        tags: JSON.stringify(data.tags ?? []) as never,
-        created_by: data.created_by, updated_by: data.created_by,
-        created_at: now, updated_at: now,
-      });
-      const row = await this.db.query.workflows.findFirst({ where: eq(schema.workflows.id, data.id) });
-      if (!row) throw new Error('Failed to create workflow');
-      return { id: row.id, name: row.name, description: row.description, definition: safeJsonParse(row.definition) as WorkflowDefinition, version: row.version, status: row.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(row.tags) as string[], created_by: row.created_by, updated_by: row.updated_by, created_at: row.created_at, updated_at: row.updated_at };
+      await this.conn.pool.query(
+        `INSERT INTO workflows (id, name, description, definition, version, status, tags, created_by, updated_by, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 1, 'draft', $5, $6, $6, $7, $7)`,
+        [data.id, data.name, data.description, JSON.stringify(data.definition), JSON.stringify(data.tags ?? []), data.created_by, now],
+      );
+      const result = await this.conn.pool.query('SELECT * FROM workflows WHERE id = $1', [data.id]);
+      if (result.rows.length === 0) throw new Error('Failed to create workflow');
+      const row = result.rows[0] as Record<string, unknown>;
+      return { id: row.id as string, name: row.name as string, description: row.description as string, definition: safeJsonParse(row.definition) as unknown as WorkflowDefinition, version: row.version as number, status: row.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(row.tags) as unknown as string[], created_by: row.created_by as string, updated_by: row.updated_by as string, created_at: row.created_at as string, updated_at: row.updated_at as string };
     },
 
     getById: async (id: string) => {
-      const row = await this.db.query.workflows.findFirst({ where: eq(schema.workflows.id, id) });
-      if (!row) return null;
-      return { id: row.id, name: row.name, description: row.description, definition: safeJsonParse(row.definition) as WorkflowDefinition, version: row.version, status: row.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(row.tags) as string[], created_by: row.created_by, updated_by: row.updated_by, created_at: row.created_at, updated_at: row.updated_at };
+      const result = await this.conn.pool.query('SELECT * FROM workflows WHERE id = $1', [id]);
+      if (result.rows.length === 0) return null;
+      const row = result.rows[0] as Record<string, unknown>;
+      return { id: row.id as string, name: row.name as string, description: row.description as string, definition: safeJsonParse(row.definition) as unknown as WorkflowDefinition, version: row.version as number, status: row.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(row.tags) as unknown as string[], created_by: row.created_by as string, updated_by: row.updated_by as string, created_at: row.created_at as string, updated_at: row.updated_at as string };
     },
 
     list: async (filter: WorkflowFilter, pagination: PaginationParams) => {
-      const conditions = [];
-      if (filter.status) conditions.push(eq(schema.workflows.status, filter.status as typeof schema.workflows.status.enumValues[number]));
-      if (filter.tag) conditions.push(sql`${schema.workflows.tags} @> ${JSON.stringify([filter.tag])}`);
-      if (filter.search) conditions.push(sql`to_tsvector('english', ${schema.workflows.name} || ' ' || ${schema.workflows.description}) @@ plainto_tsquery('english', ${filter.search})`);
-      const where = conditions.length ? and(...conditions) : undefined;
-      const [{ count }] = await this.db.select({ count: sql<number>`count(*)` }).from(schema.workflows).where(where);
-      const total = count ?? 0;
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+      let paramIdx = 1;
+      if (filter.status) { conditions.push(`status = $${paramIdx}`); params.push(filter.status); paramIdx++; }
+      if (filter.tag) { conditions.push(`tags @> $${paramIdx}`); params.push(JSON.stringify([filter.tag])); paramIdx++; }
+      if (filter.search) { conditions.push(`to_tsvector('english', name || ' ' || description) @@ plainto_tsquery('english', $${paramIdx})`); params.push(filter.search); paramIdx++; }
+      const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      const countResult = await this.conn.pool.query(`SELECT count(*)::int AS count FROM workflows ${whereClause}`, params);
+      const total = (countResult.rows[0] as { count: number }).count ?? 0;
       const [sortField, sortDir] = (filter.sort ?? 'updated_at:desc').split(':');
-      const sortCol = sortField === 'created_at' ? schema.workflows.created_at : schema.workflows.updated_at;
-      const orderFn = sortDir === 'asc' ? asc : desc;
-      const rows = await this.db.query.workflows.findMany({ where, orderBy: [orderFn(sortCol)], limit: pagination.per_page, offset: (pagination.page - 1) * pagination.per_page });
-      return { data: rows.map((r) => ({ id: r.id, name: r.name, description: r.description, definition: safeJsonParse(r.definition) as WorkflowDefinition, version: r.version, status: r.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(r.tags) as string[], created_by: r.created_by, updated_by: r.updated_by, created_at: r.created_at, updated_at: r.updated_at })), total, page: pagination.page, per_page: pagination.per_page, total_pages: Math.ceil(total / pagination.per_page) };
+      const sortCol = sortField === 'created_at' ? 'created_at' : 'updated_at';
+      const orderDir = sortDir === 'asc' ? 'ASC' : 'DESC';
+      const offset = (pagination.page - 1) * pagination.per_page;
+      const dataResult = await this.conn.pool.query(
+        `SELECT * FROM workflows ${whereClause} ORDER BY ${sortCol} ${orderDir} LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
+        [...params, pagination.per_page, offset],
+      );
+      const data = dataResult.rows.map((r: Record<string, unknown>) => ({ id: r.id as string, name: r.name as string, description: r.description as string, definition: safeJsonParse(r.definition) as unknown as WorkflowDefinition, version: r.version as number, status: r.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(r.tags) as unknown as string[], created_by: r.created_by as string, updated_by: r.updated_by as string, created_at: r.created_at as string, updated_at: r.updated_at as string }));
+      return { data, total, page: pagination.page, per_page: pagination.per_page, total_pages: Math.ceil(total / pagination.per_page) };
     },
 
     update: async (id: string, data: { name?: string; description?: string; definition?: WorkflowDefinition; status?: 'draft' | 'active' | 'archived'; tags?: string[]; updated_by: string }) => {
       const now = new Date().toISOString();
-      const updates: Record<string, unknown> = { updated_at: now, updated_by: data.updated_by };
-      if (data.name !== undefined) updates.name = data.name;
-      if (data.description !== undefined) updates.description = data.description;
+      const setClauses: string[] = ['updated_at = $2', 'updated_by = $3'];
+      const params: unknown[] = [id, now, data.updated_by];
+      let paramIdx = 4;
+      if (data.name !== undefined) { setClauses.push(`name = $${paramIdx}`); params.push(data.name); paramIdx++; }
+      if (data.description !== undefined) { setClauses.push(`description = $${paramIdx}`); params.push(data.description); paramIdx++; }
       if (data.definition !== undefined) {
-        updates.definition = JSON.stringify(data.definition);
-        const current = await this.db.query.workflows.findFirst({ where: eq(schema.workflows.id, id) });
-        if (current) updates.version = current.version + 1;
+        setClauses.push(`definition = $${paramIdx}`); params.push(JSON.stringify(data.definition)); paramIdx++;
+        setClauses.push('version = version + 1');
       }
-      if (data.status !== undefined) updates.status = data.status;
-      if (data.tags !== undefined) updates.tags = JSON.stringify(data.tags);
-      await this.db.update(schema.workflows).set(updates).where(eq(schema.workflows.id, id));
+      if (data.status !== undefined) { setClauses.push(`status = $${paramIdx}`); params.push(data.status); paramIdx++; }
+      if (data.tags !== undefined) { setClauses.push(`tags = $${paramIdx}`); params.push(JSON.stringify(data.tags)); paramIdx++; }
+      await this.conn.pool.query(`UPDATE workflows SET ${setClauses.join(', ')} WHERE id = $1`, params);
       return (await this.workflows.getById(id))!;
     },
 
     archive: async (id: string) => {
-      await this.db.update(schema.workflows).set({ status: 'archived' }).where(eq(schema.workflows.id, id));
+      await this.conn.pool.query("UPDATE workflows SET status = 'archived' WHERE id = $1", [id]);
     },
 
     delete: async (id: string) => {
-      await this.db.delete(schema.nodeExecutions).where(eq(schema.nodeExecutions.execution_id, id));
-      await this.db.delete(schema.workflowExecutions).where(eq(schema.workflowExecutions.workflow_id, id));
-      await this.db.delete(schema.workflowDefinitions).where(eq(schema.workflowDefinitions.workflow_id, id));
-      await this.db.delete(schema.workflowTriggers).where(eq(schema.workflowTriggers.workflow_id, id));
-      await this.db.delete(schema.workflows).where(eq(schema.workflows.id, id));
+      await this.conn.pool.query('DELETE FROM node_executions WHERE execution_id = $1', [id]);
+      await this.conn.pool.query('DELETE FROM workflow_executions WHERE workflow_id = $1', [id]);
+      await this.conn.pool.query('DELETE FROM workflow_definitions WHERE workflow_id = $1', [id]);
+      await this.conn.pool.query('DELETE FROM workflow_triggers WHERE workflow_id = $1', [id]);
+      await this.conn.pool.query('DELETE FROM workflows WHERE id = $1', [id]);
     },
   };
 

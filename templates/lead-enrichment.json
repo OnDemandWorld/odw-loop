@@ -1,0 +1,46 @@
+{
+  "name": "Lead Enrichment Pipeline",
+  "description": "Webhook-triggered lead enrichment: searches external sources, enriches contact data, stores in Vault, and creates follow-up task in Desk",
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "generic.rest_call",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "method": "GET",
+          "url": "{{trigger.payload.enrichment_api}}",
+          "params": { "email": "{{trigger.payload.email}}" }
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 }
+      },
+      {
+        "id": "node_2",
+        "type": "vault.create_document",
+        "position": { "x": 400, "y": 100 },
+        "config": {
+          "title": "Lead Profile: {{trigger.payload.name}}",
+          "content": "{{node_1.output.enriched_data}}",
+          "tags": ["lead", "enriched", "{{trigger.payload.source}}"]
+        }
+      },
+      {
+        "id": "node_3",
+        "type": "desk.create_task",
+        "position": { "x": 400, "y": 300 },
+        "config": {
+          "title": "Follow up with {{trigger.payload.name}}",
+          "description": "Enriched lead from {{trigger.payload.source}}. Company: {{node_1.output.company}}. Role: {{node_1.output.title}}",
+          "priority": "{{trigger.payload.priority}}"
+        }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_1", "source_port": "output", "target": "node_3", "target_port": "input" }
+    ],
+    "variables": {},
+    "metadata": { "name": "Lead Enrichment Pipeline", "description": "Enrich incoming leads via external API, store profile, create follow-up task", "tags": ["sales", "enrichment", "crm"] }
+  }
+}

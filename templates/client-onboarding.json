@@ -1,0 +1,55 @@
+{
+  "name": "Client Onboarding",
+  "description": "Parallel fan-out onboarding: creates project in Desk, sets up knowledge base in Vault, sends welcome notification, then confirms completion",
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "desk.create_project",
+        "position": { "x": 400, "y": 100 },
+        "config": {
+          "name": "{{trigger.payload.client_name}} - Onboarding",
+          "description": "Onboarding project for {{trigger.payload.client_name}}",
+          "owner": "{{trigger.payload.account_manager}}"
+        }
+      },
+      {
+        "id": "node_2",
+        "type": "vault.create_document",
+        "position": { "x": 400, "y": 250 },
+        "config": {
+          "title": "{{trigger.payload.client_name}} - Client Profile",
+          "content": "{{trigger.payload.client_details}}",
+          "tags": ["client", "onboarding", "{{trigger.payload.client_id}}"]
+        }
+      },
+      {
+        "id": "node_3",
+        "type": "desk.send_notification",
+        "position": { "x": 400, "y": 400 },
+        "config": {
+          "recipient": "{{trigger.payload.client_email}}",
+          "message": "Welcome {{trigger.payload.client_name}}! Your workspace is being set up."
+        }
+      },
+      {
+        "id": "node_4",
+        "type": "desk.create_task",
+        "position": { "x": 750, "y": 250 },
+        "config": {
+          "title": "Complete onboarding for {{trigger.payload.client_name}}",
+          "project_id": "{{node_1.output.project_id}}",
+          "description": "Verify all onboarding steps completed. KB: {{node_2.output.document_id}}"
+        }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_4", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "output", "target": "node_4", "target_port": "input" },
+      { "id": "e3", "source": "node_3", "source_port": "output", "target": "node_4", "target_port": "input" }
+    ],
+    "variables": {},
+    "metadata": { "name": "Client Onboarding", "description": "Parallel setup of project, knowledge base, and welcome for new clients", "tags": ["onboarding", "parallel", "clients"] }
+  }
+}
