@@ -2,31 +2,106 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ────────────────────────────────────────────────────────────────────────
+   ODW.ai brand theme tokens (https://odw.ai/)
+   Color tokens are RGB triplets so Tailwind opacity modifiers work.
+   :root  = light mode (paper #F6F2EC surfaces, ink #14110F text)
+   .dark  = dark mode  (ink #14110F surfaces, paper #F6F2EC text)
+   ──────────────────────────────────────────────────────────────────────── */
 :root {
+  color-scheme: light;
+
+  /* surfaces (950 = elevated card … 700/600 = rules/borders) */
+  --ink-950: 255 255 255; /* card */
+  --ink-900: 246 242 236; /* paper — app background */
+  --ink-850: 252 250 246;
+  --ink-800: 255 255 255; /* panels */
+  --ink-750: 236 230 220; /* paper-2 — hover */
+  --ink-700: 214 207 192; /* rule — borders */
+  --ink-600: 196 188 172;
+  --ink-500: 154 146 136;
+  /* text (400 = muted … 100 = strongest) */
+  --ink-400: 106 100 92; /* ink-4 */
+  --ink-300: 90 84 78; /* ink-3 */
+  --ink-200: 42 38 34; /* ink-2 */
+  --ink-100: 20 17 15; /* ink */
+
+  --accent: 224 75 16; /* #E04B10 — deepened for contrast on paper */
+  --accent-dim: 178 58 14; /* #B23A0E accent-ink */
+  --brand: 205 32 40; /* #CD2028 logo red */
+
+  --good: 31 122 77; /* #1F7A4D */
+  --bad: 185 40 40;
+  --warn: 158 116 0;
+  --paused: 109 40 217;
+
+  --shadow-panel: 0 1px 2px rgba(20, 17, 15, 0.05), 0 8px 24px -16px rgba(20, 17, 15, 0.25);
+  --grid-line: rgba(20, 17, 15, 0.05);
+  --scrollbar: #d6cfc0;
+  --scrollbar-hover: #c4bcac;
+  --rf-edge: #c4bcac;
+  --rf-panel: #ffffff;
+  --rf-border: #d6cfc0;
+  --rf-icon: #6a645c;
+}
+
+.dark {
   color-scheme: dark;
+
+  --ink-950: 12 10 8;
+  --ink-900: 20 17 15; /* ink — app background */
+  --ink-850: 26 22 19;
+  --ink-800: 32 27 23; /* panels */
+  --ink-750: 40 34 29; /* hover */
+  --ink-700: 42 38 34; /* ink-2 — borders */
+  --ink-600: 58 52 46;
+  --ink-500: 90 84 78; /* ink-3 */
+  --ink-400: 138 130 120;
+  --ink-300: 168 160 150;
+  --ink-200: 214 207 196;
+  --ink-100: 246 242 236; /* paper */
+
+  --accent: 255 90 31; /* #FF5A1F */
+  --accent-dim: 255 177 153; /* #FFB199 accent-2 */
+  --brand: 226 68 76;
+
+  --good: 52 186 122;
+  --bad: 240 100 100;
+  --warn: 218 165 32;
+  --paused: 167 139 250;
+
+  --shadow-panel: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --grid-line: rgba(246, 242, 236, 0.04);
+  --scrollbar: #3a342e;
+  --scrollbar-hover: #5a544e;
+  --rf-edge: #5a544e;
+  --rf-panel: #201b17;
+  --rf-border: #2a2622;
+  --rf-icon: #a8a096;
 }
 
 body {
   margin: 0;
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  background: #0b1220;
-  color: #e2e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: rgb(var(--ink-900));
+  color: rgb(var(--ink-200));
   -webkit-font-smoothing: antialiased;
+  transition: background-color 200ms ease, color 200ms ease;
 }
 
-/* Layered ambient background: subtle grid + radial glows */
+/* Layered ambient background: subtle warm glows over paper/ink */
 .app-bg {
   background:
-    radial-gradient(900px 500px at 85% -10%, rgba(34, 211, 238, 0.07), transparent 60%),
-    radial-gradient(700px 420px at -10% 110%, rgba(59, 130, 246, 0.06), transparent 60%),
-    radial-gradient(600px 400px at 50% 120%, rgba(167, 139, 250, 0.05), transparent 60%),
-    #0b1220;
+    radial-gradient(900px 500px at 85% -10%, rgb(var(--accent) / 0.06), transparent 60%),
+    radial-gradient(700px 420px at -10% 110%, rgb(var(--brand) / 0.05), transparent 60%),
+    radial-gradient(600px 400px at 50% 120%, rgb(var(--accent) / 0.04), transparent 60%),
+    rgb(var(--ink-900));
 }
 
 .grid-overlay {
   background-image:
-    linear-gradient(rgba(148, 163, 184, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 32px 32px;
   mask-image: radial-gradient(ellipse 90% 80% at 50% 20%, black 30%, transparent 75%);
 }
@@ -46,7 +121,7 @@ body {
 
   .btn-primary {
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-md font-display font-semibold text-sm
-      bg-volt text-ink-950 transition-all duration-150
+      bg-volt text-white transition-all duration-150
       hover:shadow-glow hover:brightness-110 active:scale-[0.98]
       disabled:opacity-40 disabled:pointer-events-none;
   }
@@ -59,9 +134,9 @@ body {
   }
 
   .btn-danger {
-    @apply inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-rose-300
-      border border-rose-900/60 bg-rose-950/30 transition-all duration-150
-      hover:text-rose-200 hover:border-rose-800 hover:bg-rose-950/60 active:scale-[0.98];
+    @apply inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-bad
+      border border-bad/30 bg-bad/10 transition-all duration-150
+      hover:border-bad/50 hover:bg-bad/20 active:scale-[0.98];
   }
 
   .input {
@@ -103,47 +178,47 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2b3a52;
+  background: var(--scrollbar);
   border-radius: 6px;
-  border: 2px solid #0b1220;
+  border: 2px solid rgb(var(--ink-900));
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3d4f6b;
+  background: var(--scrollbar-hover);
 }
 
-/* React Flow dark theming */
+/* React Flow theming (light + dark via vars) */
 .react-flow__background {
   background: transparent;
 }
 .react-flow__minimap {
-  background: #0f172a !important;
-  border: 1px solid #1e293b;
+  background: var(--rf-panel) !important;
+  border: 1px solid var(--rf-border);
   border-radius: 8px;
   overflow: hidden;
 }
 .react-flow__controls {
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid #1e293b;
-  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--rf-border);
+  box-shadow: var(--shadow-panel);
 }
 .react-flow__controls button {
-  background: #131c2e !important;
-  border-bottom: 1px solid #1e293b !important;
-  fill: #94a3b8 !important;
+  background: var(--rf-panel) !important;
+  border-bottom: 1px solid var(--rf-border) !important;
+  fill: var(--rf-icon) !important;
 }
 .react-flow__controls button:hover {
-  background: #182338 !important;
+  background: rgb(var(--ink-750)) !important;
 }
 .react-flow__edge-path {
-  stroke: #3d4f6b;
+  stroke: var(--rf-edge);
   stroke-width: 1.5;
 }
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #22d3ee;
+  stroke: rgb(var(--accent));
 }
 .react-flow__handle {
   width: 9px;
   height: 9px;
-  border: 2px solid #0b1220;
+  border: 2px solid rgb(var(--ink-900));
 }

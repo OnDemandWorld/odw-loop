@@ -9,25 +9,29 @@ const ICONS: Record<string, string> = {
   delay: '⏱',
 };
 
-export const ControlNode = memo(({ data }: NodeProps) => {
+const CONTROL_COLOR = '#f59e0b';
+
+export const ControlNode = memo(({ data, selected }: NodeProps) => {
   const icon = ICONS[data.controlType as string] ?? '⚙';
 
   return (
     <div
       style={{
-        padding: '12px 16px',
+        padding: '10px 14px',
         borderRadius: '8px',
-        background: '#f59e0b',
-        color: 'white',
-        fontSize: '14px',
+        background: 'var(--rf-panel)',
+        border: `1px solid ${selected ? CONTROL_COLOR : 'var(--rf-border)'}`,
+        borderLeft: `3px solid ${CONTROL_COLOR}`,
+        color: 'rgb(var(--ink-100))',
+        fontSize: '13px',
         fontWeight: 500,
         minWidth: '120px',
         textAlign: 'center',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        boxShadow: 'var(--shadow-panel)',
       }}
     >
       <Handle type="target" position={Position.Left} />
-      <div style={{ fontSize: '20px', marginBottom: '4px' }}>{icon}</div>
+      <div style={{ fontSize: '18px', marginBottom: '4px', color: CONTROL_COLOR }}>{icon}</div>
       <div>{data.label}</div>
       {data.controlType === 'branch' && (
         <>

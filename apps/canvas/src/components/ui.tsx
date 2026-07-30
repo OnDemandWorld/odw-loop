@@ -95,7 +95,7 @@ export function LoadingBlock({ label = 'Loading…' }: { label?: string }) {
 export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 animate-fade-in">
-      <div className="text-rose-300 text-sm bg-rose-950/40 border border-rose-900/60 rounded-md px-4 py-2.5 max-w-md text-center">
+      <div className="text-bad text-sm bg-bad/10 border border-bad/30 rounded-md px-4 py-2.5 max-w-md text-center">
         {message}
       </div>
       {onRetry && (

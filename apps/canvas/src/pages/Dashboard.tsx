@@ -20,6 +20,7 @@ import {
   type Workflow,
 } from '../lib/api';
 import { Card, Icon, LoadingBlock, SectionTitle, StatusBadge } from '../components/ui';
+import { useTheme } from '../lib/theme';
 
 interface DashboardData {
   workflows: Workflow[];
@@ -100,6 +101,16 @@ const ChartTooltip = ({ active, payload, label }: never) => {
 export function Dashboard() {
   const [refreshKey, setRefreshKey] = useState(0);
   const { data, error } = useDashboardData(refreshKey);
+  const dark = useTheme() === 'dark';
+
+  // Recharts needs concrete color values — resolve per theme (ODW palette)
+  const chart = {
+    accent: dark ? '#FF5A1F' : '#E04B10',
+    tick: dark ? '#8A8278' : '#6A645C',
+    axis: dark ? '#2A2622' : '#D6CFC0',
+    cursor: dark ? '#5A544E' : '#C4BCAC',
+    cursorFill: dark ? 'rgba(246,242,236,0.05)' : 'rgba(20,17,15,0.05)',
+  };
 
   // Auto-refresh every 15s for a live feel
   useEffect(() => {
@@ -154,7 +165,7 @@ export function Dashboard() {
   if (error) {
     return (
       <div className="p-8">
-        <div className="text-rose-300 text-sm">Failed to load dashboard: {error}</div>
+        <div className="text-bad text-sm">Failed to load dashboard: {error}</div>
         <button className="btn-ghost mt-4" onClick={() => setRefreshKey((k) => k + 1)}>
           Retry
         </button>
@@ -194,7 +205,7 @@ export function Dashboard() {
           value={stats.workflows.length}
           sub={`${stats.active} active`}
           icon="workflow"
-          accent="#22d3ee"
+          accent={chart.accent}
           delay={0}
         />
         <StatCard
@@ -202,7 +213,7 @@ export function Dashboard() {
           value={stats.executions.length}
           sub={`${stats.running} running now`}
           icon="bolt"
-          accent="#a78bfa"
+          accent="#8b5cf6"
           delay={60}
         />
         <StatCard
@@ -232,28 +243,28 @@ export function Dashboard() {
               <AreaChart data={timeline} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
                 <defs>
                   <linearGradient id="execGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
+                    <stop offset="0%" stopColor={chart.accent} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={chart.accent} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis
                   dataKey="label"
-                  tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-                  axisLine={{ stroke: '#1e293b' }}
+                  tick={{ fill: chart.tick, fontSize: 10, fontFamily: 'JetBrains Mono' }}
+                  axisLine={{ stroke: chart.axis }}
                   tickLine={false}
                   interval={3}
                 />
                 <YAxis
-                  tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'JetBrains Mono' }}
+                  tick={{ fill: chart.tick, fontSize: 10, fontFamily: 'JetBrains Mono' }}
                   axisLine={false}
                   tickLine={false}
                   allowDecimals={false}
                 />
-                <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#3d4f6b', strokeDasharray: '4 4' }} />
+                <Tooltip content={<ChartTooltip />} cursor={{ stroke: chart.cursor, strokeDasharray: '4 4' }} />
                 <Area
                   type="monotone"
                   dataKey="count"
-                  stroke="#22d3ee"
+                  stroke={chart.accent}
                   strokeWidth={2}
                   fill="url(#execGrad)"
                 />
@@ -276,12 +287,12 @@ export function Dashboard() {
                   <YAxis
                     type="category"
                     dataKey="name"
-                    tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+                    tick={{ fill: chart.tick, fontSize: 11, fontFamily: 'JetBrains Mono' }}
                     axisLine={false}
                     tickLine={false}
                     width={70}
                   />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(148,163,184,0.06)' }} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: chart.cursorFill }} />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={16}>
                     {nodeDistribution.map((entry) => (
                       <Cell key={entry.name} fill={entry.fill} />

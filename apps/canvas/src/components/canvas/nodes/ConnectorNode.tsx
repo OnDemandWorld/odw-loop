@@ -1,35 +1,38 @@
 import React, { memo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 
+// Agent identity colors (legible on both light and dark surfaces)
 const COLORS: Record<string, string> = {
   vault: '#3b82f6',
   desk: '#10b981',
   recap: '#8b5cf6',
-  generic: '#6b7280',
+  generic: '#78716c',
 };
 
-export const ConnectorNode = memo(({ data, type }: NodeProps) => {
-  const color = COLORS[data.connectorType as string] ?? '#6b7280';
+export const ConnectorNode = memo(({ data, selected }: NodeProps) => {
+  const color = COLORS[data.connectorType as string] ?? '#78716c';
 
   return (
     <div
       style={{
-        padding: '12px 16px',
+        padding: '10px 14px',
         borderRadius: '8px',
-        background: color,
-        color: 'white',
-        fontSize: '14px',
+        background: 'var(--rf-panel)',
+        border: `1px solid ${selected ? color : 'var(--rf-border)'}`,
+        borderLeft: `3px solid ${color}`,
+        color: 'rgb(var(--ink-100))',
+        fontSize: '13px',
         fontWeight: 500,
         minWidth: '150px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        boxShadow: 'var(--shadow-panel)',
       }}
     >
       <Handle type="target" position={Position.Left} />
-      <div style={{ marginBottom: '4px', fontSize: '10px', opacity: 0.8 }}>
+      <div style={{ marginBottom: '4px', fontSize: '10px', fontWeight: 600, color, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
         {data.connectorType}
       </div>
       <div>{data.label}</div>
-      <div style={{ marginTop: '4px', fontSize: '10px', opacity: 0.7 }}>
+      <div style={{ marginTop: '4px', fontSize: '10px', color: 'rgb(var(--ink-400))', fontFamily: 'JetBrains Mono, monospace' }}>
         {data.operation}
       </div>
       <Handle type="source" position={Position.Right} />

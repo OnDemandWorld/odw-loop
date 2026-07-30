@@ -18,6 +18,8 @@ import { ControlNode } from '../components/canvas/nodes/ControlNode';
 import { CodeNode } from '../components/canvas/nodes/CodeNode';
 import { api, nodeTypeColor, shortId, type Workflow, type WorkflowDefinition } from '../lib/api';
 import { Icon, LoadingBlock, StatusBadge } from '../components/ui';
+import { ThemeToggle } from '../components/ThemeToggle';
+import { useTheme } from '../lib/theme';
 
 const nodeTypes = { connector: ConnectorNode, control: ControlNode, code: CodeNode };
 
@@ -81,7 +83,6 @@ function toRfEdge(e: WorkflowDefinition['edges'][number]): Edge {
     sourceHandle: e.source_port && e.source_port !== 'output' ? e.source_port : undefined,
     targetHandle: e.target_port && e.target_port !== 'input' ? e.target_port : undefined,
     animated: true,
-    style: { stroke: '#3d4f6b' },
   };
 }
 
@@ -145,7 +146,7 @@ function ConfigPanel({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
-        {parseError && <div className="text-xs text-rose-300 mt-1.5">{parseError}</div>}
+        {parseError && <div className="text-xs text-bad mt-1.5">{parseError}</div>}
         <div className="text-[11px] text-ink-500 mt-3 leading-relaxed">
           Reference outputs with{' '}
           <code className="font-mono text-volt">{'{{node_id.output.field}}'}</code> and trigger data with{' '}
@@ -204,7 +205,6 @@ export function WorkflowEditor() {
             ...params,
             id: `edge_${Date.now()}`,
             animated: true,
-            style: { stroke: '#3d4f6b' },
           },
           eds,
         ),
@@ -334,11 +334,12 @@ export function WorkflowEditor() {
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) ?? null, [nodes, selectedId]);
   const categories = useMemo(() => [...new Set(PALETTE.map((p) => p.category))], []);
+  const dark = useTheme() === 'dark';
 
   if (loadError) {
     return (
       <div className="p-8">
-        <div className="text-rose-300 text-sm">Failed to load workflow: {loadError}</div>
+        <div className="text-bad text-sm">Failed to load workflow: {loadError}</div>
         <Link to="/workflows" className="btn-ghost mt-4 inline-flex">
           <Icon name="arrowLeft" /> Back to workflows
         </Link>
@@ -361,9 +362,10 @@ export function WorkflowEditor() {
           </div>
         </div>
         <StatusBadge status={workflow.status} />
-        {dirty && <span className="tag text-amber-300 border-amber-900/60">unsaved</span>}
+        {dirty && <span className="tag text-warn border-warn/40">unsaved</span>}
 
         <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle />
           <button className="btn-ghost" onClick={validate}>
             <Icon name="check" />
             Validate
@@ -384,8 +386,8 @@ export function WorkflowEditor() {
           className={
             'shrink-0 px-5 py-2.5 text-sm border-b flex items-center gap-3 animate-fade-in ' +
             (validation.valid
-              ? 'bg-emerald-950/40 border-emerald-900/50 text-emerald-200'
-              : 'bg-rose-950/40 border-rose-900/50 text-rose-200')
+              ? 'bg-good/10 border-good/30 text-good'
+              : 'bg-bad/10 border-bad/30 text-bad')
           }
         >
           <Icon name={validation.valid ? 'check' : 'x'} />
@@ -454,17 +456,22 @@ export function WorkflowEditor() {
             onPaneClick={() => setSelectedId(null)}
             proOptions={{ hideAttribution: true }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#2b3a52" />
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={24}
+              size={1.5}
+              color={dark ? '#3a342e' : '#d6cfc0'}
+            />
             <Controls />
             <MiniMap
               nodeColor={(n) =>
                 n.type === 'control'
                   ? '#f59e0b'
                   : n.type === 'code'
-                    ? '#f472b6'
+                    ? '#ec4899'
                     : nodeTypeColor(String(n.data.connectorType))
               }
-              maskColor="rgba(7,13,26,0.7)"
+              maskColor={dark ? 'rgba(12,10,8,0.7)' : 'rgba(246,242,236,0.7)'}
             />
           </ReactFlow>
           {nodes.length === 0 && (
@@ -489,8 +496,8 @@ export function WorkflowEditor() {
           className={
             'fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-md border text-sm font-medium animate-slide-up shadow-panel ' +
             (toast.kind === 'ok'
-              ? 'bg-emerald-950/80 border-emerald-800/60 text-emerald-200'
-              : 'bg-rose-950/80 border-rose-800/60 text-rose-200')
+              ? 'bg-ink-800/95 border-good/40 text-good'
+              : 'bg-ink-800/95 border-bad/40 text-bad')
           }
         >
           {toast.text}

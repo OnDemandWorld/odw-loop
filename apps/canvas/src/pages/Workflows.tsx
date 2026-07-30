@@ -108,7 +108,7 @@ function CreateWorkflowModal({
               onChange={(e) => setTags(e.target.value)}
             />
           </div>
-          {error && <div className="text-sm text-rose-300">{error}</div>}
+          {error && <div className="text-sm text-bad">{error}</div>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="btn-ghost" onClick={onClose}>
               Cancel
@@ -233,7 +233,7 @@ export function Workflows() {
       </div>
 
       {error && (
-        <div className="mb-4 text-sm text-rose-300 bg-rose-950/40 border border-rose-900/60 rounded-md px-4 py-2.5">
+        <div className="mb-4 text-sm text-bad bg-bad/10 border border-bad/30 rounded-md px-4 py-2.5">
           {error}
         </div>
       )}

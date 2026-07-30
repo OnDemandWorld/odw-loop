@@ -33,7 +33,7 @@ function NodeTraceRow({ node, index }: { node: NodeExecution; index: number }) {
         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: accent }} />
         <span className="font-mono text-sm text-ink-100">{node.node_id}</span>
         <span className="tag">{node.node_type}</span>
-        {node.retry_count > 0 && <span className="tag text-amber-300">retries:{node.retry_count}</span>}
+        {node.retry_count > 0 && <span className="tag text-warn">retries:{node.retry_count}</span>}
         <span className="ml-auto font-mono text-xs text-ink-400">{formatDuration(nodeDuration(node))}</span>
         <StatusBadge status={node.status} />
         {hasDetail && (
@@ -44,10 +44,10 @@ function NodeTraceRow({ node, index }: { node: NodeExecution; index: number }) {
         <div className="px-4 pb-4 pt-1 border-t border-ink-700/60 space-y-3 animate-fade-in">
           {node.error && (
             <div>
-              <div className="text-[10px] font-display font-semibold uppercase tracking-widest text-rose-400 mb-1">
+              <div className="text-[10px] font-display font-semibold uppercase tracking-widest text-bad mb-1">
                 Error
               </div>
-              <pre className="font-mono text-xs text-rose-200 bg-rose-950/40 border border-rose-900/50 rounded-md p-3 whitespace-pre-wrap">
+              <pre className="font-mono text-xs text-bad bg-bad/10 border border-bad/30 rounded-md p-3 whitespace-pre-wrap">
                 {node.error}
               </pre>
             </div>
@@ -67,7 +67,7 @@ function NodeTraceRow({ node, index }: { node: NodeExecution; index: number }) {
               <div className="text-[10px] font-display font-semibold uppercase tracking-widest text-ink-500 mb-1">
                 Output
               </div>
-              <pre className="font-mono text-xs text-emerald-200/90 bg-ink-900/70 border border-ink-700 rounded-md p-3 overflow-x-auto">
+              <pre className="font-mono text-xs text-good bg-ink-900/70 border border-ink-700 rounded-md p-3 overflow-x-auto">
                 {JSON.stringify(node.output, null, 2)}
               </pre>
             </div>
@@ -113,7 +113,7 @@ export function ExecutionDetail() {
   if (error) {
     return (
       <div className="p-8">
-        <div className="text-rose-300 text-sm">Failed to load execution: {error}</div>
+        <div className="text-bad text-sm">Failed to load execution: {error}</div>
         <Link to="/executions" className="btn-ghost mt-4 inline-flex">
           <Icon name="arrowLeft" /> Back to executions
         </Link>
@@ -159,9 +159,9 @@ export function ExecutionDetail() {
             className={clsx(
               'h-full rounded-full transition-all duration-700',
               execution.status === 'failed'
-                ? 'bg-rose-400'
+                ? 'bg-bad'
                 : execution.status === 'succeeded'
-                  ? 'bg-emerald-400'
+                  ? 'bg-good'
                   : 'bg-volt',
             )}
             style={{ width: `${progress}%` }}
@@ -190,11 +190,11 @@ export function ExecutionDetail() {
 
       {/* ── Error banner ────────────────────────────────────────────────── */}
       {execution.error && (
-        <div className="mb-6 rounded-md border border-rose-900/60 bg-rose-950/40 p-4">
-          <div className="text-[10px] font-display font-semibold uppercase tracking-widest text-rose-400 mb-1.5">
+        <div className="mb-6 rounded-md border border-bad/30 bg-bad/10 p-4">
+          <div className="text-[10px] font-display font-semibold uppercase tracking-widest text-bad mb-1.5">
             Execution error
           </div>
-          <pre className="font-mono text-sm text-rose-200 whitespace-pre-wrap">{execution.error}</pre>
+          <pre className="font-mono text-sm text-bad whitespace-pre-wrap">{execution.error}</pre>
         </div>
       )}
 

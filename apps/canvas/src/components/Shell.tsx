@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { api } from '../lib/api';
 import { Icon } from './ui';
+import { ThemeToggle } from './ThemeToggle';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
@@ -40,29 +41,28 @@ export function Shell() {
 
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
       <aside className="relative z-10 w-60 shrink-0 border-r border-ink-700/60 bg-ink-900/70 backdrop-blur-md flex flex-col">
-        {/* Brand */}
+        {/* Brand — ODW.ai logo (light/dark variants) */}
         <div className="px-5 pt-6 pb-5 border-b border-ink-700/60">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-volt to-sky-600 flex items-center justify-center shadow-glow">
-              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
-                <path
-                  d="M7 5v10a4 4 0 004 4h6"
-                  stroke="#071018"
-                  strokeWidth="2.6"
-                  strokeLinecap="round"
-                />
-                <circle cx="7" cy="5" r="2.2" fill="#071018" />
-                <circle cx="17" cy="19" r="2.2" fill="#071018" />
-              </svg>
-            </div>
+          <img
+            src="/brand/odwai-logo.png"
+            alt="ODW.ai"
+            className="h-10 w-auto dark:hidden"
+          />
+          <img
+            src="/brand/odwai-logo-dark.png"
+            alt="ODW.ai"
+            className="h-10 w-auto hidden dark:block"
+          />
+          <div className="flex items-center justify-between mt-3">
             <div>
-              <div className="font-display font-bold text-lg leading-none tracking-tight text-ink-100">
+              <span className="font-display font-bold text-base leading-none tracking-tight text-ink-100">
                 Loop
-              </div>
-              <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mt-1">
+              </span>
+              <span className="ml-2 text-[10px] font-mono uppercase tracking-widest text-ink-400">
                 Orchestration
-              </div>
+              </span>
             </div>
+            <ThemeToggle />
           </div>
         </div>
 
@@ -109,9 +109,9 @@ export function Shell() {
             <span
               className={clsx(
                 'w-2 h-2 rounded-full',
-                status === 'online' && 'bg-emerald-400 animate-pulse-dot',
-                status === 'offline' && 'bg-rose-400',
-                status === 'checking' && 'bg-amber-400 animate-pulse-dot',
+                status === 'online' && 'bg-good animate-pulse-dot',
+                status === 'offline' && 'bg-bad',
+                status === 'checking' && 'bg-warn animate-pulse-dot',
               )}
             />
             <span className="text-xs text-ink-300">

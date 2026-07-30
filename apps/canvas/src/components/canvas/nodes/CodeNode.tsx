@@ -1,23 +1,27 @@
 import React, { memo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 
-export const CodeNode = memo(({ data }: NodeProps) => {
+const CODE_COLOR = '#ec4899';
+
+export const CodeNode = memo(({ data, selected }: NodeProps) => {
   return (
     <div
       style={{
-        padding: '12px 16px',
+        padding: '10px 14px',
         borderRadius: '8px',
-        background: '#1f2937',
-        color: '#10b981',
-        fontSize: '14px',
+        background: 'var(--rf-panel)',
+        border: `1px solid ${selected ? CODE_COLOR : 'var(--rf-border)'}`,
+        borderLeft: `3px solid ${CODE_COLOR}`,
+        color: 'rgb(var(--ink-100))',
+        fontSize: '13px',
         fontWeight: 500,
-        fontFamily: 'monospace',
+        fontFamily: 'JetBrains Mono, monospace',
         minWidth: '150px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        boxShadow: 'var(--shadow-panel)',
       }}
     >
       <Handle type="target" position={Position.Left} />
-      <div style={{ fontSize: '10px', opacity: 0.7, marginBottom: '4px' }}>
+      <div style={{ fontSize: '10px', color: CODE_COLOR, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
         {data.language ?? 'typescript'}
       </div>
       <div>{data.label ?? 'Code'}</div>

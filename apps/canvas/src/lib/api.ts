@@ -217,27 +217,28 @@ export function formatDuration(ms: number | null): string {
 }
 
 export const STATUS_META: Record<string, { color: string; bg: string; label: string }> = {
-  pending: { color: 'text-ink-300', bg: 'bg-ink-600', label: 'Pending' },
-  running: { color: 'text-cyan-300', bg: 'bg-cyan-400', label: 'Running' },
-  succeeded: { color: 'text-emerald-300', bg: 'bg-emerald-400', label: 'Succeeded' },
-  failed: { color: 'text-rose-300', bg: 'bg-rose-400', label: 'Failed' },
-  cancelled: { color: 'text-amber-300', bg: 'bg-amber-400', label: 'Cancelled' },
-  paused: { color: 'text-violet-300', bg: 'bg-violet-400', label: 'Paused' },
+  pending: { color: 'text-ink-300', bg: 'bg-ink-500', label: 'Pending' },
+  running: { color: 'text-volt', bg: 'bg-volt', label: 'Running' },
+  succeeded: { color: 'text-good', bg: 'bg-good', label: 'Succeeded' },
+  failed: { color: 'text-bad', bg: 'bg-bad', label: 'Failed' },
+  cancelled: { color: 'text-warn', bg: 'bg-warn', label: 'Cancelled' },
+  paused: { color: 'text-paused', bg: 'bg-paused', label: 'Paused' },
   skipped: { color: 'text-ink-400', bg: 'bg-ink-500', label: 'Skipped' },
   draft: { color: 'text-ink-300', bg: 'bg-ink-500', label: 'Draft' },
-  active: { color: 'text-emerald-300', bg: 'bg-emerald-400', label: 'Active' },
+  active: { color: 'text-good', bg: 'bg-good', label: 'Active' },
   archived: { color: 'text-ink-400', bg: 'bg-ink-600', label: 'Archived' },
 };
 
 export function nodeTypeColor(type: string): string {
   const prefix = type.split('.')[0];
+  // Mid-tone hues legible on both light (paper) and dark (ink) surfaces
   const map: Record<string, string> = {
     vault: '#3b82f6',
     desk: '#10b981',
-    recap: '#a78bfa',
+    recap: '#8b5cf6',
     control: '#f59e0b',
-    code: '#f472b6',
-    generic: '#64748b',
+    code: '#ec4899',
+    generic: '#78716c',
   };
-  return map[prefix] ?? '#64748b';
+  return map[prefix] ?? '#78716c';
 }
