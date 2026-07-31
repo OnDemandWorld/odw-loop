@@ -60,6 +60,13 @@ const configSchema = z.object({
   LOOP_JWT_SECRET: z.string().default('dev-jwt-secret-change-me'),
   LOOP_JWT_ACCESS_TTL: z.string().default('15m'),
   LOOP_JWT_REFRESH_TTL: z.string().default('7d'),
+  // When true, /api/v1/* routes require a valid API key or JWT. Defaults to
+  // false (open) for backward compatibility — health/ready/metrics/webhooks are
+  // always public regardless of this flag.
+  LOOP_REQUIRE_AUTH: z.coerce.boolean().default(false),
+  // Static API key accepted via `Authorization: Bearer <key>` or `x-api-key`.
+  // Optional: when unset, only JWT bearer tokens authenticate.
+  LOOP_API_KEY: z.string().optional(),
 
   // §10.9 Egress
   LOOP_EGRESS_DEFAULT_POLICY: z.enum(['allow', 'deny']).default('deny'),

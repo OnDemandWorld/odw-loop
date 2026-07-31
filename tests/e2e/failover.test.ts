@@ -6,10 +6,11 @@
  *   2. Some nodes succeed; then the process "crashes" (simulated by leaving
  *      the execution in `running` status with partial node outputs).
  *   3. Build a fresh app (simulating restart).
- *   4. Verify that ExecutionRecovery.run() processes the interrupted execution:
- *      - If no nodes had succeeded: marks as `failed`.
- *      - If nodes had succeeded: marks as recoverable (current impl counts it
- *        but does not re-queue — the test asserts this behaviour).
+ *   4. Verify that ExecutionRecovery.recover() processes the interrupted execution:
+ *      - If no nodes had succeeded: marks as `failed` (non-recoverable).
+ *      - If at least one node had succeeded: resets the execution to `pending`
+ *        (a re-runnable state) so the scheduler re-queues it from the last
+ *        successful node on the next execution cycle.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -80,7 +81,7 @@ describe('Failover / execution recovery (E2E)', () => {
     expect(final?.error).toMatch(/Interrupted by system restart/);
   });
 
-  it('counts execution as recoverable on restart when nodes had succeeded', async () => {
+  it('re-queues recoverable execution (reset to pending) on restart when nodes had succeeded', async () => {
     ctx = await createTestContext();
 
     await ctx.store.workflows.create({
@@ -153,10 +154,11 @@ describe('Failover / execution recovery (E2E)', () => {
     expect(result.recovered).toBe(1);
     expect(result.failed).toBe(0);
 
-    // Current implementation just counts — does not re-queue. The execution
-    // remains in 'running' status (a full implementation would transition it).
+    // Corrected behaviour: a recoverable execution (at least one node had
+    // succeeded) is reset to 'pending' — a re-runnable state — so the scheduler
+    // re-queues it from the last successful node on the next execution cycle.
     const final = await ctx.store.executions.getById(executionId);
-    expect(final?.status).toBe('running');
+    expect(final?.status).toBe('pending');
   });
 
   it('handles multiple interrupted executions in one recovery pass', async () => {
@@ -233,8 +235,9 @@ describe('Failover / execution recovery (E2E)', () => {
     const finalA = await ctx.store.executions.getById('exec-multi-a');
     expect(finalA?.status).toBe('failed');
 
+    // Execution B had a succeeded node → recoverable → reset to 'pending'.
     const finalB = await ctx.store.executions.getById('exec-multi-b');
-    expect(finalB?.status).toBe('running');
+    expect(finalB?.status).toBe('pending');
   });
 
   it('recovery is idempotent: running it twice has no additional effect', async () => {

@@ -52,7 +52,7 @@ export interface TestApp {
  * temp-directory git repo for versioning. Seeds a system user with role 'admin'
  * so workflow foreign keys resolve and workflow authoring has a valid creator.
  */
-export async function buildTestApp(): Promise<TestApp> {
+export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): Promise<TestApp> {
   const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loop-test-'));
   const dbPath = path.join(tmpDataDir, 'test.db');
 
@@ -82,10 +82,12 @@ export async function buildTestApp(): Promise<TestApp> {
     LOOP_JWT_SECRET: 'test-jwt-secret-for-tests-only-32ch',
     LOOP_JWT_ACCESS_TTL: '15m',
     LOOP_JWT_REFRESH_TTL: '7d',
+    LOOP_REQUIRE_AUTH: false,
     LOOP_EGRESS_DEFAULT_POLICY: 'deny',
     LOOP_AIRGAP_MODE: false,
     LOOP_METRICS_ENABLED: false,
     LOOP_OTEL_ENABLED: false,
+    ...configOverrides,
   };
 
   const Fastify = (await import('fastify')).default;

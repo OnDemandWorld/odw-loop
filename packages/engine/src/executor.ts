@@ -5,10 +5,10 @@
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '@loop/observability';
 import { metricsRegistry } from '@loop/observability';
-import type { WorkflowDefinition, WorkflowNode } from '@loop/types';
+import { LoopError, type WorkflowDefinition, type WorkflowNode } from '@loop/types';
 import type { StateStore } from '@loop/state';
 import type { ConnectorRegistry } from '@loop/connectors';
-import { topologicalSort } from './scheduler.js';
+import { computeLevels } from './scheduler.js';
 import { executeWithRetry } from './retry.js';
 
 const logger = createLogger({ name: 'loop:engine:executor', component: 'engine' });
@@ -26,6 +26,7 @@ export class ExecutionExecutor {
     private store: StateStore,
     private connectors: ConnectorRegistry,
     private maxConcurrent = 50,
+    private nodeTimeoutMs = 30_000,
   ) {}
 
   /** Execute a workflow from start to finish. */
@@ -46,17 +47,25 @@ export class ExecutionExecutor {
     metrics.activeExecutions.inc();
 
     try {
-      const sortedNodes = topologicalSort(definition.nodes, definition.edges);
+      // Group nodes into topological levels; nodes within a level have no
+      // inter-dependencies and run in parallel (§6.2). Levels run sequentially
+      // so downstream nodes observe upstream outputs.
+      const levels = computeLevels(definition.nodes, definition.edges);
 
-      if (sortedNodes.length === 0) {
+      if (levels.length === 0) {
         // Empty workflow succeeds immediately
         await this.completeExecution(executionId, 'succeeded', startTime, undefined, ctx.workflowId);
         return;
       }
 
-      // Execute nodes in topological order
-      for (const node of sortedNodes) {
-        await this.executeNode(node, ctx, definition);
+      for (const level of levels) {
+        const settled = await this.executeLevel(level, ctx, definition);
+        // Abort the execution on the first node failure in this level; later
+        // levels must not run (mirrors the previous fail-fast semantics).
+        const failure = settled.find((r) => r.status === 'rejected');
+        if (failure) {
+          throw (failure as PromiseRejectedResult).reason;
+        }
       }
 
       await this.completeExecution(executionId, 'succeeded', startTime, undefined, ctx.workflowId);
@@ -67,6 +76,58 @@ export class ExecutionExecutor {
     } finally {
       metrics.activeExecutions.dec();
     }
+  }
+
+  /**
+   * Execute every node in a topological level concurrently, bounded by
+   * `maxConcurrent`. Uses Promise.allSettled so one failing node does not
+   * prevent its siblings from completing; the caller inspects the settled
+   * results and fails the execution if any node rejected.
+   */
+  private async executeLevel(
+    level: WorkflowNode[],
+    ctx: ExecutorContext,
+    definition: WorkflowDefinition,
+  ): Promise<PromiseSettledResult<void>[]> {
+    const limit = Math.max(1, this.maxConcurrent);
+    const settled: PromiseSettledResult<void>[] = [];
+
+    for (let i = 0; i < level.length; i += limit) {
+      const batch = level.slice(i, i + limit);
+      const batchResults = await Promise.allSettled(
+        batch.map((node) => this.executeNode(node, ctx, definition)),
+      );
+      settled.push(...batchResults);
+    }
+
+    return settled;
+  }
+
+  /**
+   * Bound a node execution with a timeout. An AbortController is aborted when
+   * the deadline elapses and the returned promise rejects with a NODE_TIMEOUT
+   * error, so a hung adapter cannot stall the whole execution. (The signal is
+   * created here for future cooperative-cancellation support in adapters.)
+   */
+  private withTimeout<T>(promise: Promise<T>, ms: number, nodeId: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
+        controller.abort();
+        reject(new LoopError('NODE_TIMEOUT', `Node '${nodeId}' timed out after ${ms}ms`, 500));
+      }, ms);
+
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
+    });
   }
 
   private async executeNode(node: WorkflowNode, ctx: ExecutorContext, _definition: WorkflowDefinition): Promise<void> {
@@ -92,14 +153,20 @@ export class ExecutionExecutor {
       // Resolve variable interpolation
       const resolvedInput = this.resolveVariables(node.config, ctx);
 
-      // Execute with retry
+      // Execute with retry, bounded by the node timeout (per-node override or
+      // the executor-wide default).
       const retryConfig = node.retry ?? { max_attempts: 0, backoff: 'fixed' as const, initial_delay_ms: 0 };
-      const result = await executeWithRetry(
-        async () => this.dispatchNode(node, resolvedInput),
-        retryConfig,
-        (attempt, error) => {
-          logger.warn({ nodeId: node.id, attempt, error: String(error) }, 'Node retry');
-        },
+      const timeoutMs = node.timeout_ms ?? this.nodeTimeoutMs;
+      const result = await this.withTimeout(
+        executeWithRetry(
+          async () => this.dispatchNode(node, resolvedInput),
+          retryConfig,
+          (attempt, error) => {
+            logger.warn({ nodeId: node.id, attempt, error: String(error) }, 'Node retry');
+          },
+        ),
+        timeoutMs,
+        node.id,
       );
 
       // Store output

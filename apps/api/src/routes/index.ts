@@ -10,7 +10,15 @@ import type { ExecutionExecutor } from '@loop/engine';
 import type { TriggerDispatcher, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
 import type { EgressEngine } from '@loop/egress';
 import type { SecretsManager } from '@loop/secrets';
+import {
+  CreateWorkflowRequestSchema,
+  UpdateWorkflowRequestSchema,
+  LoopError,
+  type CreateWorkflowRequest,
+  type UpdateWorkflowRequest,
+} from '@loop/types';
 import type { LoopConfig } from '../config.js';
+import { createAuthGuard } from '../middleware/auth.js';
 
 /** Extract the request ID attached by the requestIdHook middleware. */
 function getRequestId(request: FastifyRequest): string {
@@ -19,12 +27,23 @@ function getRequestId(request: FastifyRequest): string {
 
 /**
  * Extract the acting user from the request.
- * Currently reads from x-user-id header (set by auth gateway / JWT middleware).
- * Falls back to 'system' when no user context is available.
+ * Prefers the authenticated principal attached by the auth guard (JWT subject or
+ * API-key service account); falls back to the x-user-id header (set by an upstream
+ * auth gateway), then to the 'system' service account when no context is available.
  */
 function getActor(request: FastifyRequest): string {
+  if (request.authPrincipal) return request.authPrincipal;
   const userId = request.headers['x-user-id'] as string | undefined;
   return userId ?? 'system';
+}
+
+/** Parse a request body against a Zod schema, throwing a 400 LoopError on failure. */
+function parseBody<T>(schema: { safeParse(data: unknown): { success: true; data: T } | { success: false; error: { format(): unknown } } }, body: unknown): T {
+  const result = schema.safeParse(body);
+  if (!result.success) {
+    throw new LoopError('VALIDATION_ERROR', 'Invalid request body', 400, result.error.format());
+  }
+  return result.data;
 }
 
 /** Build a standard response meta block. */
@@ -46,15 +65,18 @@ export interface RouteDeps {
 }
 
 export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  // ─── Auth guard (§11) — no-op unless LOOP_REQUIRE_AUTH=true ──────────────
+  app.addHook('onRequest', createAuthGuard(deps.config));
+
   // ─── Workflows (§5.3) ───────────────────────────────────────────────────
 
   app.post('/api/v1/workflows', async (request, reply) => {
-    const body = request.body as { name: string; description?: string; definition: unknown; tags?: string[] };
+    const body = parseBody<CreateWorkflowRequest>(CreateWorkflowRequestSchema, request.body);
     const actor = getActor(request);
     const workflow = await deps.authoring.create({
       name: body.name,
       description: body.description,
-      definition: body.definition as never,
+      definition: body.definition,
       tags: body.tags,
       created_by: actor,
     });
@@ -79,7 +101,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   app.put('/api/v1/workflows/:id', async (request) => {
     const { id } = request.params as { id: string };
-    const body = request.body as Record<string, unknown>;
+    const body = parseBody<UpdateWorkflowRequest>(UpdateWorkflowRequestSchema, request.body);
     const actor = getActor(request);
     const workflow = await deps.authoring.update(id, { ...body, updated_by: actor } as never);
     return { success: true, data: workflow, meta: meta(request) };

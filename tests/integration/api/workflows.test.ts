@@ -91,6 +91,36 @@ describe('Workflow CRUD API (/api/v1/workflows)', () => {
     expect(body.error).toBeDefined();
   });
 
+  it('POST /api/v1/workflows rejects a malformed body with 400 (Zod)', async () => {
+    // Missing required `name`, and `definition.nodes` is the wrong type.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workflows',
+      payload: {
+        description: 'no name, bad definition',
+        definition: { version: '1.0', nodes: 'not-an-array', edges: [] },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('PUT /api/v1/workflows/:id rejects a malformed body with 400 (Zod)', async () => {
+    const wf = await seedWorkflow(ctx.store, { name: 'Validation Target' });
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/workflows/${wf.id}`,
+      payload: { name: 12345, definition: { nodes: 'bad' } },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
   // ── GET /api/v1/workflows ─────────────────────────────────────────────────
 
   it('GET /api/v1/workflows lists workflows with pagination metadata', async () => {
