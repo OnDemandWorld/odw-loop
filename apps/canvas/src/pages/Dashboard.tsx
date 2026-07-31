@@ -87,7 +87,13 @@ function StatCard({
   );
 }
 
-const ChartTooltip = ({ active, payload, label }: never) => {
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: unknown;
+  label?: string;
+}
+
+const ChartTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   const p = (payload as Array<{ value: number; name: string }> | undefined)?.[0];
   if (!active || !p) return null;
   return (
@@ -153,7 +159,7 @@ export function Dashboard() {
     const counts = new Map<string, number>();
     for (const wf of data.workflows) {
       for (const node of wf.definition?.nodes ?? []) {
-        const prefix = node.type.split('.')[0];
+        const prefix = node.type.split('.')[0] ?? '';
         counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
       }
     }

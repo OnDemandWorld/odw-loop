@@ -12,12 +12,13 @@ import { SqliteStateStore } from '@loop/state';
 import { ConnectorRegistry, VaultAdapter, DeskAdapter, RecapAdapter, GenericAdapter } from '@loop/connectors';
 import { WorkflowAuthoringService } from '@loop/workflow-authoring';
 import { GitBackend, VersioningService } from '@loop/versioning';
-import { ExecutionExecutor, ExecutionRecovery } from '@loop/engine';
+import { ExecutionExecutor, ExecutionRecovery, executionEventBus } from '@loop/engine';
 import { TriggerDispatcher, CronTriggerHandler, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
 import { EgressEngine } from '@loop/egress';
 import { SecretsManager } from '@loop/secrets';
 import { loadConfig, type LoopConfig } from './config.js';
 import { registerRoutes } from './routes/index.js';
+import { registerExecutionWebSocket } from './routes/ws.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestIdHook } from './middleware/requestId.js';
 
@@ -108,6 +109,9 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     cfg.LOOP_MAX_CONCURRENT,
     cfg.LOOP_NODE_TIMEOUT_MS,
     cfg.LOOP_WORKFLOW_TIMEOUT_MS,
+    // V1.1 M2 (F5): publish node/execution status to the same bus the WS route
+    // subscribes to (wired below) for real-time monitoring.
+    executionEventBus,
   );
   const triggerDispatcher = new TriggerDispatcher(store);
   const cronHandler = new CronTriggerHandler(store);
@@ -139,6 +143,11 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     secretsManager,
     config: cfg,
   });
+
+  // ─── Real-time execution monitoring (V1.1 M2, F5) ────────────────────────
+  // Subscribes WS clients to the same EventBus the executor publishes node /
+  // execution status transitions to.
+  await registerExecutionWebSocket(app, { config: cfg, store, eventBus: executionEventBus });
 
   // ─── Health / readiness / metrics (§5.9) ─────────────────────────────────
 

@@ -3,7 +3,7 @@ import { clsx } from 'clsx';
 import { STATUS_META } from '../lib/api';
 
 export function StatusBadge({ status }: { status: string }) {
-  const meta = STATUS_META[status] ?? STATUS_META.pending;
+  const meta = STATUS_META[status] ?? { color: 'text-ink-300', bg: 'bg-ink-500', label: status };
   return (
     <span
       className={clsx(

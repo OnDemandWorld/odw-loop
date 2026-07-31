@@ -91,6 +91,39 @@ async function resolvePrincipal(
 }
 
 /**
+ * Resolve a principal from a single presented token (V1.1 M2, F5).
+ *
+ * Used by transports that cannot use the full header-based flow — notably the
+ * `GET /ws/executions/:id` WebSocket upgrade, where browsers authenticate via a
+ * `?token=` query value. Accepts either the static API key or a valid JWT.
+ * Returns null when the token is absent or invalid.
+ */
+export async function resolveTokenPrincipal(
+  token: string | undefined,
+  config: LoopConfig,
+): Promise<string | null> {
+  if (!token) return null;
+
+  // 1. Static API key.
+  const apiKey = config.LOOP_API_KEY;
+  if (apiKey && token === apiKey) {
+    return API_KEY_PRINCIPAL;
+  }
+
+  // 2. JWT bearer token.
+  try {
+    const { payload } = await jose.jwtVerify(token, new TextEncoder().encode(config.LOOP_JWT_SECRET));
+    if (typeof payload.sub === 'string' && payload.sub.length > 0) {
+      return payload.sub;
+    }
+  } catch {
+    logger.debug('Presented token failed JWT verification');
+  }
+
+  return null;
+}
+
+/**
  * Build the onRequest auth guard hook bound to the given config.
  * The hook is a no-op while `LOOP_REQUIRE_AUTH` is false (open access).
  */

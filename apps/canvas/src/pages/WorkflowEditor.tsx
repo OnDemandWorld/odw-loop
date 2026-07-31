@@ -55,7 +55,7 @@ function rfKind(type: string): 'connector' | 'control' | 'code' {
 }
 
 function toRfNode(n: WorkflowDefinition['nodes'][number], index: number): Node {
-  const [prefix, operation] = n.type.split('.');
+  const [prefix = '', operation = ''] = n.type.split('.');
   const kind = rfKind(n.type);
   const base = {
     id: n.id,

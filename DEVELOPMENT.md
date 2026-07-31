@@ -1,7 +1,7 @@
 # Loop — Development Status
 
 **Last Updated:** 2026-07-31
-**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) implemented
+**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) implemented
 
 ---
 
@@ -49,6 +49,67 @@ equals V1.0.
   `tests/unit/engine/recovery.test.ts`.
 - E2E: `tests/e2e/crash-recovery.test.ts` — crash → recovery → resume from
   breakpoint; asserts the succeeded node's connector is NOT re-invoked.
+
+---
+
+## V1.1 — Milestone M2: Frontend Usability + Real-time Monitoring (2026-07-31)
+
+Implements PRD F4–F5 (see `roadmap/V1.1_PRD.md`, `roadmap/V1.1_M2_DESIGN.md`).
+Builds on M1 (execution status is now subscribable). Backward compatible — with
+no WS clients connected, EventBus publishing is a no-op, and the connector
+adapters' outward contract is unchanged (INTEGRATION_CONTRACT.md §4).
+
+### F5 — Real-time execution WebSocket
+- `packages/engine/src/eventBus.ts` — `EventBus`, a lightweight in-process
+  pub/sub keyed by `executionId` (`subscribe` returns an unsubscribe fn;
+  `unsubscribe`/`clear` for per-execution cleanup; delivery isolates throwing
+  listeners). Exports a process-wide `executionEventBus` singleton. Re-exported
+  from the engine index.
+- `packages/engine/src/executor.ts` — publishes node/execution status
+  transitions to the bus (`node_started`/`node_succeeded`/`node_failed`/
+  `node_skipped`, `execution_started`/`execution_succeeded`/`execution_failed`).
+  Constructor takes an optional trailing `EventBus` (defaults to the singleton);
+  publishing is best-effort and does not alter execution behaviour.
+- `apps/api/src/routes/ws.ts` — `GET /ws/executions/:id`
+  (`registerExecutionWebSocket`, registered from `server.ts` after
+  `@fastify/websocket`). Subscribes the client to the bus for one execution,
+  forwards each event as JSON, sends a best-effort initial `snapshot`, and
+  unsubscribes on disconnect. Auth mirrors the REST API: enforced only when
+  `LOOP_REQUIRE_AUTH` is set, via `?token=` / `Authorization: Bearer` /
+  `x-api-key` (`resolveTokenPrincipal` in `middleware/auth.ts`); rejected
+  upgrades close with code `4401`.
+
+### F4 — Canvas wiring (apps/canvas)
+- `src/api/client.ts` — typed fetch wrapper (base URL + `Authorization` header
+  from a token provider + envelope/error handling) and the WS helpers
+  (`buildExecutionWsUrl`, `openExecutionSocket`).
+- `src/store/` — Zustand stores: `useWorkflowStore` (list/create/archive) and
+  `useExecutionStore` (current execution + nodes; pure `reduceNodes` folds WS
+  events into node state).
+- `src/pages/Workflows.tsx` sources its list through `useWorkflowStore`;
+  `src/pages/ExecutionDetail.tsx` (`/executions/:id`) subscribes to the WS
+  stream for live node/status updates (REST poll retained as fallback);
+  `src/components/executions/ExecutionMonitor.tsx` is adapted to the real WS
+  contract and backed by the execution store.
+- `vite.config.ts` proxies `/ws` (WebSocket upgrade) to the API in dev.
+
+### Tests
+- Unit: `tests/unit/engine/eventBus.test.ts` (publish/subscribe/cleanup),
+  `tests/unit/engine/executor-events.test.ts` (status change → event).
+- Integration: `tests/integration/api/ws-executions.test.ts` — a native
+  WebSocket client receives live node-status events during a real execution and
+  the auth gate rejects token-less upgrades (4401) / accepts `?token=<key>`.
+- Canvas: `cd apps/canvas && pnpm build` (tsc --noEmit + vite build) passes.
+
+### Notes / deviations
+- The canvas SPA was already richer than the M2 design assumed (full list /
+  editor / execution pages existed); M2 added the missing global-state layer,
+  token-aware client, and the real-time WS path rather than rewriting pages.
+  The workflow editor remains at `/workflows/:id` (existing links) rather than
+  `/workflows/:id/edit`.
+- Fixed pre-existing strict-mode (`noUncheckedIndexedAccess`) errors so the
+  canvas type-checks/builds cleanly (`ui.tsx`, `lib/api.ts`, `Dashboard.tsx`,
+  `WorkflowEditor.tsx`).
 
 ---
 

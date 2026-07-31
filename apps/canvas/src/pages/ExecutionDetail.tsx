@@ -10,6 +10,8 @@ import {
   type NodeExecution,
 } from '../lib/api';
 import { Card, Icon, LoadingBlock, SectionTitle, StatusBadge } from '../components/ui';
+import { reduceNodes } from '../store/executions';
+import { openExecutionSocket, type ExecutionStreamEvent } from '../api/client';
 
 function NodeTraceRow({ node, index }: { node: NodeExecution; index: number }) {
   const [expanded, setExpanded] = useState(false);
@@ -85,6 +87,25 @@ function nodeDuration(node: NodeExecution): number | null {
   return null;
 }
 
+/**
+ * Fold a real-time WS event into the loaded execution (V1.1 M2, F5). Node
+ * transitions update the node trace; execution-level events update the status.
+ */
+function applyStreamEvent(execution: Execution | null, event: ExecutionStreamEvent): Execution | null {
+  if (!execution) return execution;
+  const nodes = reduceNodes(execution.nodes ?? [], event);
+  if (event.type === 'execution_succeeded') {
+    return { ...execution, nodes, status: 'succeeded' };
+  }
+  if (event.type === 'execution_failed') {
+    return { ...execution, nodes, status: 'failed', error: event.error ?? execution.error };
+  }
+  if (event.type === 'snapshot' && typeof event.status === 'string') {
+    return { ...execution, nodes, status: event.status as Execution['status'] };
+  }
+  return { ...execution, nodes };
+}
+
 export function ExecutionDetail() {
   const { id } = useParams<{ id: string }>();
   const [execution, setExecution] = useState<Execution | null>(null);
@@ -109,6 +130,17 @@ export function ExecutionDetail() {
     const t = setInterval(load, 4000);
     return () => clearInterval(t);
   }, [execution?.status, load]);
+
+  // V1.1 M2 (F5): subscribe to the live execution stream and fold each pushed
+  // event into local state for real-time node/status updates. The poll above
+  // remains as a resilience fallback if the socket is unavailable.
+  useEffect(() => {
+    if (!id) return;
+    const socket = openExecutionSocket(id, (event) => {
+      setExecution((prev) => applyStreamEvent(prev, event));
+    });
+    return () => socket.close();
+  }, [id]);
 
   if (error) {
     return (

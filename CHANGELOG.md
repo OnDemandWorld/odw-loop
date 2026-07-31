@@ -14,6 +14,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced scheduling with timezone support
 - Multi-tenancy support
 
+## [1.1.0-M2] - 2026-07-31
+
+### Added — Frontend Usability & Real-time Monitoring (M2: F4 canvas wiring / F5 WebSocket)
+- **Real-time execution events (F5)**
+  - `packages/engine/src/eventBus.ts`: a lightweight in-process pub/sub
+    (`EventBus`) keyed by `executionId`, with `subscribe`/`unsubscribe`/`clear`,
+    a returned unsubscribe fn, and best-effort delivery (a throwing listener is
+    isolated). A process-wide `executionEventBus` singleton is exported.
+  - The executor publishes node/execution status transitions
+    (`node_started`/`node_succeeded`/`node_failed`/`node_skipped`,
+    `execution_started`/`execution_succeeded`/`execution_failed`) to the bus.
+    Publishing is best-effort and does not change execution behaviour.
+  - `GET /ws/executions/:id` (Fastify + `@fastify/websocket`): subscribes the
+    client to the bus for one execution and forwards each event as JSON, sends a
+    best-effort initial `snapshot`, and tears the subscription down on
+    disconnect. Auth mirrors the REST API — enforced only when
+    `LOOP_REQUIRE_AUTH` is set, via `?token=`, `Authorization: Bearer`, or
+    `x-api-key` (rejected with WS close code `4401` otherwise).
+
+- **Canvas wiring (F4)**
+  - `apps/canvas/src/api/client.ts`: a typed fetch wrapper with a configurable
+    base URL and `Authorization: Bearer <token>` header, plus the WebSocket
+    helpers (`buildExecutionWsUrl`, `openExecutionSocket`) used by the monitor.
+  - `apps/canvas/src/store/`: Zustand stores — `useWorkflowStore`
+    (list/create/archive) and `useExecutionStore` (current execution + nodes,
+    with a pure `reduceNodes` that folds WS events into node state).
+  - The Workflows list page now sources its data through `useWorkflowStore`;
+    the execution detail page (`/executions/:id`) subscribes to the WS stream
+    for live node/status updates (REST poll retained as a fallback); the
+    reusable `ExecutionMonitor` component is adapted to the real WS contract.
+  - Vite dev server proxies `/ws` (with WebSocket upgrade) to the API.
+
+### Changed
+- `ExecutionExecutor` constructor accepts an optional trailing `EventBus`
+  (defaults to the `executionEventBus` singleton); `server.ts` wires the same
+  instance into both the executor and the WS route.
+- `apps/api/src/middleware/auth.ts` exports `resolveTokenPrincipal(token, config)`
+  for single-token transports (WS upgrade); the existing HTTP guard is unchanged.
+
+### Fixed
+- Canvas SPA now type-checks and builds cleanly (`tsc --noEmit && vite build`):
+  resolved pre-existing strict-mode (`noUncheckedIndexedAccess`) errors in
+  `ui.tsx`, `lib/api.ts`, `Dashboard.tsx`, and `WorkflowEditor.tsx`.
+
+### Compatibility
+- Fully backward compatible: with no WS clients connected, EventBus publishing is
+  a no-op; the connector adapters' outward contract is unchanged
+  (INTEGRATION_CONTRACT.md §4).
+
+### Tests
+- Unit: EventBus pub/sub + cleanup, and executor → EventBus fan-out
+  (348 unit tests, +11 over M1).
+- Integration: WS endpoint pushes live node-status events and enforces the auth
+  gate (120 integration tests, +4 over M1). E2E unchanged (29).
+
 ## [1.1.0-M1] - 2026-07-31
 
 ### Added — Execution Reliability (M1: F1 durable recovery / F2 idempotency / F3 timeout hardening)

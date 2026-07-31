@@ -230,7 +230,7 @@ export const STATUS_META: Record<string, { color: string; bg: string; label: str
 };
 
 export function nodeTypeColor(type: string): string {
-  const prefix = type.split('.')[0];
+  const prefix = type.split('.')[0] ?? '';
   // Mid-tone hues legible on both light (paper) and dark (ink) surfaces
   const map: Record<string, string> = {
     vault: '#3b82f6',

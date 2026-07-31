@@ -11,6 +11,7 @@ import type { ConnectorRegistry } from '@loop/connectors';
 import { computeLevels } from './scheduler.js';
 import { executeWithRetry } from './retry.js';
 import { recordEvent } from './eventLog.js';
+import { EventBus, executionEventBus, type ExecutionBusEvent } from './eventBus.js';
 
 const logger = createLogger({ name: 'loop:engine:executor', component: 'engine' });
 const metrics = metricsRegistry();
@@ -41,7 +42,18 @@ export class ExecutionExecutor {
     private maxConcurrent = 50,
     private nodeTimeoutMs = 30_000,
     private workflowTimeoutMs: number = defaultWorkflowTimeoutMs(),
+    // V1.1 M2 (F5): real-time status fan-out. Defaults to the process-wide
+    // singleton the WS route subscribes to; inject a dedicated bus in tests.
+    private eventBus: EventBus = executionEventBus,
   ) {}
+
+  /**
+   * Publish a real-time node/execution status event (V1.1 M2, F5). Best-effort:
+   * the EventBus isolates listener errors, so this can never break execution.
+   */
+  private emit(event: ExecutionBusEvent): void {
+    this.eventBus.publish(event);
+  }
 
   /** Execute a workflow from start to finish. */
   async execute(executionId: string, definition: WorkflowDefinition, triggerPayload: Record<string, unknown>): Promise<void> {
@@ -67,6 +79,12 @@ export class ExecutionExecutor {
     metrics.activeExecutions.inc();
     await recordEvent(this.store, executionId, 'execution_started', undefined, {
       resumed: ctx.completedOutputs.size > 0,
+    });
+    this.emit({
+      type: 'execution_started',
+      executionId,
+      status: 'running',
+      timestamp: new Date().toISOString(),
     });
 
     // V1.1 M1 (F3): bound the WHOLE execution with a workflow-level timeout.
@@ -229,6 +247,14 @@ export class ExecutionExecutor {
       ctx.nodeOutputs.set(node.id, completed);
       logger.info({ executionId: ctx.executionId, nodeId: node.id }, 'Skipping already-succeeded node (resume/idempotent)');
       await recordEvent(this.store, ctx.executionId, 'node_skipped', node.id, { reason: 'already_succeeded' });
+      this.emit({
+        type: 'node_skipped',
+        executionId: ctx.executionId,
+        nodeId: node.id,
+        nodeType: node.type,
+        status: 'skipped',
+        timestamp: new Date().toISOString(),
+      });
       return;
     }
 
@@ -248,6 +274,14 @@ export class ExecutionExecutor {
         ctx.nodeOutputs.set(node.id, existingByKey.output);
         ctx.completedOutputs.set(node.id, existingByKey.output);
         await recordEvent(this.store, ctx.executionId, 'node_skipped', node.id, { reason: 'idempotent_hit' });
+        this.emit({
+          type: 'node_skipped',
+          executionId: ctx.executionId,
+          nodeId: node.id,
+          nodeType: node.type,
+          status: 'skipped',
+          timestamp: new Date().toISOString(),
+        });
         return;
       }
       nodeExecId = existingByKey.id;
@@ -273,6 +307,14 @@ export class ExecutionExecutor {
     }
 
     await recordEvent(this.store, ctx.executionId, 'node_started', node.id);
+    this.emit({
+      type: 'node_started',
+      executionId: ctx.executionId,
+      nodeId: node.id,
+      nodeType: node.type,
+      status: 'running',
+      timestamp: new Date().toISOString(),
+    });
 
     try {
       // Resolve variable interpolation
@@ -307,6 +349,16 @@ export class ExecutionExecutor {
       await recordEvent(this.store, ctx.executionId, 'node_succeeded', node.id, {
         duration_ms: Date.now() - startTime,
       });
+      this.emit({
+        type: 'node_succeeded',
+        executionId: ctx.executionId,
+        nodeId: node.id,
+        nodeType: node.type,
+        status: 'succeeded',
+        timestamp: new Date().toISOString(),
+        output: result,
+        durationMs: Date.now() - startTime,
+      });
 
       const duration = (Date.now() - startTime) / 1000;
       metrics.nodeDuration.observe({ node_type: node.type, workflow_id: ctx.workflowId }, duration);
@@ -317,6 +369,15 @@ export class ExecutionExecutor {
         error: String(err),
       });
       await recordEvent(this.store, ctx.executionId, 'node_failed', node.id, { error: String(err) });
+      this.emit({
+        type: 'node_failed',
+        executionId: ctx.executionId,
+        nodeId: node.id,
+        nodeType: node.type,
+        status: 'failed',
+        timestamp: new Date().toISOString(),
+        error: String(err),
+      });
       metrics.nodeErrorsTotal.inc({ node_type: node.type, error_type: 'execution_error' });
       throw err;
     }
@@ -397,5 +458,14 @@ export class ExecutionExecutor {
     });
     metrics.executionsTotal.inc({ workflow_id: workflowId ?? 'unknown', status });
     metrics.executionDuration.observe({ workflow_id: workflowId ?? 'unknown' }, duration / 1000);
+    // V1.1 M2 (F5): real-time terminal status for live monitors.
+    this.emit({
+      type: status === 'succeeded' ? 'execution_succeeded' : 'execution_failed',
+      executionId,
+      status,
+      timestamp: new Date().toISOString(),
+      durationMs: duration,
+      ...(error !== undefined ? { error } : {}),
+    });
   }
 }

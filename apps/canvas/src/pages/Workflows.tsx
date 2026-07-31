@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, timeAgo, shortId, type Workflow, type WorkflowDefinition } from '../lib/api';
+import { useWorkflowStore } from '../store/workflows';
 import {
   Card,
   EmptyState,
@@ -26,6 +27,7 @@ function CreateWorkflowModal({
   onClose: () => void;
   onCreated: (wf: Workflow) => void;
 }) {
+  const createWorkflow = useWorkflowStore((s) => s.createWorkflow);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
@@ -46,7 +48,7 @@ function CreateWorkflowModal({
           tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
         },
       };
-      const wf = await api.createWorkflow({
+      const wf = await createWorkflow({
         name: name.trim(),
         description: description.trim(),
         definition,
@@ -125,27 +127,24 @@ function CreateWorkflowModal({
 
 export function Workflows() {
   const navigate = useNavigate();
-  const [workflows, setWorkflows] = useState<Workflow[] | null>(null);
+  // V1.1 M2 (F4): workflow list state lives in the global Zustand store.
+  const workflows = useWorkflowStore((s) => s.workflows);
+  const loaded = useWorkflowStore((s) => s.loaded);
+  const loadError = useWorkflowStore((s) => s.error);
+  const load = useWorkflowStore((s) => s.load);
+  const deleteWorkflow = useWorkflowStore((s) => s.deleteWorkflow);
+
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showCreate, setShowCreate] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    api
-      .listWorkflows({ per_page: 100 })
-      .then((r) => {
-        setWorkflows(r.data ?? []);
-        setError(null);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
-
-  useEffect(load, [load]);
+  useEffect(() => {
+    void load({ per_page: 100 });
+  }, [load]);
 
   const filtered = useMemo(() => {
-    if (!workflows) return [];
     return workflows.filter((w) => {
       if (statusFilter !== 'all' && w.status !== statusFilter) return false;
       if (search) {
@@ -174,8 +173,7 @@ export function Workflows() {
   const archiveWorkflow = async (wf: Workflow) => {
     setActionBusy(wf.id);
     try {
-      await api.archiveWorkflow(wf.id);
-      load();
+      await deleteWorkflow(wf.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -232,13 +230,13 @@ export function Workflows() {
         </div>
       </div>
 
-      {error && (
+      {(error ?? loadError) && (
         <div className="mb-4 text-sm text-bad bg-bad/10 border border-bad/30 rounded-md px-4 py-2.5">
-          {error}
+          {error ?? loadError}
         </div>
       )}
 
-      {workflows === null ? (
+      {!loaded ? (
         <LoadingBlock label="Loading workflows…" />
       ) : filtered.length === 0 ? (
         <Card>
