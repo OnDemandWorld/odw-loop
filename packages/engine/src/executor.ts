@@ -148,7 +148,11 @@ export class ExecutionExecutor {
     });
 
     const config = instanceId ? this.connectors.getInstanceConfig(instanceId) : {};
-    const result = await adapter.execute({ operation, input, config });
+    // Surface the instance's api_key (when present) as a secret so adapters can
+    // authenticate upstream calls (INTEGRATION_CONTRACT.md §4.2).
+    const apiKey = config?.['api_key'];
+    const secrets = typeof apiKey === 'string' && apiKey.length > 0 ? { api_key: apiKey } : undefined;
+    const result = await adapter.execute({ operation, input, config, secrets });
     return result.output;
   }
 

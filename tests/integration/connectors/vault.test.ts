@@ -1,287 +1,180 @@
 /**
- * Integration tests — Vault connector.
+ * Integration tests — Vault connector (real adapter against a mock upstream).
  *
- * Replaces the real VaultAdapter with a mock implementation so we can assert
- * the executor dispatches the correct operation with the correct parameters.
- * The mock records every call so tests can verify the call chain end-to-end.
+ * Exercises the real VaultAdapter's operation → endpoint mapping and response
+ * parsing against an in-process HTTP server that mimics the real Vault API
+ * (INTEGRATION_CONTRACT.md §1).
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import type { ConnectorAdapter, ExecuteParams, ExecuteResult } from '../../../packages/connectors/src/interface.js';
-import {
-  buildTestApp,
-  seedWorkflow,
-  type TestApp,
-} from '../_helpers/app.js';
-import type { WorkflowDefinition } from '../../../packages/types/src/index.js';
-
-interface RecordedCall {
-  operation: string;
-  input: Record<string, unknown>;
-  config: Record<string, unknown> | undefined;
-}
-
-class MockVaultAdapter implements ConnectorAdapter {
-  readonly type = 'vault';
-  readonly calls: RecordedCall[] = [];
-  private responseFactory: (operation: string, input: Record<string, unknown>) => Record<string, unknown>;
-
-  constructor(
-    responseFactory?: (operation: string, input: Record<string, unknown>) => Record<string, unknown>,
-  ) {
-    this.responseFactory = responseFactory ?? ((op, inp) => ({ mock: true, operation: op, echo: inp }));
-  }
-
-  async execute(params: ExecuteParams): Promise<ExecuteResult> {
-    this.calls.push({
-      operation: params.operation,
-      input: params.input,
-      config: params.config as Record<string, unknown> | undefined,
-    });
-    return { output: this.responseFactory(params.operation, params.input) };
-  }
-
-  async healthCheck(): Promise<boolean> {
-    return true;
-  }
-
-  getCapabilities() {
-    return {
-      node_types: [
-        'vault.search',
-        'vault.create_document',
-        'vault.update_document',
-        'vault.delete_document',
-        'vault.rag_query',
-        'vault.manage_tags',
-      ],
-      input_types: ['Document', 'string'],
-      output_types: ['Document', 'Document[]'],
-    };
-  }
-}
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { VaultAdapter } from '../../../packages/connectors/src/vault/adapter.js';
+import { startMockServer, type MockServer } from './_mock-server.js';
 
 describe('Vault connector integration', () => {
-  let ctx: TestApp;
-  let mockVault: MockVaultAdapter;
+  let server: MockServer;
+  let adapter: VaultAdapter;
+  let config: Record<string, unknown>;
 
   beforeAll(async () => {
-    ctx = await buildTestApp();
-    mockVault = new MockVaultAdapter();
-    // Replace the real vault adapter with the mock
-    ctx.connectors.registerAdapter(mockVault);
+    server = await startMockServer();
+    adapter = new VaultAdapter();
+    config = { base_url: server.baseUrl };
+  });
 
-    // Register a connector instance so the executor finds a config
-    ctx.connectors.registerInstance('vault-default', 'vault', {
-      base_url: 'http://mock-vault.test',
-    });
-
-    await ctx.app.ready();
+  beforeEach(() => {
+    server.requests.length = 0;
+    server.setHandler(() => ({ body: { ok: true } }));
   });
 
   afterAll(async () => {
-    await ctx.app.close();
-    ctx.conn.close();
+    await server.close();
   });
 
-  it('executes vault.search node and stores the output', async () => {
-    mockVault.calls.length = 0;
-    mockVault.responseFactory = () => ({
-      documents: [
-        { id: 'd1', title: 'Document One' },
-        { id: 'd2', title: 'Document Two' },
-      ],
+  it('rag_query → POST /query and parses the typed response', async () => {
+    server.setHandler(() => ({
+      body: {
+        answer: 'The budget is due Friday.',
+        citations: [{ marker: '[1]', file_id: 1, snippet: 'budget' }],
+        retrieved_chunks: [{ rank: 1, chunk_id: 1, text: 'budget chunk' }],
+        query_log_id: 42,
+      },
+    }));
+
+    const result = await adapter.execute({
+      operation: 'rag_query',
+      input: { query: 'when is the budget due?', top_k_chunks: 4 },
+      config,
     });
 
-    const definition: WorkflowDefinition = {
-      version: '1.0',
-      nodes: [
-        {
-          id: 'n1',
-          type: 'vault.search',
-          position: { x: 0, y: 0 },
-          config: { query: 'test query', limit: 10 },
-        },
-      ],
-      edges: [],
-      variables: {},
-      metadata: { name: 'vault-search-test' },
-    };
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0]?.method).toBe('POST');
+    expect(server.requests[0]?.url).toBe('/query');
+    const sent = JSON.parse(server.requests[0]?.body ?? '{}') as Record<string, unknown>;
+    expect(sent['query']).toBe('when is the budget due?');
+    expect(sent['top_k_chunks']).toBe(4);
 
-    const wf = await seedWorkflow(ctx.store, { definition });
-    const executionId = crypto.randomUUID();
-    await ctx.store.executions.create({
-      id: executionId,
-      workflow_id: wf.id,
-      workflow_version: 1,
-      trigger_type: 'manual',
-    });
-
-    await ctx.executor.execute(executionId, definition, {});
-
-    // Verify the adapter was called
-    expect(mockVault.calls).toHaveLength(1);
-    expect(mockVault.calls[0].operation).toBe('search');
-    expect(mockVault.calls[0].input).toMatchObject({ query: 'test query', limit: 10 });
-    // Instance config should be passed through
-    expect(mockVault.calls[0].config).toMatchObject({ base_url: 'http://mock-vault.test' });
-
-    // Verify output stored in DB
-    const nodes = await ctx.store.nodeExecutions.listByExecution(executionId);
-    expect(nodes).toHaveLength(1);
-    expect(nodes[0].status).toBe('succeeded');
-    expect(nodes[0].output).toMatchObject({
-      documents: [
-        { id: 'd1', title: 'Document One' },
-        { id: 'd2', title: 'Document Two' },
-      ],
-    });
+    expect(result.output['answer']).toBe('The budget is due Friday.');
+    expect(result.output['query_log_id']).toBe(42);
+    expect(result.output['citations']).toHaveLength(1);
+    expect(result.output['retrieved_chunks']).toHaveLength(1);
   });
 
-  it('executes vault.create_document node', async () => {
-    mockVault.calls.length = 0;
-    mockVault.responseFactory = () => ({ id: 'new-doc', created: true });
+  it('search → POST /query and returns retrieved_chunks', async () => {
+    server.setHandler(() => ({
+      body: {
+        answer: 'ignored',
+        retrieved_chunks: [
+          { rank: 1, text: 'a' },
+          { rank: 2, text: 'b' },
+        ],
+      },
+    }));
 
-    const definition: WorkflowDefinition = {
-      version: '1.0',
-      nodes: [
-        {
-          id: 'n1',
-          type: 'vault.create_document',
-          position: { x: 0, y: 0 },
-          config: { title: 'New Doc', content: 'Hello world' },
-        },
-      ],
-      edges: [],
-      variables: {},
-      metadata: { name: 'vault-create-test' },
-    };
-
-    const wf = await seedWorkflow(ctx.store, { definition });
-    const executionId = crypto.randomUUID();
-    await ctx.store.executions.create({
-      id: executionId,
-      workflow_id: wf.id,
-      workflow_version: 1,
-      trigger_type: 'manual',
+    const result = await adapter.execute({
+      operation: 'search',
+      input: { query: 'find things' },
+      config,
     });
 
-    await ctx.executor.execute(executionId, definition, {});
-
-    expect(mockVault.calls).toHaveLength(1);
-    expect(mockVault.calls[0].operation).toBe('create_document');
-    expect(mockVault.calls[0].input).toMatchObject({
-      title: 'New Doc',
-      content: 'Hello world',
-    });
-
-    const nodes = await ctx.store.nodeExecutions.listByExecution(executionId);
-    expect(nodes[0].output).toMatchObject({ id: 'new-doc', created: true });
+    expect(server.requests[0]?.url).toBe('/query');
+    expect(result.output['count']).toBe(2);
+    expect(result.output['retrieved_chunks']).toHaveLength(2);
   });
 
-  it('chains vault.search → vault.create_document with variable interpolation', async () => {
-    mockVault.calls.length = 0;
-    let callCount = 0;
-    mockVault.responseFactory = (op) => {
-      callCount++;
-      if (op === 'search') {
-        return { results: [{ id: 'x', title: 'Found' }], count: 1 };
-      }
-      return { success: true };
-    };
+  it('create_document → POST /files/upload as multipart "files"', async () => {
+    server.setHandler(() => ({ body: { uploaded: 1, failed: [] } }));
 
-    const definition: WorkflowDefinition = {
-      version: '1.0',
-      nodes: [
-        {
-          // Node ids must be named 'node_<suffix>' so the variable
-          // interpolation regex (`node_\w+.output.*`) can reference them.
-          id: 'node_search',
-          type: 'vault.search',
-          position: { x: 0, y: 0 },
-          config: { query: 'initial search' },
-        },
-        {
-          id: 'node_create',
-          type: 'vault.create_document',
-          position: { x: 200, y: 0 },
-          config: { title: 'Derived from search', ref: '{{node_search.output.count}}' },
-        },
-      ],
-      edges: [{ id: 'e', source: 'node_search', target: 'node_create' }],
-      variables: {},
-      metadata: { name: 'vault-chain-test' },
-    };
-
-    const wf = await seedWorkflow(ctx.store, { definition });
-    const executionId = crypto.randomUUID();
-    await ctx.store.executions.create({
-      id: executionId,
-      workflow_id: wf.id,
-      workflow_version: 1,
-      trigger_type: 'manual',
+    const result = await adapter.execute({
+      operation: 'create_document',
+      input: { title: 'Meeting Notes', content: '# Hello world' },
+      config,
     });
 
-    await ctx.executor.execute(executionId, definition, {});
+    const req = server.requests[0];
+    expect(req?.method).toBe('POST');
+    expect(req?.url).toBe('/files/upload');
+    expect(req?.headers['content-type']).toMatch(/multipart\/form-data/);
+    expect(req?.body).toContain('# Hello world');
+    expect(req?.body).toContain('Meeting Notes.md');
 
-    expect(mockVault.calls).toHaveLength(2);
-    expect(mockVault.calls[0].operation).toBe('search');
-    expect(mockVault.calls[1].operation).toBe('create_document');
-    // Variable interpolation should have replaced {{node_search.output.count}}
-    expect(mockVault.calls[1].input['ref']).toBe('1');
-
-    const nodes = await ctx.store.nodeExecutions.listByExecution(executionId);
-    expect(nodes).toHaveLength(2);
-    expect(nodes.every((n) => n.status === 'succeeded')).toBe(true);
+    expect(result.output['uploaded']).toBe(1);
+    expect(result.output['filename']).toBe('Meeting Notes.md');
   });
 
-  it('propagates upstream errors when vault is unavailable', async () => {
-    mockVault.calls.length = 0;
-    mockVault.responseFactory = () => {
-      throw new Error('Upstream Vault unavailable: ECONNREFUSED');
-    };
+  it('get_document → GET /files/{id}', async () => {
+    server.setHandler(() => ({ body: { id: 7, rel_path: 'docs/a.md' } }));
 
-    const definition: WorkflowDefinition = {
-      version: '1.0',
-      nodes: [
-        {
-          id: 'n1',
-          type: 'vault.search',
-          position: { x: 0, y: 0 },
-          config: { query: 'anything' },
-          retry: { max_attempts: 0, backoff: 'fixed', initial_delay_ms: 0 },
-        },
-      ],
-      edges: [],
-      variables: {},
-      metadata: { name: 'vault-error-test' },
-    };
+    const result = await adapter.execute({ operation: 'get_document', input: { id: 7 }, config });
 
-    const wf = await seedWorkflow(ctx.store, { definition });
-    const executionId = crypto.randomUUID();
-    await ctx.store.executions.create({
-      id: executionId,
-      workflow_id: wf.id,
-      workflow_version: 1,
-      trigger_type: 'manual',
+    expect(server.requests[0]?.method).toBe('GET');
+    expect(server.requests[0]?.url).toBe('/files/7');
+    expect(result.output['id']).toBe(7);
+  });
+
+  it('get_text → GET /files/{id}/text and wraps raw text', async () => {
+    server.setHandler(() => ({ raw: 'plain extracted text' }));
+
+    const result = await adapter.execute({ operation: 'get_text', input: { id: 9 }, config });
+
+    expect(server.requests[0]?.url).toBe('/files/9/text');
+    expect(result.output['text']).toBe('plain extracted text');
+  });
+
+  it('delete_document → DELETE /files/{id}', async () => {
+    server.setHandler(() => ({ status: 200, body: {} }));
+
+    await adapter.execute({ operation: 'delete_document', input: { id: 3 }, config });
+
+    expect(server.requests[0]?.method).toBe('DELETE');
+    expect(server.requests[0]?.url).toBe('/files/3');
+  });
+
+  it('sends Authorization only when api_key is provided', async () => {
+    server.setHandler(() => ({ body: {} }));
+
+    await adapter.execute({ operation: 'get_document', input: { id: 1 }, config });
+    expect(server.requests[0]?.headers['authorization']).toBeUndefined();
+
+    server.requests.length = 0;
+    await adapter.execute({
+      operation: 'get_document',
+      input: { id: 1 },
+      config: { base_url: server.baseUrl, api_key: 'secret' },
     });
+    expect(server.requests[0]?.headers['authorization']).toBe('Bearer secret');
+  });
 
-    await expect(ctx.executor.execute(executionId, definition, {})).rejects.toThrow(
-      /Vault unavailable/,
+  it('throws UpstreamError on non-2xx responses', async () => {
+    server.setHandler(() => ({ status: 503, body: { detail: 'chroma down' } }));
+
+    await expect(
+      adapter.execute({ operation: 'rag_query', input: { query: 'x' }, config }),
+    ).rejects.toThrow(/Vault returned 503/);
+  });
+
+  it('healthCheck returns true on 200 and false otherwise', async () => {
+    server.setHandler(() => ({ body: { ollama: true, chroma: true, database: true, fasttext: true } }));
+    expect(await adapter.healthCheck(server.baseUrl)).toBe(true);
+
+    server.setHandler(() => ({ status: 500, body: {} }));
+    expect(await adapter.healthCheck(server.baseUrl)).toBe(false);
+
+    // Unreachable host → false (wrapped in try/catch).
+    expect(await adapter.healthCheck('http://127.0.0.1:1')).toBe(false);
+  });
+
+  it('advertises the real Vault node types', () => {
+    const caps = adapter.getCapabilities();
+    expect(caps.node_types).toEqual(
+      expect.arrayContaining([
+        'vault.rag_query',
+        'vault.search',
+        'vault.create_document',
+        'vault.get_document',
+        'vault.get_text',
+        'vault.delete_document',
+      ]),
     );
-
-    const nodes = await ctx.store.nodeExecutions.listByExecution(executionId);
-    expect(nodes).toHaveLength(1);
-    expect(nodes[0].status).toBe('failed');
-    expect(nodes[0].error).toMatch(/Vault unavailable/);
-  });
-
-  it('vault adapter advertises the correct capabilities', () => {
-    const caps = mockVault.getCapabilities();
-    expect(caps.node_types).toContain('vault.search');
-    expect(caps.node_types).toContain('vault.create_document');
-    expect(caps.node_types).toContain('vault.rag_query');
-    expect(caps.input_types).toContain('Document');
-    expect(caps.output_types).toContain('Document[]');
+    expect(caps.node_types).not.toContain('vault.manage_tags');
   });
 });

@@ -59,7 +59,8 @@ describe('Meeting → Tasks → KB (E2E)', () => {
     //    execution directly to demonstrate the full pipeline.
     const executionId = 'exec-meeting-1';
     const triggerPayload = {
-      transcript: 'Discussed Q3 budget. Action: review forecast by Friday.',
+      meeting_id: 'm1',
+      conversation_id: 'conv-42',
     };
     await ctx.store.executions.create({
       id: executionId,
@@ -80,9 +81,9 @@ describe('Meeting → Tasks → KB (E2E)', () => {
 
     // 7. Verify all three connector calls happened
     expect(ctx.mocks.recap.calls).toHaveLength(1);
-    expect(ctx.mocks.recap.calls[0]?.operation).toBe('summarize');
+    expect(ctx.mocks.recap.calls[0]?.operation).toBe('get_meeting');
     expect(ctx.mocks.desk.calls).toHaveLength(1);
-    expect(ctx.mocks.desk.calls[0]?.operation).toBe('create_task');
+    expect(ctx.mocks.desk.calls[0]?.operation).toBe('send_response');
     expect(ctx.mocks.vault.calls).toHaveLength(1);
     expect(ctx.mocks.vault.calls[0]?.operation).toBe('create_document');
 
@@ -92,12 +93,15 @@ describe('Meeting → Tasks → KB (E2E)', () => {
     const succeeded = nodeExecs.filter((n) => n.status === 'succeeded');
     expect(succeeded).toHaveLength(3);
 
-    // 9. Verify variable interpolation — Vault received the summary output
-    //    (the template `{{node_1.output.summary}}` was resolved to the actual
+    // 9. Verify variable interpolation — Vault and Desk received the meeting
+    //    summary (the template `{{node_1.output.summary}}` was resolved to the
     //    string returned by the Recap mock).
     const vaultCall = ctx.mocks.vault.calls[0];
     expect(vaultCall?.input['content']).toBe('Meeting summary');
     expect(vaultCall?.input['title']).toBe('Meeting summary');
+    const deskCall = ctx.mocks.desk.calls[0];
+    expect(deskCall?.input['content']).toBe('Meeting summary');
+    expect(deskCall?.input['id']).toBe('conv-42');
   });
 
   it('fails the execution when a connector returns an error', async () => {

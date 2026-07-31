@@ -77,6 +77,27 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   connectors.registerAdapter(new RecapAdapter());
   connectors.registerAdapter(new GenericAdapter());
 
+  // Register configured connector instances so the executor resolves a real
+  // base_url + credentials at dispatch time (INTEGRATION_CONTRACT.md §4.2).
+  if (cfg.LOOP_VAULT_URL) {
+    connectors.registerInstance('vault-default', 'vault', {
+      base_url: cfg.LOOP_VAULT_URL,
+      ...(cfg.LOOP_VAULT_API_KEY ? { api_key: cfg.LOOP_VAULT_API_KEY } : {}),
+    });
+  }
+  if (cfg.LOOP_DESK_URL) {
+    connectors.registerInstance('desk-default', 'desk', {
+      base_url: cfg.LOOP_DESK_URL,
+      ...(cfg.LOOP_DESK_API_KEY ? { api_key: cfg.LOOP_DESK_API_KEY } : {}),
+    });
+  }
+  if (cfg.LOOP_RECAP_URL) {
+    connectors.registerInstance('recap-default', 'recap', {
+      base_url: cfg.LOOP_RECAP_URL,
+      ...(cfg.LOOP_RECAP_API_KEY ? { api_key: cfg.LOOP_RECAP_API_KEY } : {}),
+    });
+  }
+
   const gitBackend = new GitBackend({ repoPath: `${cfg.LOOP_DATA_DIR}/git` });
   await gitBackend.initialise();
   const versioning = new VersioningService(store, gitBackend);

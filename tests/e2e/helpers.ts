@@ -115,9 +115,11 @@ export async function createTestContext(): Promise<TestContext> {
     display_name: 'System',
   });
 
-  const vault = createMockAdapter('vault', { document_id: 'doc-1', stored: true });
-  const desk = createMockAdapter('desk', { task_id: 'task-1', created: true });
+  const vault = createMockAdapter('vault', { uploaded: 1, failed: [], filename: 'meeting-summary.md' });
+  const desk = createMockAdapter('desk', { sent: true });
   const recap = createMockAdapter('recap', {
+    id: 'm1',
+    title: 'Standup',
     summary: 'Meeting summary',
     action_items: ['Follow up on budget'],
   });
@@ -169,19 +171,27 @@ export function createEdge(source: string, target: string): WorkflowEdge {
   };
 }
 
-/** Meeting → Tasks → KB E2E scenario workflow definition. */
+/**
+ * Meeting → KB + Support E2E scenario workflow definition.
+ *
+ * Reads a meeting from Recap, stores its summary in Vault, and posts the
+ * summary as a customer-support response via Desk — using the real V1.0
+ * connector node types (INTEGRATION_CONTRACT.md §4.3).
+ */
 export function meetingToTasksDefinition(): WorkflowDefinition {
   return {
     version: '1.0',
     nodes: [
-      createNode('node_1', 'recap.summarize', {
-        transcript: '{{trigger.payload.transcript}}',
+      createNode('node_1', 'recap.get_meeting', {
+        id: '{{trigger.payload.meeting_id}}',
       }),
-      createNode('node_2', 'desk.create_task', {
-        title: 'Follow up',
-      }),
-      createNode('node_3', 'vault.create_document', {
+      createNode('node_2', 'vault.create_document', {
         title: 'Meeting summary',
+        content: '{{node_1.output.summary}}',
+      }),
+      createNode('node_3', 'desk.send_response', {
+        id: '{{trigger.payload.conversation_id}}',
+        agent_id: 'agent-loop',
         content: '{{node_1.output.summary}}',
       }),
     ],
