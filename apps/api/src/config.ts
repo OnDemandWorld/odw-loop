@@ -71,6 +71,10 @@ const configSchema = z.object({
   // Static API key accepted via `Authorization: Bearer <key>` or `x-api-key`.
   // Optional: when unset, only JWT bearer tokens authenticate.
   LOOP_API_KEY: z.string().optional(),
+  // V1.3 (F-RBAC-Loop): RBAC role mapped to a valid static API key. JWT callers
+  // get their role from the `role`/`roles` claim instead. Defaults to `admin`
+  // so single-user/dev setups with a static key keep full access.
+  LOOP_API_KEY_ROLE: z.enum(['admin', 'editor', 'viewer']).default('admin'),
 
   // §10.9 Egress
   LOOP_EGRESS_DEFAULT_POLICY: z.enum(['allow', 'deny']).default('deny'),

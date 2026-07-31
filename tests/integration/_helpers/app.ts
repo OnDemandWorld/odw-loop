@@ -83,6 +83,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     LOOP_JWT_ACCESS_TTL: '15m',
     LOOP_JWT_REFRESH_TTL: '7d',
     LOOP_REQUIRE_AUTH: false,
+    LOOP_API_KEY_ROLE: 'admin',
     LOOP_EGRESS_DEFAULT_POLICY: 'deny',
     LOOP_AIRGAP_MODE: false,
     LOOP_METRICS_ENABLED: false,

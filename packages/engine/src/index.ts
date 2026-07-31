@@ -8,3 +8,11 @@ export { BranchNode, LoopNode, ParallelNode, ApprovalNode, DelayNode } from './n
 export { ExecutionRecovery } from './recovery.js';
 export { recordEvent } from './eventLog.js';
 export { EventBus, executionEventBus, type ExecutionBusEvent, type ExecutionBusListener } from './eventBus.js';
+export {
+  reconstructExecution,
+  replayExecution,
+  foldExecutionEvents,
+  computeReplayDecisions,
+  snapshotToJson,
+  type ReplayOptions,
+} from './replay.js';

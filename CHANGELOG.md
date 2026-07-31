@@ -14,6 +14,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced scheduling with timezone support
 - Multi-tenancy support
 
+## [1.3.0-M1] - 2026-08-01
+
+### Added — Event-Sourced Replay (M1: F-Loop-1)
+- **`packages/engine/src/replay.ts`**: reconstruct an execution's state from the
+  append-only `execution_events` log (V1.1 M1) and replay it.
+  - `foldExecutionEvents` — PURE, deterministic fold of an event stream into an
+    `ExecutionSnapshot` (`status`, per-node `nodeStates`, `startedAt`/`endedAt`,
+    `timeline`). `reconstructExecution(store, executionId)` is its async wrapper.
+  - `replayExecution(executor, store, executionId, { dryRun })` — **default
+    `dryRun=true`** produces per-node decisions (`would-run` /
+    `skipped-because-succeeded` / `failed`) WITHOUT invoking any connector
+    (read-only, no side effects). Only `dryRun=false` re-executes, reusing the
+    V1.1 resume path that skips already-succeeded nodes.
+- **API**: `GET /api/v1/executions/:id/replay` (snapshot + dry-run decisions) and
+  `POST /api/v1/executions/:id/replay?dryRun=` (default dry-run; `false` re-runs).
+- **Types** (`packages/types/src/schemas/replay.ts`): `ExecutionSnapshot`,
+  `NodeSnapshot`, `SnapshotTimelineEntry`, `ReplayResult`, `NodeReplayDecision`,
+  `ReplayDecision`, `ReplayRerunOutcome`.
+
+### Added — Role-Based Access Control (F-RBAC-Loop)
+- Roles `admin` > `editor` > `viewer` in `apps/api/src/middleware/auth.ts`. Role
+  resolves from the JWT `role`/`roles` claim (no claim → least privilege
+  `viewer`) and, for a static API key, from the new `LOOP_API_KEY_ROLE` env var
+  (default `admin`).
+- Route-level minimum-role guards: reads (`GET`) need `viewer+`, writes
+  (`POST/PUT/DELETE`) need `editor+`, and `/api/v1/audit` needs `admin`. Exempt:
+  `/health`, `/ready`, `/metrics`, `/webhooks/*`. `requireRole(min)` is exported
+  for explicit per-route guarding.
+- The request actor is extended to `{ principal, role }`; requests carry
+  `authPrincipal` + `authRole`. Insufficient role → `403 FORBIDDEN_INSUFFICIENT_ROLE`.
+
+### Changed
+- `apps/api/src/config.ts`: added `LOOP_API_KEY_ROLE` (enum admin/editor/viewer,
+  default `admin`).
+
+### Compatibility
+- Fully backward compatible. Replay dry-run is read-only. RBAC enforcement is
+  gated behind `LOOP_REQUIRE_AUTH` (default off = open), so existing unauthenticated
+  tests stay green. Connector adapters' outward contract is unchanged
+  (INTEGRATION_CONTRACT.md §4) — replay never alters the adapter interface.
+
+### Tests
+- Unit: replay reconstruction + dry-run (no connector calls) + resume re-run;
+  RBAC role resolution + route classification.
+- Integration: replay API (snapshot + decisions, side-effect-free dry-run, 404);
+  RBAC (viewer write → 403, editor write → 201, viewer read → 200, admin-route
+  gating, API-key role mapping, auth-off open).
+
 ## [1.2.0-M3] - 2026-08-01
 
 ### Added — Sub-workflow Invocation (M3: F-Loop-1)

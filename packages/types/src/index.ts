@@ -6,6 +6,7 @@
 
 export * from './schemas/workflow.js';
 export * from './schemas/execution.js';
+export * from './schemas/replay.js';
 export * from './schemas/connector.js';
 export * from './schemas/trigger.js';
 export * from './schemas/document.js';

@@ -7,6 +7,7 @@ import type { SqliteStateStore } from '@loop/state';
 import type { ConnectorRegistry } from '@loop/connectors';
 import type { WorkflowAuthoringService } from '@loop/workflow-authoring';
 import type { ExecutionExecutor } from '@loop/engine';
+import { replayExecution, snapshotToJson } from '@loop/engine';
 import type { TriggerDispatcher, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
 import type { EgressEngine } from '@loop/egress';
 import type { SecretsManager } from '@loop/secrets';
@@ -18,7 +19,7 @@ import {
   type UpdateWorkflowRequest,
 } from '@loop/types';
 import type { LoopConfig } from '../config.js';
-import { createAuthGuard } from '../middleware/auth.js';
+import { createAuthGuard, requireRole, type Role } from '../middleware/auth.js';
 
 /** Extract the request ID attached by the requestIdHook middleware. */
 function getRequestId(request: FastifyRequest): string {
@@ -26,15 +27,22 @@ function getRequestId(request: FastifyRequest): string {
 }
 
 /**
- * Extract the acting user from the request.
- * Prefers the authenticated principal attached by the auth guard (JWT subject or
- * API-key service account); falls back to the x-user-id header (set by an upstream
- * auth gateway), then to the 'system' service account when no context is available.
+ * The acting identity for a request (V1.3 F-RBAC-Loop): the principal plus its
+ * RBAC role. `principal` prefers the authenticated identity attached by the auth
+ * guard (JWT subject or API-key service account); falls back to the x-user-id
+ * header (set by an upstream auth gateway), then to the 'system' service account.
+ * `role` is the role resolved by the auth guard; when auth is disabled it
+ * defaults to 'admin' so single-user/dev setups keep full access.
  */
-function getActor(request: FastifyRequest): string {
-  if (request.authPrincipal) return request.authPrincipal;
+interface Actor {
+  principal: string;
+  role: Role;
+}
+
+function getActor(request: FastifyRequest): Actor {
   const userId = request.headers['x-user-id'] as string | undefined;
-  return userId ?? 'system';
+  const principal = request.authPrincipal ?? userId ?? 'system';
+  return { principal, role: request.authRole ?? 'admin' };
 }
 
 /** Parse a request body against a Zod schema, throwing a 400 LoopError on failure. */
@@ -78,7 +86,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       description: body.description,
       definition: body.definition,
       tags: body.tags,
-      created_by: actor,
+      created_by: actor.principal,
     });
     return reply.status(201).send({ success: true, data: workflow, meta: meta(request) });
   });
@@ -103,7 +111,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const { id } = request.params as { id: string };
     const body = parseBody<UpdateWorkflowRequest>(UpdateWorkflowRequestSchema, request.body);
     const actor = getActor(request);
-    const workflow = await deps.authoring.update(id, { ...body, updated_by: actor } as never);
+    const workflow = await deps.authoring.update(id, { ...body, updated_by: actor.principal } as never);
     return { success: true, data: workflow, meta: meta(request) };
   });
 
@@ -117,7 +125,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const { id } = request.params as { id: string };
     const body = request.body as { payload?: Record<string, unknown> };
     const actor = getActor(request);
-    const executionId = await deps.manualHandler.trigger(id, body?.payload ?? {}, actor);
+    const executionId = await deps.manualHandler.trigger(id, body?.payload ?? {}, actor.principal);
     return reply.status(202).send({ success: true, data: { execution_id: executionId, status: 'pending' }, meta: meta(request) });
   });
 
@@ -150,6 +158,34 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const { id } = request.params as { id: string };
     await deps.store.executions.updateStatus(id, { status: 'cancelled' });
     return { success: true, data: { status: 'cancelled' }, meta: meta(request) };
+  });
+
+  // ─── Replay (V1.3 M1, F-Loop-1) — event-sourced reconstruction + dry-run ──
+  // GET is a read-only dry-run (viewer+): reconstructs the snapshot from the
+  // execution_events log and returns per-node replay decisions WITHOUT invoking
+  // any connector. POST honours ?dryRun= (default true); only ?dryRun=false
+  // really re-executes via the V1.1 resume path (editor+, side effects).
+
+  app.get('/api/v1/executions/:id/replay', async (request) => {
+    const { id } = request.params as { id: string };
+    const result = await replayExecution(deps.executor, deps.store, id, { dryRun: true });
+    return {
+      success: true,
+      data: { ...result, snapshot: snapshotToJson(result.snapshot) },
+      meta: meta(request),
+    };
+  });
+
+  app.post('/api/v1/executions/:id/replay', async (request) => {
+    const { id } = request.params as { id: string };
+    const query = request.query as Record<string, string>;
+    const dryRun = query['dryRun'] !== 'false'; // default true (read-only)
+    const result = await replayExecution(deps.executor, deps.store, id, { dryRun });
+    return {
+      success: true,
+      data: { ...result, snapshot: snapshotToJson(result.snapshot) },
+      meta: meta(request),
+    };
   });
 
   // ─── Triggers (§5.5) ────────────────────────────────────────────────────
@@ -194,7 +230,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   // ─── System / admin endpoints ────────────────────────────────────────────
 
-  app.get('/api/v1/audit', async (request) => {
+  // Admin-only system route (V1.3 RBAC). The centralised auth guard already
+  // maps /api/v1/audit → admin; requireRole makes the guard explicit per-route.
+  app.get('/api/v1/audit', { preHandler: [requireRole('admin')] }, async (request) => {
     const query = request.query as Record<string, string>;
     const result = await deps.store.audit.list(
       { actor: query['actor'], action: query['action'] },

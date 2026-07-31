@@ -1,7 +1,72 @@
 # Loop — Development Status
 
 **Last Updated:** 2026-08-01
-**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) + V1.2 M3 (sub-workflow invocation) implemented
+**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) + V1.2 M3 (sub-workflow invocation) + V1.3 M1 (event-sourced replay) + V1.3 RBAC (role-based access control) implemented
+
+---
+
+## V1.3 — Milestone M1: Event-Sourced Replay + RBAC (2026-08-01)
+
+Implements PRD F-Loop-1 (replay) and F-RBAC-Loop (roles) — see
+`roadmap/V1.3_PRD.md`, `roadmap/V1.3_LOOP_DESIGN.md` (tasks R1–R4, A1–A4).
+Both features are incremental and backward compatible.
+
+### F-Loop-1 — Event-sourced replay (R1–R4)
+- **`packages/engine/src/replay.ts`**:
+  - `foldExecutionEvents(executionId, events)` — PURE fold of the append-only
+    `execution_events` log (V1.1 M1) into an `ExecutionSnapshot`
+    (`{ status, nodeStates: Map<nodeId,{status,output?,error?}>, startedAt?,
+    endedAt?, timeline[] }`). Deterministic; no I/O, no side effects.
+  - `reconstructExecution(store, executionId)` — async wrapper that reads
+    `events.listByExecution` and folds.
+  - `replayExecution(executor, store, executionId, { dryRun })` — **default
+    `dryRun=true`**: reconstructs the snapshot and, against the workflow
+    definition, computes per-node decisions (`would-run` /
+    `skipped-because-succeeded` / `failed`) WITHOUT invoking any connector —
+    fully read-only. Only `dryRun=false` really re-executes, reusing the V1.1
+    resume path (`executor.execute`, which skips already-succeeded nodes).
+  - `snapshotToJson` serialises the `nodeStates` Map for HTTP transport.
+- **API** (`apps/api/src/routes/index.ts`):
+  - `GET /api/v1/executions/:id/replay` → snapshot + dry-run decisions (read-only).
+  - `POST /api/v1/executions/:id/replay?dryRun=` → default dry-run; `?dryRun=false`
+    re-executes. Unknown execution → 404 `NOT_FOUND_EXECUTION`.
+- **Types** (`packages/types/src/schemas/replay.ts`): `ExecutionSnapshot`,
+  `NodeSnapshot`, `SnapshotTimelineEntry`, `ReplayResult`, `NodeReplayDecision`,
+  `ReplayDecision`, `ReplayRerunOutcome`.
+
+### F-RBAC-Loop — Role-based access control (A1–A4)
+- **Roles** `admin` > `editor` > `viewer` (`apps/api/src/middleware/auth.ts`).
+  Resolved from the JWT `role` claim (or `roles` array, highest privilege wins;
+  no claim → least privilege `viewer`), and for a static API key from
+  `LOOP_API_KEY_ROLE` (default `admin`, dev-friendly).
+- **Route guards**: the auth guard enforces a minimum role per method+path —
+  reads (`GET`) need `viewer+`, writes (`POST/PUT/DELETE`) need `editor+`, and
+  `/api/v1/audit` needs `admin`. `requireRole(min)` is exported for explicit
+  per-route guarding (wired on the audit route). Exempt: `/health`, `/ready`,
+  `/metrics`, `/webhooks/*`.
+- **Actor** extended to `{ principal, role }` (`getActor` in routes); `request`
+  now carries `authPrincipal` + `authRole`.
+- **Backward compatible**: enforcement is gated behind `LOOP_REQUIRE_AUTH`
+  (default off = fully open). Existing tests send no auth and stay green.
+- **Config**: added `LOOP_API_KEY_ROLE` (`apps/api/src/config.ts`).
+
+### Tests
+- `tests/unit/engine/replay.test.ts` — event fold → snapshot; dry-run does NOT
+  call connectors and yields correct decisions; `dryRun=false` resume re-run.
+- `tests/unit/api/auth-rbac.test.ts` — role hierarchy, JWT claim resolution,
+  route classification.
+- `tests/integration/api/replay.test.ts` — replay API returns snapshot+decisions;
+  dry-run is side-effect-free; `?dryRun=false` re-executes; 404 for unknown.
+- `tests/integration/api/rbac.test.ts` — viewer write → 403, editor write → 201,
+  viewer read → 200, admin-route gating, API-key role mapping, auth-off open.
+
+### Notes / deviations
+- Durable `node_succeeded` events do not persist node output (only `duration_ms`),
+  so a snapshot's `output` is populated only when the event stream carries it
+  (forward compatible); status/timeline reconstruction is unaffected.
+- RBAC enforcement is centralised in the auth guard via a method+path → min-role
+  map; `requireRole(min)` is the reusable building block and is also applied
+  explicitly to the admin audit route.
 
 ---
 
