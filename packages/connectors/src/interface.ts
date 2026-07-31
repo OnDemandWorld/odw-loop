@@ -7,6 +7,13 @@ export interface ExecuteParams {
   secrets?: Record<string, string>;
   /** Connector instance configuration. */
   config?: Record<string, unknown>;
+  /**
+   * V1.1 M1 (F2 idempotency): stable key (`${execution_id}:${node_id}`) the
+   * connector MAY forward upstream (e.g. an `Idempotency-Key` header) on a
+   * best-effort basis. Optional — omitting it preserves V1.0 behaviour and the
+   * outward request/response contract is unchanged.
+   */
+  idempotencyKey?: string;
 }
 
 export interface ExecuteResult {

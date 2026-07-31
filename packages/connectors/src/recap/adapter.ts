@@ -34,18 +34,20 @@ export class RecapAdapter implements ConnectorAdapter {
       params.secrets?.['api_key'] ??
       (params.config?.['api_key'] as string | undefined) ??
       '';
+    // V1.1 M1 (F2): best-effort idempotency key forwarded as an upstream header.
+    const idemKey = params.idempotencyKey;
 
     switch (params.operation) {
       case 'login':
-        return this.login(baseUrl, params.input);
+        return this.login(baseUrl, params.input, idemKey);
       case 'list_meetings':
-        return this.callRecap(baseUrl, token, 'GET', '/meetings/');
+        return this.callRecap(baseUrl, token, 'GET', '/meetings/', undefined, idemKey);
       case 'get_meeting':
-        return this.callRecap(baseUrl, token, 'GET', `/meetings/${String(params.input['id'])}`);
+        return this.callRecap(baseUrl, token, 'GET', `/meetings/${String(params.input['id'])}`, undefined, idemKey);
       case 'create_meeting':
-        return this.callRecap(baseUrl, token, 'POST', '/meetings/', params.input);
+        return this.callRecap(baseUrl, token, 'POST', '/meetings/', params.input, idemKey);
       case 'sync':
-        return this.callRecap(baseUrl, token, 'POST', '/sync', params.input);
+        return this.callRecap(baseUrl, token, 'POST', '/sync', params.input, idemKey);
       default:
         throw new Error(`Unknown Recap operation: ${params.operation}`);
     }
@@ -77,11 +79,11 @@ export class RecapAdapter implements ConnectorAdapter {
   }
 
   /** POST /auth/login → {token}. No Bearer required. */
-  private async login(baseUrl: string, input: Record<string, unknown>): Promise<ExecuteResult> {
+  private async login(baseUrl: string, input: Record<string, unknown>, idempotencyKey?: string): Promise<ExecuteResult> {
     const data = await this.callRecap(baseUrl, '', 'POST', '/auth/login', {
       email: input['email'] ?? '',
       password: input['password'] ?? '',
-    });
+    }, idempotencyKey);
     return { output: { token: data.output['token'] ?? '' } };
   }
 
@@ -91,6 +93,7 @@ export class RecapAdapter implements ConnectorAdapter {
     method: 'GET' | 'POST',
     path: string,
     body?: Record<string, unknown>,
+    idempotencyKey?: string,
   ): Promise<ExecuteResult> {
     try {
       const response = await request(`${baseUrl}${path}`, {
@@ -98,6 +101,7 @@ export class RecapAdapter implements ConnectorAdapter {
         headers: {
           ...(body ? { 'content-type': 'application/json' } : {}),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
       });

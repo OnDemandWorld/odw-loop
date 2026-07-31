@@ -86,6 +86,32 @@ export const nodeExecutions = sqliteTable('node_executions', {
   completed_at: text('completed_at'),
   retry_count: integer('retry_count').notNull().default(0),
   metadata: text('metadata', { mode: 'json' }).notNull().default(sql`'{}'`),
+  // V1.1 M1 (F2 idempotency): `${execution_id}:${node_id}`. Nullable so V1.0
+  // rows (and stores that never opt in) keep working; the unique index treats
+  // NULLs as distinct, so only populated keys are de-duplicated.
+  idempotency_key: text('idempotency_key'),
+});
+
+// ─── execution_events (V1.1 M1 — append-only event log) ─────────────────────
+
+export const executionEvents = sqliteTable('execution_events', {
+  id: text('id').primaryKey(),
+  execution_id: text('execution_id').notNull().references(() => workflowExecutions.id),
+  event_type: text('event_type', {
+    enum: [
+      'execution_started',
+      'node_started',
+      'node_succeeded',
+      'node_failed',
+      'node_skipped',
+      'execution_succeeded',
+      'execution_failed',
+      'execution_recovered',
+    ],
+  }).notNull(),
+  node_id: text('node_id'),
+  payload: text('payload', { mode: 'json' }).notNull().default(sql`'{}'`),
+  created_at: integer('created_at').notNull(),
 });
 
 // ─── workflow_triggers ────────────────────────────────────────────────────────

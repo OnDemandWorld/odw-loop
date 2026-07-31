@@ -10,15 +10,28 @@ import type { StateStore } from '@loop/state';
 import type { ConnectorRegistry } from '@loop/connectors';
 import { computeLevels } from './scheduler.js';
 import { executeWithRetry } from './retry.js';
+import { recordEvent } from './eventLog.js';
 
 const logger = createLogger({ name: 'loop:engine:executor', component: 'engine' });
 const metrics = metricsRegistry();
+
+/** Default workflow-level timeout (V1.1 M1, F3). Env-overridable, 300s fallback. */
+function defaultWorkflowTimeoutMs(): number {
+  const raw = process.env['LOOP_WORKFLOW_TIMEOUT_MS'];
+  const parsed = raw === undefined ? Number.NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000;
+}
 
 export interface ExecutorContext {
   executionId: string;
   workflowId: string;
   triggerPayload: Record<string, unknown>;
   nodeOutputs: Map<string, Record<string, unknown>>;
+  /**
+   * V1.1 M1 (F1/F2): outputs of nodes already `succeeded` for this execution,
+   * loaded at start. Used to skip re-dispatch on resume / idempotent retry.
+   */
+  completedOutputs: Map<string, Record<string, unknown>>;
 }
 
 export class ExecutionExecutor {
@@ -27,6 +40,7 @@ export class ExecutionExecutor {
     private connectors: ConnectorRegistry,
     private maxConcurrent = 50,
     private nodeTimeoutMs = 30_000,
+    private workflowTimeoutMs: number = defaultWorkflowTimeoutMs(),
   ) {}
 
   /** Execute a workflow from start to finish. */
@@ -37,7 +51,13 @@ export class ExecutionExecutor {
       workflowId: definition.metadata?.name ?? '',
       triggerPayload,
       nodeOutputs: new Map(),
+      completedOutputs: new Map(),
     };
+
+    // V1.1 M1 (F1 resume / F2 idempotency): seed the context with outputs of
+    // nodes that already succeeded for this execution so a resumed run skips
+    // them instead of re-dispatching (and re-triggering side effects).
+    await this.loadCompletedOutputs(executionId, ctx);
 
     // Transition execution to running
     await this.store.executions.updateStatus(executionId, {
@@ -45,6 +65,19 @@ export class ExecutionExecutor {
       started_at: new Date().toISOString(),
     });
     metrics.activeExecutions.inc();
+    await recordEvent(this.store, executionId, 'execution_started', undefined, {
+      resumed: ctx.completedOutputs.size > 0,
+    });
+
+    // V1.1 M1 (F3): bound the WHOLE execution with a workflow-level timeout.
+    // Per-definition `settings.workflow_timeout_ms` wins over the executor default.
+    const workflowTimeoutMs = definition.settings?.workflow_timeout_ms ?? this.workflowTimeoutMs;
+    const controller = new AbortController();
+    let workflowTimedOut = false;
+    const timer = setTimeout(() => {
+      workflowTimedOut = true;
+      controller.abort();
+    }, workflowTimeoutMs);
 
     try {
       // Group nodes into topological levels; nodes within a level have no
@@ -55,11 +88,12 @@ export class ExecutionExecutor {
       if (levels.length === 0) {
         // Empty workflow succeeds immediately
         await this.completeExecution(executionId, 'succeeded', startTime, undefined, ctx.workflowId);
+        await recordEvent(this.store, executionId, 'execution_succeeded');
         return;
       }
 
       for (const level of levels) {
-        const settled = await this.executeLevel(level, ctx, definition);
+        const settled = await this.executeLevel(level, ctx, definition, controller.signal);
         // Abort the execution on the first node failure in this level; later
         // levels must not run (mirrors the previous fail-fast semantics).
         const failure = settled.find((r) => r.status === 'rejected');
@@ -69,12 +103,46 @@ export class ExecutionExecutor {
       }
 
       await this.completeExecution(executionId, 'succeeded', startTime, undefined, ctx.workflowId);
+      await recordEvent(this.store, executionId, 'execution_succeeded');
     } catch (err) {
-      logger.error({ executionId, error: String(err) }, 'Execution failed');
-      await this.completeExecution(executionId, 'failed', startTime, String(err), ctx.workflowId);
-      throw err;
+      // A workflow-level timeout supersedes the underlying node abort error so
+      // the persisted reason is unambiguous.
+      const errorMsg = workflowTimedOut
+        ? `Workflow '${executionId}' timed out after ${workflowTimeoutMs}ms (workflow_timeout)`
+        : String(err);
+      const finalErr = workflowTimedOut
+        ? new LoopError('WORKFLOW_TIMEOUT', errorMsg, 500)
+        : err;
+      logger.error({ executionId, error: errorMsg }, 'Execution failed');
+      await this.completeExecution(executionId, 'failed', startTime, errorMsg, ctx.workflowId);
+      await recordEvent(this.store, executionId, 'execution_failed', undefined, {
+        error: errorMsg,
+        reason: workflowTimedOut ? 'workflow_timeout' : 'node_error',
+      });
+      throw finalErr;
     } finally {
+      clearTimeout(timer);
       metrics.activeExecutions.dec();
+    }
+  }
+
+  /**
+   * Load already-succeeded node outputs for an execution into the context so
+   * resume / idempotent retry can skip them. Best-effort: a read failure simply
+   * leaves the maps empty (the run proceeds as a fresh execution).
+   */
+  private async loadCompletedOutputs(executionId: string, ctx: ExecutorContext): Promise<void> {
+    try {
+      const existing = await this.store.nodeExecutions.listByExecution(executionId);
+      for (const ne of existing) {
+        if (ne.status === 'succeeded') {
+          ctx.completedOutputs.set(ne.node_id, ne.output);
+          // Also expose to downstream variable interpolation ({{node_X.output.*}}).
+          ctx.nodeOutputs.set(ne.node_id, ne.output);
+        }
+      }
+    } catch (err) {
+      logger.warn({ executionId, error: String(err) }, 'Failed to preload completed node outputs — running fresh');
     }
   }
 
@@ -88,6 +156,7 @@ export class ExecutionExecutor {
     level: WorkflowNode[],
     ctx: ExecutorContext,
     definition: WorkflowDefinition,
+    signal?: AbortSignal,
   ): Promise<PromiseSettledResult<void>[]> {
     const limit = Math.max(1, this.maxConcurrent);
     const settled: PromiseSettledResult<void>[] = [];
@@ -95,7 +164,7 @@ export class ExecutionExecutor {
     for (let i = 0; i < level.length; i += limit) {
       const batch = level.slice(i, i + limit);
       const batchResults = await Promise.allSettled(
-        batch.map((node) => this.executeNode(node, ctx, definition)),
+        batch.map((node) => this.executeNode(node, ctx, definition, signal)),
       );
       settled.push(...batchResults);
     }
@@ -106,10 +175,13 @@ export class ExecutionExecutor {
   /**
    * Bound a node execution with a timeout. An AbortController is aborted when
    * the deadline elapses and the returned promise rejects with a NODE_TIMEOUT
-   * error, so a hung adapter cannot stall the whole execution. (The signal is
-   * created here for future cooperative-cancellation support in adapters.)
+   * error, so a hung adapter cannot stall the whole execution.
+   *
+   * V1.1 M1 (F3): an optional parent `signal` (the workflow-level controller)
+   * also aborts the node — when the whole workflow times out, every in-flight
+   * node rejects with a WORKFLOW_TIMEOUT error instead of hanging.
    */
-  private withTimeout<T>(promise: Promise<T>, ms: number, nodeId: string): Promise<T> {
+  private withTimeout<T>(promise: Promise<T>, ms: number, nodeId: string, signal?: AbortSignal): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const controller = new AbortController();
       const timer = setTimeout(() => {
@@ -117,49 +189,102 @@ export class ExecutionExecutor {
         reject(new LoopError('NODE_TIMEOUT', `Node '${nodeId}' timed out after ${ms}ms`, 500));
       }, ms);
 
+      const onWorkflowAbort = (): void => {
+        clearTimeout(timer);
+        reject(new LoopError('WORKFLOW_TIMEOUT', `Node '${nodeId}' aborted by workflow timeout (workflow_timeout)`, 500));
+      };
+
+      if (signal) {
+        if (signal.aborted) {
+          onWorkflowAbort();
+          return;
+        }
+        signal.addEventListener('abort', onWorkflowAbort, { once: true });
+      }
+
+      const cleanup = (): void => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onWorkflowAbort);
+      };
+
       promise.then(
         (value) => {
-          clearTimeout(timer);
+          cleanup();
           resolve(value);
         },
         (err) => {
-          clearTimeout(timer);
+          cleanup();
           reject(err);
         },
       );
     });
   }
 
-  private async executeNode(node: WorkflowNode, ctx: ExecutorContext, _definition: WorkflowDefinition): Promise<void> {
-    const nodeExecId = randomUUID();
+  private async executeNode(node: WorkflowNode, ctx: ExecutorContext, _definition: WorkflowDefinition, signal?: AbortSignal): Promise<void> {
+    // V1.1 M1 (F1 resume / F2 idempotency): if this node already succeeded for
+    // this execution, skip dispatch entirely and reuse its stored output — no
+    // connector call, no duplicate side effects.
+    const completed = ctx.completedOutputs.get(node.id);
+    if (completed !== undefined) {
+      ctx.nodeOutputs.set(node.id, completed);
+      logger.info({ executionId: ctx.executionId, nodeId: node.id }, 'Skipping already-succeeded node (resume/idempotent)');
+      await recordEvent(this.store, ctx.executionId, 'node_skipped', node.id, { reason: 'already_succeeded' });
+      return;
+    }
+
     const startTime = Date.now();
+    // V1.1 M1 (F2): stable idempotency key per (execution, node).
+    const idempotencyKey = `${ctx.executionId}:${node.id}`;
 
-    // Create node execution record
-    await this.store.nodeExecutions.create({
-      id: nodeExecId,
-      execution_id: ctx.executionId,
-      node_id: node.id,
-      node_type: node.type,
-      input: node.config,
-    });
+    // Resolve the node-execution row to write against. If a prior interrupted
+    // attempt already created a row for this key, reuse it (reset to running)
+    // instead of inserting a duplicate — the unique index on idempotency_key
+    // would otherwise reject the insert. A succeeded row found here is treated
+    // as an idempotent hit and skipped.
+    let nodeExecId: string;
+    const existingByKey = await this.store.nodeExecutions.findByIdempotencyKey(idempotencyKey);
+    if (existingByKey) {
+      if (existingByKey.status === 'succeeded') {
+        ctx.nodeOutputs.set(node.id, existingByKey.output);
+        ctx.completedOutputs.set(node.id, existingByKey.output);
+        await recordEvent(this.store, ctx.executionId, 'node_skipped', node.id, { reason: 'idempotent_hit' });
+        return;
+      }
+      nodeExecId = existingByKey.id;
+      await this.store.nodeExecutions.updateStatus(nodeExecId, {
+        status: 'running',
+        started_at: new Date().toISOString(),
+        retry_count: existingByKey.retry_count + 1,
+      });
+    } else {
+      nodeExecId = randomUUID();
+      await this.store.nodeExecutions.create({
+        id: nodeExecId,
+        execution_id: ctx.executionId,
+        node_id: node.id,
+        node_type: node.type,
+        input: node.config,
+        idempotency_key: idempotencyKey,
+      });
+      await this.store.nodeExecutions.updateStatus(nodeExecId, {
+        status: 'running',
+        started_at: new Date().toISOString(),
+      });
+    }
 
-    // Transition to running
-    await this.store.nodeExecutions.updateStatus(nodeExecId, {
-      status: 'running',
-      started_at: new Date().toISOString(),
-    });
+    await recordEvent(this.store, ctx.executionId, 'node_started', node.id);
 
     try {
       // Resolve variable interpolation
       const resolvedInput = this.resolveVariables(node.config, ctx);
 
       // Execute with retry, bounded by the node timeout (per-node override or
-      // the executor-wide default).
+      // the executor-wide default) and the workflow-level signal.
       const retryConfig = node.retry ?? { max_attempts: 0, backoff: 'fixed' as const, initial_delay_ms: 0 };
       const timeoutMs = node.timeout_ms ?? this.nodeTimeoutMs;
       const result = await this.withTimeout(
         executeWithRetry(
-          async () => this.dispatchNode(node, resolvedInput),
+          async () => this.dispatchNode(node, resolvedInput, idempotencyKey),
           retryConfig,
           (attempt, error) => {
             logger.warn({ nodeId: node.id, attempt, error: String(error) }, 'Node retry');
@@ -167,6 +292,7 @@ export class ExecutionExecutor {
         ),
         timeoutMs,
         node.id,
+        signal,
       );
 
       // Store output
@@ -178,6 +304,9 @@ export class ExecutionExecutor {
         completed_at: new Date().toISOString(),
         output: result,
       });
+      await recordEvent(this.store, ctx.executionId, 'node_succeeded', node.id, {
+        duration_ms: Date.now() - startTime,
+      });
 
       const duration = (Date.now() - startTime) / 1000;
       metrics.nodeDuration.observe({ node_type: node.type, workflow_id: ctx.workflowId }, duration);
@@ -187,12 +316,13 @@ export class ExecutionExecutor {
         completed_at: new Date().toISOString(),
         error: String(err),
       });
+      await recordEvent(this.store, ctx.executionId, 'node_failed', node.id, { error: String(err) });
       metrics.nodeErrorsTotal.inc({ node_type: node.type, error_type: 'execution_error' });
       throw err;
     }
   }
 
-  private async dispatchNode(node: WorkflowNode, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async dispatchNode(node: WorkflowNode, input: Record<string, unknown>, idempotencyKey?: string): Promise<Record<string, unknown>> {
     // Determine connector type from node type (e.g. "vault.search" → "vault")
     const connectorType = node.type.split('.')[0] ?? node.type;
     const operation = node.type.split('.').slice(1).join('.') ?? 'execute';
@@ -219,7 +349,10 @@ export class ExecutionExecutor {
     // authenticate upstream calls (INTEGRATION_CONTRACT.md §4.2).
     const apiKey = config?.['api_key'];
     const secrets = typeof apiKey === 'string' && apiKey.length > 0 ? { api_key: apiKey } : undefined;
-    const result = await adapter.execute({ operation, input, config, secrets });
+    // V1.1 M1 (F2): forward the idempotency key so connectors can best-effort
+    // propagate it upstream (e.g. an `Idempotency-Key` header). Optional — the
+    // request/response contract is unchanged (INTEGRATION_CONTRACT.md §4).
+    const result = await adapter.execute({ operation, input, config, secrets, idempotencyKey });
     return result.output;
   }
 

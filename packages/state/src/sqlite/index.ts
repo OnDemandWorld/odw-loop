@@ -60,6 +60,19 @@ function mapNodeExecution(row: NeRow) {
     input: safeJsonParse(row.input), output: safeJsonParse(row.output),
     error: row.error, started_at: row.started_at, completed_at: row.completed_at,
     retry_count: row.retry_count, metadata: safeJsonParse(row.metadata),
+    idempotency_key: row.idempotency_key,
+  };
+}
+
+type EeRow = typeof schema.executionEvents.$inferSelect;
+
+function mapExecutionEvent(row: EeRow) {
+  return {
+    id: row.id, execution_id: row.execution_id,
+    event_type: row.event_type as
+      | 'execution_started' | 'node_started' | 'node_succeeded' | 'node_failed'
+      | 'node_skipped' | 'execution_succeeded' | 'execution_failed' | 'execution_recovered',
+    node_id: row.node_id, payload: safeJsonParse(row.payload), created_at: row.created_at,
   };
 }
 
@@ -261,10 +274,11 @@ export class SqliteStateStore implements StateStore {
   // ── Node Executions ───────────────────────────────────────────────────────
 
   nodeExecutions = {
-    create: async (data: { id: string; execution_id: string; node_id: string; node_type: string; input?: Record<string, unknown> }) => {
+    create: async (data: { id: string; execution_id: string; node_id: string; node_type: string; input?: Record<string, unknown>; idempotency_key?: string }) => {
       this.db.insert(schema.nodeExecutions).values({
         id: data.id, execution_id: data.execution_id, node_id: data.node_id, node_type: data.node_type,
         status: 'pending', input: JSON.stringify(data.input ?? {}) as never,
+        idempotency_key: data.idempotency_key ?? null,
       }).run();
       const row = this.db.select().from(schema.nodeExecutions).where(eq(schema.nodeExecutions.id, data.id)).get();
       return mapNodeExecution(row!);
@@ -274,6 +288,12 @@ export class SqliteStateStore implements StateStore {
       const rows = this.db.select().from(schema.nodeExecutions)
         .where(eq(schema.nodeExecutions.execution_id, executionId)).orderBy(schema.nodeExecutions.started_at).all();
       return rows.map(mapNodeExecution);
+    },
+
+    findByIdempotencyKey: async (key: string) => {
+      const row = this.db.select().from(schema.nodeExecutions)
+        .where(eq(schema.nodeExecutions.idempotency_key, key)).get();
+      return row ? mapNodeExecution(row) : null;
     },
 
     updateStatus: async (id: string, data: {
@@ -290,6 +310,31 @@ export class SqliteStateStore implements StateStore {
         retry_count: data.retry_count ?? undefined,
         metadata: data.metadata ? (JSON.stringify(data.metadata) as never) : undefined,
       }).where(eq(schema.nodeExecutions.id, id)).run();
+    },
+  };
+
+  // ── Execution Events (V1.1 M1 — append-only) ────────────────────────────
+
+  events = {
+    append: async (data: {
+      id: string; execution_id: string;
+      event_type: 'execution_started' | 'node_started' | 'node_succeeded' | 'node_failed'
+        | 'node_skipped' | 'execution_succeeded' | 'execution_failed' | 'execution_recovered';
+      node_id?: string; payload?: Record<string, unknown>; created_at?: number;
+    }) => {
+      this.db.insert(schema.executionEvents).values({
+        id: data.id, execution_id: data.execution_id, event_type: data.event_type,
+        node_id: data.node_id ?? null,
+        payload: JSON.stringify(data.payload ?? {}) as never,
+        created_at: data.created_at ?? Date.now(),
+      }).run();
+    },
+
+    listByExecution: async (executionId: string) => {
+      const rows = this.db.select().from(schema.executionEvents)
+        .where(eq(schema.executionEvents.execution_id, executionId))
+        .orderBy(asc(schema.executionEvents.created_at)).all();
+      return rows.map(mapExecutionEvent);
     },
   };
 

@@ -31,6 +31,10 @@ const configSchema = z.object({
   LOOP_MAX_CONCURRENT: z.coerce.number().default(50),
   LOOP_EXECUTION_TIMEOUT_MS: z.coerce.number().default(300_000),
   LOOP_NODE_TIMEOUT_MS: z.coerce.number().default(30_000),
+  // V1.1 M1 (F3): workflow-level timeout — bounds an entire execute() run.
+  // Falls back to 300s; a per-workflow definition.settings.workflow_timeout_ms
+  // overrides this when present.
+  LOOP_WORKFLOW_TIMEOUT_MS: z.coerce.number().default(300_000),
   LOOP_DEFAULT_RETRY_COUNT: z.coerce.number().default(3),
   LOOP_DEFAULT_BACKOFF: z.enum(['exponential', 'linear', 'fixed']).default('exponential'),
 

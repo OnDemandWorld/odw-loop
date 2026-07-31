@@ -5,6 +5,7 @@
 
 import { createLogger } from '@loop/observability';
 import type { StateStore } from '@loop/state';
+import { recordEvent } from './eventLog.js';
 
 const logger = createLogger({ name: 'loop:engine:recovery', component: 'engine' });
 
@@ -26,6 +27,11 @@ export class ExecutionRecovery {
         // from the last successful node on next execution cycle.
         await this.store.executions.updateStatus(execution.id, {
           status: 'pending',
+        });
+        // V1.1 M1 (F1): audit the recovery so the resume is traceable. The
+        // executor will skip already-succeeded nodes on the next run.
+        await recordEvent(this.store, execution.id, 'execution_recovered', undefined, {
+          last_succeeded_node: lastCompleted.node_id,
         });
         logger.info(
           { executionId: execution.id, lastNode: lastCompleted.node_id },

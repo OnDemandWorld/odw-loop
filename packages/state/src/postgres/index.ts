@@ -132,7 +132,38 @@ export class PostgresStateStore implements StateStore {
 
   workflowDefinitions = { create: async () => { throw new Error('PostgreSQL workflowDefinitions.create not yet fully implemented'); }, listByWorkflow: async () => [], getByWorkflowAndVersion: async () => null };
   executions = { create: async () => { throw new Error('PostgreSQL executions.create not yet fully implemented'); }, getById: async () => null, list: async () => ({ data: [], total: 0, page: 1, per_page: 20, total_pages: 0 }), updateStatus: async () => {}, findInterrupted: async () => [] };
-  nodeExecutions = { create: async () => { throw new Error('PostgreSQL nodeExecutions.create not yet fully implemented'); }, listByExecution: async () => [], updateStatus: async () => {} };
+  nodeExecutions = { create: async () => { throw new Error('PostgreSQL nodeExecutions.create not yet fully implemented'); }, listByExecution: async () => [], findByIdempotencyKey: async () => null, updateStatus: async () => {} };
+
+  // ── Execution Events (V1.1 M1) — fully implemented (used by recovery/executor) ──
+  // These must not throw 'not implemented': the engine calls append() on every
+  // lifecycle transition, so a throwing stub would break execution on PG.
+  events = {
+    append: async (data: {
+      id: string; execution_id: string;
+      event_type: 'execution_started' | 'node_started' | 'node_succeeded' | 'node_failed'
+        | 'node_skipped' | 'execution_succeeded' | 'execution_failed' | 'execution_recovered';
+      node_id?: string; payload?: Record<string, unknown>; created_at?: number;
+    }) => {
+      await this.conn.pool.query(
+        `INSERT INTO execution_events (id, execution_id, event_type, node_id, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [data.id, data.execution_id, data.event_type, data.node_id ?? null, JSON.stringify(data.payload ?? {}), data.created_at ?? Date.now()],
+      );
+    },
+    listByExecution: async (executionId: string) => {
+      const result = await this.conn.pool.query(
+        'SELECT * FROM execution_events WHERE execution_id = $1 ORDER BY created_at ASC',
+        [executionId],
+      );
+      return result.rows.map((r: Record<string, unknown>) => ({
+        id: r.id as string, execution_id: r.execution_id as string,
+        event_type: r.event_type as 'execution_started' | 'node_started' | 'node_succeeded' | 'node_failed'
+          | 'node_skipped' | 'execution_succeeded' | 'execution_failed' | 'execution_recovered',
+        node_id: (r.node_id as string | null) ?? null,
+        payload: safeJsonParse(r.payload), created_at: Number(r.created_at),
+      }));
+    },
+  };
   triggers = { create: async () => { throw new Error('PostgreSQL triggers.create not yet fully implemented'); }, getById: async () => null, listByWorkflow: async () => [], listEnabled: async () => [], update: async () => {}, delete: async () => {} };
   audit = { write: async () => {}, list: async () => ({ data: [], total: 0, page: 1, per_page: 50, total_pages: 0 }) };
   users = { create: async () => { throw new Error('PostgreSQL users.create not yet fully implemented'); }, getById: async () => null, getByUsername: async () => null, updateLastLogin: async () => {}, list: async () => [], updateRole: async () => {}, deactivate: async () => {} };

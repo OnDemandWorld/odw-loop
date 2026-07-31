@@ -11,6 +11,8 @@ import type {
   NodeExecution,
   WorkflowTrigger,
   Connector,
+  ExecutionEvent,
+  ExecutionEventType,
 } from '@loop/types';
 
 // ─── Shared pagination / filtering ────────────────────────────────────────────
@@ -153,9 +155,18 @@ export interface StateStore {
       node_id: string;
       node_type: string;
       input?: Record<string, unknown>;
+      /** V1.1 M1 (F2): `${execution_id}:${node_id}` — optional, backward compatible. */
+      idempotency_key?: string;
     }): Promise<NodeExecution>;
 
     listByExecution(executionId: string): Promise<NodeExecution[]>;
+
+    /**
+     * V1.1 M1 (F2 idempotency): look up a node execution by its idempotency key.
+     * Returns null when no row carries the key (or the store has no opted-in
+     * rows), letting callers fall back to a fresh execution.
+     */
+    findByIdempotencyKey(key: string): Promise<NodeExecution | null>;
 
     updateStatus(
       id: string,
@@ -169,6 +180,23 @@ export interface StateStore {
         metadata?: Record<string, unknown>;
       },
     ): Promise<void>;
+  };
+
+  // ── Execution Events (V1.1 M1 — append-only event log) ──────────────────
+
+  events: {
+    /** Append an execution lifecycle / node event. Append-only. */
+    append(data: {
+      id: string;
+      execution_id: string;
+      event_type: ExecutionEventType;
+      node_id?: string;
+      payload?: Record<string, unknown>;
+      created_at?: number;
+    }): Promise<void>;
+
+    /** List all events for an execution, ordered by creation time ascending. */
+    listByExecution(executionId: string): Promise<ExecutionEvent[]>;
   };
 
   // ── Triggers ──────────────────────────────────────────────────────────────

@@ -155,4 +155,30 @@ CREATE TABLE IF NOT EXISTS connectors (
 );
 `,
   },
+  {
+    version: '002',
+    name: 'execution_events_and_idempotency_pg',
+    // V1.1 M1 (F1 durable recovery / F2 idempotency). Fully idempotent — every
+    // statement is guarded with IF NOT EXISTS (PostgreSQL supports it for both
+    // tables and columns), and the runner also tracks applied versions.
+    sql: `
+-- Append-only execution event log (audit + resume basis)
+CREATE TABLE IF NOT EXISTS execution_events (
+  id UUID PRIMARY KEY,
+  execution_id UUID NOT NULL REFERENCES workflow_executions(id),
+  event_type VARCHAR(30) NOT NULL CHECK(event_type IN (
+    'execution_started','node_started','node_succeeded','node_failed',
+    'node_skipped','execution_succeeded','execution_failed','execution_recovered'
+  )),
+  node_id VARCHAR(100),
+  payload JSONB NOT NULL DEFAULT '{}',
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_execution_events_exec ON execution_events(execution_id, created_at);
+
+-- Idempotency key on node_executions (nullable; unique treats NULLs as distinct)
+ALTER TABLE node_executions ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_node_exec_idem ON node_executions(idempotency_key);
+`,
+  },
 ];

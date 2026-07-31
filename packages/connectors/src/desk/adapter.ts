@@ -30,18 +30,20 @@ export class DeskAdapter implements ConnectorAdapter {
   async execute(params: ExecuteParams): Promise<ExecuteResult> {
     const baseUrl = (params.config?.['base_url'] as string) || DEFAULT_BASE_URL;
     const apiKey = params.secrets?.['api_key'] ?? (params.config?.['api_key'] as string) ?? '';
+    // V1.1 M1 (F2): best-effort idempotency key forwarded as an upstream header.
+    const idemKey = params.idempotencyKey;
 
     switch (params.operation) {
       case 'list_conversations':
-        return this.callDesk(baseUrl, apiKey, 'GET', PREFIX);
+        return this.callDesk(baseUrl, apiKey, 'GET', PREFIX, undefined, idemKey);
       case 'get_conversation':
-        return this.callDesk(baseUrl, apiKey, 'GET', `${PREFIX}/${String(params.input['id'])}`);
+        return this.callDesk(baseUrl, apiKey, 'GET', `${PREFIX}/${String(params.input['id'])}`, undefined, idemKey);
       case 'send_response': {
         const id = String(params.input['id'] ?? params.input['conversation_id'] ?? '');
         const query = new URLSearchParams();
         if (params.input['agent_id'] !== undefined) query.set('agent_id', String(params.input['agent_id']));
         if (params.input['content'] !== undefined) query.set('content', String(params.input['content']));
-        return this.callDesk(baseUrl, apiKey, 'POST', `${PREFIX}/${id}/respond?${query.toString()}`);
+        return this.callDesk(baseUrl, apiKey, 'POST', `${PREFIX}/${id}/respond?${query.toString()}`, undefined, idemKey);
       }
       case 'takeover':
         return this.callDesk(
@@ -50,6 +52,7 @@ export class DeskAdapter implements ConnectorAdapter {
           'POST',
           `${PREFIX}/${String(params.input['id'])}/takeover`,
           params.input['agent_id'] !== undefined ? { agent_id: params.input['agent_id'] } : {},
+          idemKey,
         );
       case 'resolve':
         return this.callDesk(
@@ -58,6 +61,7 @@ export class DeskAdapter implements ConnectorAdapter {
           'POST',
           `${PREFIX}/${String(params.input['id'])}/resolve`,
           params.input['agent_id'] !== undefined ? { agent_id: params.input['agent_id'] } : {},
+          idemKey,
         );
       default:
         throw new Error(`Unknown Desk operation: ${params.operation}`);
@@ -95,6 +99,7 @@ export class DeskAdapter implements ConnectorAdapter {
     method: 'GET' | 'POST',
     path: string,
     body?: Record<string, unknown>,
+    idempotencyKey?: string,
   ): Promise<ExecuteResult> {
     try {
       const response = await request(`${baseUrl}${path}`, {
@@ -102,6 +107,7 @@ export class DeskAdapter implements ConnectorAdapter {
         headers: {
           ...(body ? { 'content-type': 'application/json' } : {}),
           ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+          ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
       });

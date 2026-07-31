@@ -155,4 +155,33 @@ CREATE TABLE IF NOT EXISTS connectors (
 -- Schema migrations (bootstrap — created outside Drizzle in migrate.ts)
 `,
   },
+  {
+    version: '002',
+    name: 'execution_events_and_idempotency',
+    // V1.1 M1 (F1 durable recovery / F2 idempotency). Idempotent: the migration
+    // runner tracks applied versions in schema_migrations, and every statement
+    // below is itself guarded (IF NOT EXISTS) so a re-run is a no-op. The
+    // ADD COLUMN is protected by a WHERE-NOT-EXISTS trick via a no-op select on
+    // pragma is not possible in plain SQL, so it relies on version tracking —
+    // identical to how migration 001 is applied exactly once.
+    sql: `
+-- Append-only execution event log (audit + resume basis)
+CREATE TABLE IF NOT EXISTS execution_events (
+  id TEXT PRIMARY KEY,
+  execution_id TEXT NOT NULL REFERENCES workflow_executions(id),
+  event_type TEXT NOT NULL CHECK(event_type IN (
+    'execution_started','node_started','node_succeeded','node_failed',
+    'node_skipped','execution_succeeded','execution_failed','execution_recovered'
+  )),
+  node_id TEXT,
+  payload TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_execution_events_exec ON execution_events(execution_id, created_at);
+
+-- Idempotency key on node_executions (nullable; unique treats NULLs as distinct)
+ALTER TABLE node_executions ADD COLUMN idempotency_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_node_exec_idem ON node_executions(idempotency_key);
+`,
+  },
 ];

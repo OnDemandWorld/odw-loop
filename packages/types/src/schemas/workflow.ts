@@ -46,12 +46,23 @@ export const VariableDefinitionSchema = z.object({
 });
 export type VariableDefinition = z.infer<typeof VariableDefinitionSchema>;
 
+/**
+ * Workflow-level execution settings (V1.1 M1 — F3 timeout hardening).
+ * Optional so V1.0 definitions without a `settings` block stay valid; when
+ * `workflow_timeout_ms` is absent the engine falls back to the env default.
+ */
+export const WorkflowSettingsSchema = z.object({
+  workflow_timeout_ms: z.number().int().positive().optional(),
+});
+export type WorkflowSettings = z.infer<typeof WorkflowSettingsSchema>;
+
 /** Complete workflow definition JSON (§4.11). */
 export const WorkflowDefinitionSchema = z.object({
   version: z.string().default('1.0'),
   nodes: z.array(WorkflowNodeSchema).default([]),
   edges: z.array(WorkflowEdgeSchema).default([]),
   variables: z.record(VariableDefinitionSchema).default({}),
+  settings: WorkflowSettingsSchema.optional(),
   metadata: z
     .object({
       name: z.string().optional(),

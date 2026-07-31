@@ -1,7 +1,54 @@
 # Loop — Development Status
 
-**Last Updated:** 2026-06-24
-**Status:** ✅ COMPLETE — All phases implemented, 244 tests passing (162 unit + 55 integration + 27 E2E)
+**Last Updated:** 2026-07-31
+**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) implemented
+
+---
+
+## V1.1 — Milestone M1: Execution Reliability (2026-07-31)
+
+Implements PRD F1–F3 (see `roadmap/V1.1_PRD.md`, `roadmap/V1.1_DESIGN.md`,
+`roadmap/V1.1_TBK.md`). All changes are incremental and backward compatible —
+with no events, no idempotency key, and no workflow timeout configured, behaviour
+equals V1.0.
+
+### F1 — Durable recovery (resume from last successful node)
+- New append-only `execution_events` table (`packages/state/src/schema.ts`,
+  migration `002`) records execution/node lifecycle events.
+- `StateStore.events.append` / `events.listByExecution` (SQLite fully, PostgreSQL
+  implemented for M1 paths).
+- `EventLog` (`packages/engine/src/eventLog.ts`) — best-effort `recordEvent`;
+  a write failure logs a warning and never breaks execution.
+- The executor (`packages/engine/src/executor.ts`) loads already-`succeeded`
+  node outputs at start (`completedOutputs`) and **skips** those nodes on a
+  resumed run (records `node_skipped`), so recovery continues from the breakpoint
+  with no duplicate connector calls.
+- `ExecutionRecovery` appends an `execution_recovered` event when resetting an
+  interrupted execution to `pending`.
+
+### F2 — Idempotency
+- `node_executions.idempotency_key` column + unique index (migration `002`).
+- Key = `${execution_id}:${node_id}`, persisted by the executor; a succeeded row
+  for the same key is reused (shares the resume path). Interrupted/failed rows for
+  a key are reused (reset to running) rather than duplicated.
+- `ExecuteParams.idempotencyKey` (optional) — `packages/connectors/src/interface.ts`;
+  Vault/Desk/Recap adapters forward it best-effort as an `Idempotency-Key` header.
+  The outward request/response contract is unchanged (INTEGRATION_CONTRACT.md §4).
+
+### F3 — Workflow-level timeout
+- `execute()` is wrapped in an `AbortController` + `setTimeout`; on timeout it
+  aborts in-flight nodes and marks the execution `failed` with reason
+  `workflow_timeout` (new `WORKFLOW_TIMEOUT` error code).
+- Resolution order: `definition.settings.workflow_timeout_ms` →
+  `LOOP_WORKFLOW_TIMEOUT_MS` (new config key, `apps/api/src/config.ts`) → `300000` ms.
+  The V1.0 node-level timeout is preserved.
+
+### Tests
+- Unit: `tests/unit/state/execution-events.test.ts`,
+  `tests/unit/engine/eventLog.test.ts`, `tests/unit/engine/executor-resume.test.ts`,
+  `tests/unit/engine/recovery.test.ts`.
+- E2E: `tests/e2e/crash-recovery.test.ts` — crash → recovery → resume from
+  breakpoint; asserts the succeeded node's connector is NOT re-invoked.
 
 ---
 

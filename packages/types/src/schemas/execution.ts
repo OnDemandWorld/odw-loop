@@ -50,5 +50,32 @@ export const NodeExecutionSchema = z.object({
   completed_at: z.string().datetime().nullable().default(null),
   retry_count: z.number().int().default(0),
   metadata: z.record(z.unknown()).default({}),
+  // V1.1 M1 (F2 idempotency): `${execution_id}:${node_id}`. Optional/nullable so
+  // V1.0 rows and callers that never opt in remain valid.
+  idempotency_key: z.string().nullable().optional(),
 });
 export type NodeExecution = z.infer<typeof NodeExecutionSchema>;
+
+// ─── Execution events (V1.1 M1 — append-only event log) ──────────────────────
+
+export const ExecutionEventTypeSchema = z.enum([
+  'execution_started',
+  'node_started',
+  'node_succeeded',
+  'node_failed',
+  'node_skipped',
+  'execution_succeeded',
+  'execution_failed',
+  'execution_recovered',
+]);
+export type ExecutionEventType = z.infer<typeof ExecutionEventTypeSchema>;
+
+export const ExecutionEventSchema = z.object({
+  id: z.string(),
+  execution_id: z.string(),
+  event_type: ExecutionEventTypeSchema,
+  node_id: z.string().nullable().optional(),
+  payload: z.record(z.unknown()).default({}),
+  created_at: z.number().int(),
+});
+export type ExecutionEvent = z.infer<typeof ExecutionEventSchema>;

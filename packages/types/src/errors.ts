@@ -42,6 +42,8 @@ export type ErrorCode =
   | 'NODE_TIMEOUT'
   | 'NODE_TYPE_MISMATCH'
   | 'NODE_EGRESS_BLOCKED'
+  // Workflow execution (V1.1 M1 — workflow-level timeout)
+  | 'WORKFLOW_TIMEOUT'
   // Generic
   | 'INTERNAL_ERROR';
 

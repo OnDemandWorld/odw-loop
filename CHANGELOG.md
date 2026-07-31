@@ -14,6 +14,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced scheduling with timezone support
 - Multi-tenancy support
 
+## [1.1.0-M1] - 2026-07-31
+
+### Added — Execution Reliability (M1: F1 durable recovery / F2 idempotency / F3 timeout hardening)
+- **Durable recovery (F1)**
+  - Append-only `execution_events` table records execution/node lifecycle events
+    (`execution_started`, `node_started`, `node_succeeded`, `node_failed`,
+    `node_skipped`, `execution_succeeded`, `execution_failed`, `execution_recovered`).
+  - On resume, the executor reloads already-`succeeded` node outputs and **skips**
+    those nodes instead of re-dispatching them — a recovered execution continues
+    from the last successful node with no duplicate side effects.
+  - `ExecutionRecovery` appends an `execution_recovered` event when it resets an
+    interrupted execution to `pending`.
+  - Best-effort `EventLog` (`recordEvent`): an event-write failure logs a warning
+    and never breaks execution.
+
+- **Idempotency (F2)**
+  - `node_executions.idempotency_key` column (unique index; `${execution_id}:${node_id}`).
+  - The executor persists the key and reuses a succeeded node's cached output for
+    the same key (shares the resume path); interrupted/failed rows for a key are
+    reused rather than duplicated.
+  - `ExecuteParams.idempotencyKey` (optional, backward compatible); Vault/Desk/Recap
+    connectors forward it best-effort as an `Idempotency-Key` header. The outward
+    request/response contract is unchanged (INTEGRATION_CONTRACT.md §4).
+
+- **Workflow-level timeout (F3)**
+  - The whole `execute()` run is bounded by an `AbortController` timeout that aborts
+    in-flight nodes and marks the execution `failed` with reason `workflow_timeout`.
+  - Configurable via `definition.settings.workflow_timeout_ms`, then
+    `LOOP_WORKFLOW_TIMEOUT_MS` (new config key), default `300000` ms. The V1.0
+    node-level timeout is preserved.
+
+### Changed
+- `StateStore` gains `events.append` / `events.listByExecution` and
+  `nodeExecutions.findByIdempotencyKey`; `nodeExecutions.create` accepts an optional
+  `idempotency_key`. Implemented fully for SQLite; PostgreSQL implements the new
+  event methods (no `not implemented` throws for M1 paths).
+- Migration `002` (SQLite + PostgreSQL) adds the new table/column idempotently.
+
+### Compatibility
+- Fully backward compatible: with no events, no idempotency key, and no workflow
+  timeout configured, behaviour equals V1.0.
+
 ## [1.0.0] - 2026-06-24
 
 ### Added

@@ -102,7 +102,13 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   await gitBackend.initialise();
   const versioning = new VersioningService(store, gitBackend);
   const authoring = new WorkflowAuthoringService(store, versioning);
-  const executor = new ExecutionExecutor(store, connectors, cfg.LOOP_MAX_CONCURRENT, cfg.LOOP_NODE_TIMEOUT_MS);
+  const executor = new ExecutionExecutor(
+    store,
+    connectors,
+    cfg.LOOP_MAX_CONCURRENT,
+    cfg.LOOP_NODE_TIMEOUT_MS,
+    cfg.LOOP_WORKFLOW_TIMEOUT_MS,
+  );
   const triggerDispatcher = new TriggerDispatcher(store);
   const cronHandler = new CronTriggerHandler(store);
   const webhookHandler = new WebhookTriggerHandler(store);
