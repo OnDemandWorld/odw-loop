@@ -44,6 +44,8 @@ export type ErrorCode =
   | 'NODE_EGRESS_BLOCKED'
   // Workflow execution (V1.1 M1 — workflow-level timeout)
   | 'WORKFLOW_TIMEOUT'
+  // Sub-workflow invocation (V1.2 M3 — recursion guard)
+  | 'SUBWORKFLOW_DEPTH_EXCEEDED'
   // Generic
   | 'INTERNAL_ERROR';
 

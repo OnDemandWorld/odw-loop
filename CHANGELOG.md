@@ -14,6 +14,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced scheduling with timezone support
 - Multi-tenancy support
 
+## [1.2.0-M3] - 2026-08-01
+
+### Added — Sub-workflow Invocation (M3: F-Loop-1)
+- **`workflow.invoke` engine-built-in node**
+  - `packages/engine/src/executor.ts`: `dispatchNode` intercepts
+    `node.type === 'workflow.invoke'` BEFORE connector routing (it is an engine
+    built-in, not a connector). The node resolves a child definition — an inline
+    `input.definition` object, or loaded by `input.workflow_id` from the store —
+    maps `input.inputs` onto the child's `trigger.payload`, creates a child
+    execution (its own `execution_id`), and recursively runs the child on the
+    SAME executor, so the child reuses the workflow timeout, EventBus fan-out,
+    idempotency and resume machinery. On success the node returns
+    `{ outputs: <child final nodeOutputs>, status: 'succeeded' }`; a failing
+    child throws and fails the parent node.
+  - **Recursion guard**: depth is carried via the `ExecutorContext`
+    (`execute()` accepts an optional `ExecuteOptions`); exceeding
+    `maxSubWorkflowDepth` (default 5, env `LOOP_SUBWORKFLOW_MAX_DEPTH`,
+    constructor-overridable) throws the new `SUBWORKFLOW_DEPTH_EXCEEDED` error
+    code. A visited-set cycle guard also stops self-invoking workflows fast.
+  - **Output consumption (S3)**: child outputs are reachable from downstream
+    parent nodes via the usual `{{node_X.output.*}}` interpolation; interpolation
+    gained a backward-compatible nested-path fallback so
+    `{{node_sub.output.outputs.node_c1.value}}` resolves.
+  - **Event nesting (S4)**: `ExecutionBusEvent` carries an optional
+    `parentExecutionId`; every event emitted by a sub-workflow execution is
+    tagged with its parent so monitors can rebuild the parent→child tree.
+
+### Changed
+- `ExecutionExecutor.execute()` now resolves with the final per-node output map
+  (`Map<string, Record<string, unknown>>`) so a parent can surface a child's
+  outputs; root callers may ignore the return value. An optional trailing
+  `ExecuteOptions` carries recursion state (depth / parentExecutionId / visited).
+- `packages/types/src/errors.ts`: added `SUBWORKFLOW_DEPTH_EXCEEDED` error code.
+
+### Compatibility
+- Fully backward compatible: the `execute()` signature change is additive
+  (optional param + previously-void return); root executions behave exactly as
+  before. Connector adapters' outward contract is unchanged
+  (INTEGRATION_CONTRACT.md §4) — `workflow.invoke` is engine-built-in. Inline
+  sub-workflows reuse the parent execution's `workflow_id` so child execution /
+  node / event rows satisfy FK constraints without persisting a synthetic
+  workflow.
+
+### Tests
+- Unit: `workflow.invoke` executes an inline child and returns outputs, maps
+  inputs to the child payload, surfaces child outputs downstream, fails the
+  parent on child failure, enforces the depth ceiling, stops cycles, and tags
+  child events with `parentExecutionId`.
+- Integration: parent → child → downstream end-to-end (inline + stored-by-id),
+  and recursion-depth bounding (`SUBWORKFLOW_DEPTH_EXCEEDED`).
+
 ## [1.1.0-M2] - 2026-07-31
 
 ### Added — Frontend Usability & Real-time Monitoring (M2: F4 canvas wiring / F5 WebSocket)

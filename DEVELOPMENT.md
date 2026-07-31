@@ -1,7 +1,7 @@
 # Loop — Development Status
 
-**Last Updated:** 2026-07-31
-**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) implemented
+**Last Updated:** 2026-08-01
+**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) + V1.2 M3 (sub-workflow invocation) implemented
 
 ---
 
@@ -110,6 +110,53 @@ adapters' outward contract is unchanged (INTEGRATION_CONTRACT.md §4).
 - Fixed pre-existing strict-mode (`noUncheckedIndexedAccess`) errors so the
   canvas type-checks/builds cleanly (`ui.tsx`, `lib/api.ts`, `Dashboard.tsx`,
   `WorkflowEditor.tsx`).
+
+---
+
+## V1.2 — Milestone M3: Sub-workflow Invocation (2026-08-01)
+
+Implements PRD F-Loop-1 (see `roadmap/V1.2_PRD.md`, `roadmap/V1.2_LOOP_DESIGN.md`,
+tasks S1–S6). Adds the ability to invoke a sub-workflow from within a workflow
+for composition/reuse. Backward compatible — root executions and the connector
+contract are unchanged.
+
+### F-Loop-1 — `workflow.invoke` engine-built-in node
+- `packages/engine/src/executor.ts`: `dispatchNode` intercepts
+  `node.type === 'workflow.invoke'` BEFORE connector routing (it is an engine
+  built-in, NOT a connector — INTEGRATION_CONTRACT.md §4 unchanged). It resolves
+  a child definition (inline `input.definition` object, or loaded by
+  `input.workflow_id`), maps `input.inputs` → child `trigger.payload`, creates a
+  child execution (own `execution_id`), and recursively runs the child on the
+  SAME executor — reusing workflow timeout / EventBus / idempotency / resume.
+  Returns `{ outputs: <child final nodeOutputs>, status: 'succeeded' }`; a
+  failing child throws and fails the parent node.
+- **Recursion guard (S2)**: depth is carried on the `ExecutorContext`
+  (`execute()` takes an optional `ExecuteOptions`); exceeding `maxSubWorkflowDepth`
+  (default 5, env `LOOP_SUBWORKFLOW_MAX_DEPTH`, constructor-overridable) throws
+  the new `SUBWORKFLOW_DEPTH_EXCEEDED` code (`packages/types/src/errors.ts`). A
+  visited-set cycle guard stops self-invoking workflows fast.
+- **Output consumption (S3)**: child outputs are reachable downstream via the
+  usual `{{node_X.output.*}}` interpolation; a backward-compatible nested-path
+  fallback resolves e.g. `{{node_sub.output.outputs.node_c1.value}}`.
+- **Event nesting (S4)**: `ExecutionBusEvent.parentExecutionId` tags every
+  sub-workflow event with its parent execution so monitors can rebuild the tree.
+
+### Tests
+- Unit: `tests/unit/engine/executor-subworkflow.test.ts` — child executes +
+  returns outputs, input mapping, downstream consumption, child-failure → parent
+  failure, depth ceiling, cycle guard, and `parentExecutionId` event tagging.
+- Integration: `tests/integration/engine/subworkflow.test.ts` — parent → child →
+  downstream end-to-end (inline + stored-by-id) and depth bounding.
+
+### Notes / deviations
+- `execute()` now resolves with the final node-output map (was `void`) and takes
+  an optional trailing `ExecuteOptions`; both are additive — no production caller
+  relied on the void return, so root behaviour is unchanged.
+- Inline sub-workflows reuse the parent execution's `workflow_id` for the child
+  execution row (FK constraints are ON) instead of persisting a synthetic
+  workflow row; stored sub-workflows use their own id.
+- Cycle detection reuses the `SUBWORKFLOW_DEPTH_EXCEEDED` code with a distinct
+  "cycle detected" message (no separate code was required by the design).
 
 ---
 

@@ -23,6 +23,17 @@ function defaultWorkflowTimeoutMs(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000;
 }
 
+/**
+ * Default sub-workflow recursion ceiling (V1.2 M3, F-Loop-1). Env-overridable,
+ * 5 fallback — bounds `workflow.invoke` nesting so a cyclic definition cannot
+ * recurse without limit.
+ */
+function defaultMaxSubWorkflowDepth(): number {
+  const raw = process.env['LOOP_SUBWORKFLOW_MAX_DEPTH'];
+  const parsed = raw === undefined ? Number.NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+}
+
 export interface ExecutorContext {
   executionId: string;
   workflowId: string;
@@ -33,6 +44,38 @@ export interface ExecutorContext {
    * loaded at start. Used to skip re-dispatch on resume / idempotent retry.
    */
   completedOutputs: Map<string, Record<string, unknown>>;
+  /**
+   * V1.2 M3 (F-Loop-1): sub-workflow recursion depth. `0` for a root execution;
+   * each `workflow.invoke` child runs at parent depth + 1 and is rejected past
+   * `maxSubWorkflowDepth`.
+   */
+  depth: number;
+  /**
+   * V1.2 M3: the execution that invoked this one as a sub-workflow. Absent for
+   * root executions; stamped onto every emitted event so monitors can rebuild
+   * the parent→child tree.
+   */
+  parentExecutionId?: string;
+  /**
+   * V1.2 M3: definition keys already on the invocation stack — used for cycle
+   * detection so a self-invoking workflow fails fast instead of recursing to
+   * the depth ceiling.
+   */
+  visited: Set<string>;
+}
+
+/**
+ * V1.2 M3 (F-Loop-1): optional recursion context threaded through
+ * `execute()` for sub-workflow invocation. Root callers omit it entirely
+ * (backward compatible); the engine supplies it when recursing into a child.
+ */
+export interface ExecuteOptions {
+  /** Recursion depth of this execution (default 0 = root). */
+  depth?: number;
+  /** Parent execution id when this execution is a sub-workflow invocation. */
+  parentExecutionId?: string;
+  /** Definition keys already on the invocation stack (cycle detection). */
+  visited?: Set<string>;
 }
 
 export class ExecutionExecutor {
@@ -45,6 +88,8 @@ export class ExecutionExecutor {
     // V1.1 M2 (F5): real-time status fan-out. Defaults to the process-wide
     // singleton the WS route subscribes to; inject a dedicated bus in tests.
     private eventBus: EventBus = executionEventBus,
+    // V1.2 M3 (F-Loop-1): ceiling for `workflow.invoke` recursion depth.
+    private maxSubWorkflowDepth: number = defaultMaxSubWorkflowDepth(),
   ) {}
 
   /**
@@ -55,8 +100,28 @@ export class ExecutionExecutor {
     this.eventBus.publish(event);
   }
 
-  /** Execute a workflow from start to finish. */
-  async execute(executionId: string, definition: WorkflowDefinition, triggerPayload: Record<string, unknown>): Promise<void> {
+  /**
+   * V1.2 M3 (F-Loop-1): the partial event fields that tag an event as belonging
+   * to a sub-workflow invocation. Spread into every emitted event so a monitor
+   * can reconstruct the parent→child execution tree. Empty for root executions.
+   */
+  private parentMarker(ctx: ExecutorContext): { parentExecutionId?: string } {
+    return ctx.parentExecutionId !== undefined ? { parentExecutionId: ctx.parentExecutionId } : {};
+  }
+
+  /**
+   * Execute a workflow from start to finish. Resolves with the final per-node
+   * output map so a `workflow.invoke` parent can surface a child's outputs
+   * (V1.2 M3); root callers may ignore the return value. `options` carries
+   * sub-workflow recursion state and is supplied by the engine itself when it
+   * recurses into a child — external callers leave it unset.
+   */
+  async execute(
+    executionId: string,
+    definition: WorkflowDefinition,
+    triggerPayload: Record<string, unknown>,
+    options?: ExecuteOptions,
+  ): Promise<Map<string, Record<string, unknown>>> {
     const startTime = Date.now();
     const ctx: ExecutorContext = {
       executionId,
@@ -64,6 +129,9 @@ export class ExecutionExecutor {
       triggerPayload,
       nodeOutputs: new Map(),
       completedOutputs: new Map(),
+      depth: options?.depth ?? 0,
+      ...(options?.parentExecutionId !== undefined ? { parentExecutionId: options.parentExecutionId } : {}),
+      visited: options?.visited ?? new Set<string>(),
     };
 
     // V1.1 M1 (F1 resume / F2 idempotency): seed the context with outputs of
@@ -85,6 +153,7 @@ export class ExecutionExecutor {
       executionId,
       status: 'running',
       timestamp: new Date().toISOString(),
+      ...this.parentMarker(ctx),
     });
 
     // V1.1 M1 (F3): bound the WHOLE execution with a workflow-level timeout.
@@ -105,9 +174,9 @@ export class ExecutionExecutor {
 
       if (levels.length === 0) {
         // Empty workflow succeeds immediately
-        await this.completeExecution(executionId, 'succeeded', startTime, undefined, ctx.workflowId);
+        await this.completeExecution(executionId, 'succeeded', startTime, undefined, ctx.workflowId, ctx.parentExecutionId);
         await recordEvent(this.store, executionId, 'execution_succeeded');
-        return;
+        return ctx.nodeOutputs;
       }
 
       for (const level of levels) {
@@ -120,8 +189,9 @@ export class ExecutionExecutor {
         }
       }
 
-      await this.completeExecution(executionId, 'succeeded', startTime, undefined, ctx.workflowId);
+      await this.completeExecution(executionId, 'succeeded', startTime, undefined, ctx.workflowId, ctx.parentExecutionId);
       await recordEvent(this.store, executionId, 'execution_succeeded');
+      return ctx.nodeOutputs;
     } catch (err) {
       // A workflow-level timeout supersedes the underlying node abort error so
       // the persisted reason is unambiguous.
@@ -132,7 +202,7 @@ export class ExecutionExecutor {
         ? new LoopError('WORKFLOW_TIMEOUT', errorMsg, 500)
         : err;
       logger.error({ executionId, error: errorMsg }, 'Execution failed');
-      await this.completeExecution(executionId, 'failed', startTime, errorMsg, ctx.workflowId);
+      await this.completeExecution(executionId, 'failed', startTime, errorMsg, ctx.workflowId, ctx.parentExecutionId);
       await recordEvent(this.store, executionId, 'execution_failed', undefined, {
         error: errorMsg,
         reason: workflowTimedOut ? 'workflow_timeout' : 'node_error',
@@ -254,6 +324,7 @@ export class ExecutionExecutor {
         nodeType: node.type,
         status: 'skipped',
         timestamp: new Date().toISOString(),
+        ...this.parentMarker(ctx),
       });
       return;
     }
@@ -281,6 +352,7 @@ export class ExecutionExecutor {
           nodeType: node.type,
           status: 'skipped',
           timestamp: new Date().toISOString(),
+          ...this.parentMarker(ctx),
         });
         return;
       }
@@ -314,6 +386,7 @@ export class ExecutionExecutor {
       nodeType: node.type,
       status: 'running',
       timestamp: new Date().toISOString(),
+      ...this.parentMarker(ctx),
     });
 
     try {
@@ -326,7 +399,7 @@ export class ExecutionExecutor {
       const timeoutMs = node.timeout_ms ?? this.nodeTimeoutMs;
       const result = await this.withTimeout(
         executeWithRetry(
-          async () => this.dispatchNode(node, resolvedInput, idempotencyKey),
+          async () => this.dispatchNode(node, resolvedInput, ctx, idempotencyKey),
           retryConfig,
           (attempt, error) => {
             logger.warn({ nodeId: node.id, attempt, error: String(error) }, 'Node retry');
@@ -358,6 +431,7 @@ export class ExecutionExecutor {
         timestamp: new Date().toISOString(),
         output: result,
         durationMs: Date.now() - startTime,
+        ...this.parentMarker(ctx),
       });
 
       const duration = (Date.now() - startTime) / 1000;
@@ -377,13 +451,26 @@ export class ExecutionExecutor {
         status: 'failed',
         timestamp: new Date().toISOString(),
         error: String(err),
+        ...this.parentMarker(ctx),
       });
       metrics.nodeErrorsTotal.inc({ node_type: node.type, error_type: 'execution_error' });
       throw err;
     }
   }
 
-  private async dispatchNode(node: WorkflowNode, input: Record<string, unknown>, idempotencyKey?: string): Promise<Record<string, unknown>> {
+  private async dispatchNode(
+    node: WorkflowNode,
+    input: Record<string, unknown>,
+    ctx: ExecutorContext,
+    idempotencyKey?: string,
+  ): Promise<Record<string, unknown>> {
+    // V1.2 M3 (F-Loop-1): `workflow.invoke` is an engine built-in, NOT a
+    // connector — intercept it before connector routing so it recurses into a
+    // child execution on the same executor (reusing timeout/events/idempotency).
+    if (node.type === 'workflow.invoke') {
+      return this.invokeSubWorkflow(node, input, ctx);
+    }
+
     // Determine connector type from node type (e.g. "vault.search" → "vault")
     const connectorType = node.type.split('.')[0] ?? node.type;
     const operation = node.type.split('.').slice(1).join('.') ?? 'execute';
@@ -442,13 +529,37 @@ export class ExecutionExecutor {
         const nodeId = parts[0]!.replace('node_', '');
         const outputKey = parts.slice(2).join('.');
         const nodeOutput = ctx.nodeOutputs.get(`node_${nodeId}`);
-        return String(nodeOutput?.[outputKey] ?? '');
+        return String(this.resolveOutputPath(nodeOutput, outputKey) ?? '');
       }
       return '';
     });
   }
 
-  private async completeExecution(executionId: string, status: 'succeeded' | 'failed', startTime: number, error?: string, workflowId?: string): Promise<void> {
+  /**
+   * Resolve a (possibly dotted) output key against a node's output. A flat key
+   * wins unchanged (V1.0/V1.1 behaviour); when absent, the key is traversed as
+   * a nested path so sub-workflow outputs are reachable, e.g.
+   * `{{node_sub.output.outputs.node_c1.value}}` (V1.2 M3, S3).
+   */
+  private resolveOutputPath(nodeOutput: Record<string, unknown> | undefined, outputKey: string): unknown {
+    if (nodeOutput === undefined) return undefined;
+    if (outputKey in nodeOutput) return nodeOutput[outputKey];
+    let current: unknown = nodeOutput;
+    for (const segment of outputKey.split('.')) {
+      if (current === null || typeof current !== 'object') return undefined;
+      current = (current as Record<string, unknown>)[segment];
+    }
+    return current;
+  }
+
+  private async completeExecution(
+    executionId: string,
+    status: 'succeeded' | 'failed',
+    startTime: number,
+    error?: string,
+    workflowId?: string,
+    parentExecutionId?: string,
+  ): Promise<void> {
     const duration = Date.now() - startTime;
     await this.store.executions.updateStatus(executionId, {
       status,
@@ -466,6 +577,131 @@ export class ExecutionExecutor {
       timestamp: new Date().toISOString(),
       durationMs: duration,
       ...(error !== undefined ? { error } : {}),
+      ...(parentExecutionId !== undefined ? { parentExecutionId } : {}),
     });
   }
+
+  /**
+   * V1.2 M3 (F-Loop-1): execute a `workflow.invoke` node. Resolves the child
+   * definition (inline `input.definition` object, or load by `input.workflow_id`),
+   * maps `input.inputs` onto the child's `trigger.payload`, and recursively runs
+   * the child on the SAME executor — so the child reuses the workflow timeout,
+   * EventBus fan-out, idempotency and resume machinery. Returns
+   * `{ outputs, status: 'succeeded' }` (the child's final per-node outputs) so
+   * downstream parent nodes can reference them; a failing child throws, failing
+   * this parent node. Recursion is bounded by `maxSubWorkflowDepth` plus a
+   * visited-set cycle guard.
+   */
+  private async invokeSubWorkflow(
+    node: WorkflowNode,
+    input: Record<string, unknown>,
+    ctx: ExecutorContext,
+  ): Promise<Record<string, unknown>> {
+    const childDepth = ctx.depth + 1;
+    if (childDepth > this.maxSubWorkflowDepth) {
+      throw new LoopError(
+        'SUBWORKFLOW_DEPTH_EXCEEDED',
+        `Sub-workflow recursion depth ${childDepth} exceeds the maximum of ${this.maxSubWorkflowDepth} (node '${node.id}')`,
+        400,
+        { node_id: node.id, depth: childDepth, max_depth: this.maxSubWorkflowDepth },
+      );
+    }
+
+    // Resolve the child definition: an inline object wins, else load by id.
+    const inline = input['definition'];
+    const workflowIdInput = input['workflow_id'];
+    let childDefinition: WorkflowDefinition;
+    let childWorkflowId: string | undefined;
+
+    if (inline !== undefined && inline !== null && typeof inline === 'object' && !Array.isArray(inline)) {
+      childDefinition = inline as WorkflowDefinition;
+    } else if (typeof workflowIdInput === 'string' && workflowIdInput.length > 0) {
+      const loaded = await this.store.workflows.getById(workflowIdInput);
+      if (!loaded) {
+        throw new LoopError('NOT_FOUND_WORKFLOW', `Sub-workflow '${workflowIdInput}' not found (node '${node.id}')`, 404);
+      }
+      childDefinition = loaded.definition;
+      childWorkflowId = loaded.id;
+    } else {
+      throw new LoopError(
+        'VALIDATION_REQUIRED',
+        `workflow.invoke node '${node.id}' requires an inline 'definition' object or a 'workflow_id'`,
+        400,
+      );
+    }
+
+    // Cycle guard: a definition already on the invocation stack means an
+    // infinite loop — fail fast instead of recursing to the depth ceiling.
+    const key = subWorkflowKey(childDefinition, childWorkflowId);
+    if (ctx.visited.has(key)) {
+      throw new LoopError(
+        'SUBWORKFLOW_DEPTH_EXCEEDED',
+        `Sub-workflow invocation cycle detected at '${key}' (node '${node.id}')`,
+        400,
+        { node_id: node.id, cycle: key },
+      );
+    }
+
+    // Input mapping (S3): parent node `input.inputs` → child `trigger.payload`.
+    const rawInputs = input['inputs'];
+    const childPayload =
+      rawInputs !== undefined && rawInputs !== null && typeof rawInputs === 'object' && !Array.isArray(rawInputs)
+        ? (rawInputs as Record<string, unknown>)
+        : {};
+
+    // Resolve a valid `workflow_id` FK for the child execution row. Stored
+    // sub-workflows use their own id; inline definitions reuse the parent
+    // execution's workflow_id so the child execution and its node/event rows
+    // satisfy FK constraints without persisting a synthetic workflow.
+    if (childWorkflowId === undefined) {
+      const parentExecution = await this.store.executions.getById(ctx.executionId);
+      if (!parentExecution) {
+        throw new LoopError(
+          'INTERNAL_ERROR',
+          `Parent execution '${ctx.executionId}' not found for sub-workflow invocation`,
+          500,
+        );
+      }
+      childWorkflowId = parentExecution.workflow_id;
+    }
+
+    const childExecutionId = randomUUID();
+    await this.store.executions.create({
+      id: childExecutionId,
+      workflow_id: childWorkflowId,
+      workflow_version: 1,
+      trigger_type: 'event',
+      trigger_payload: childPayload,
+    });
+
+    const visited = new Set(ctx.visited);
+    visited.add(key);
+
+    // Recurse on the same executor; a child failure propagates up and fails
+    // this parent node (execute() re-throws the terminal error).
+    const childOutputs = await this.execute(childExecutionId, childDefinition, childPayload, {
+      depth: childDepth,
+      parentExecutionId: ctx.executionId,
+      visited,
+    });
+
+    // Output return (S3): expose the child's final per-node outputs.
+    const outputs: Record<string, Record<string, unknown>> = {};
+    for (const [nodeId, output] of childOutputs) {
+      outputs[nodeId] = output;
+    }
+    return { outputs, status: 'succeeded' };
+  }
+}
+
+/**
+ * V1.2 M3: stable identity for a sub-workflow definition used by the cycle
+ * guard — the stored workflow id when known, else the definition's name, else a
+ * fingerprint of its node ids.
+ */
+function subWorkflowKey(definition: WorkflowDefinition, workflowId?: string): string {
+  if (workflowId !== undefined) return `id:${workflowId}`;
+  const name = definition.metadata?.name;
+  if (name !== undefined && name.length > 0) return `name:${name}`;
+  return `nodes:${definition.nodes.map((n) => n.id).join(',')}`;
 }

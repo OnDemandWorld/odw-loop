@@ -41,6 +41,13 @@ export interface ExecutionBusEvent {
   error?: string;
   /** Wall-clock node duration in ms — populated on `node_succeeded`. */
   durationMs?: number;
+  /**
+   * V1.2 M3 (F-Loop-1): set on every event emitted by a sub-workflow
+   * invocation, pointing at the parent execution that triggered it. Lets a
+   * monitor reconstruct the parent→child execution tree (nested view). Absent
+   * for root executions.
+   */
+  parentExecutionId?: string;
 }
 
 /** A subscriber callback invoked with each event for its executionId. */
