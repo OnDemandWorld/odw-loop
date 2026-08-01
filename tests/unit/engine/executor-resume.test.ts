@@ -185,12 +185,14 @@ describe('ExecutionExecutor — workflow timeout (V1.1 M1 F3)', () => {
     const connectors = new ConnectorRegistry();
     connectors.registerAdapter(adapter);
 
-    // Per-definition workflow timeout (50ms) overrides the large executor default.
+    // Per-definition workflow timeout (200ms) overrides the large executor default.
+    // V1.5 M1 (F-4', TH2): widened 50ms→200ms so the deadline timer is not starved
+    // under high load; the node still hangs, so the workflow timeout always wins.
     const definition: WorkflowDefinition = {
       ...TWO_NODE,
       nodes: [node('stuck', 'hang.op')],
       edges: [],
-      settings: { workflow_timeout_ms: 50 },
+      settings: { workflow_timeout_ms: 200 },
     };
     const executionId = await seedExecution(store, definition);
 

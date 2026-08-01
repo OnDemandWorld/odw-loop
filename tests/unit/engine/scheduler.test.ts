@@ -148,7 +148,12 @@ describe('computeLevels', () => {
 });
 
 describe('Performance test', () => {
-  it('should handle 200-node DAG in less than 50ms', () => {
+  // V1.5 M1 (F-4', TH2): the bound was 50ms, which flakes under high load because
+  // `Date.now()` wall-clock measurement is at the mercy of OS scheduling/GC pauses.
+  // A 200-node linear DAG sorts in well under 1ms normally; the generous 1000ms
+  // ceiling still guards against a pathological regression without load flakiness.
+  // The assertion is retained — only the margin widened.
+  it('should handle 200-node DAG in less than 1000ms', () => {
     // Create a complex DAG with 200 nodes
     const nodes: WorkflowNode[] = [];
     const edges: WorkflowEdge[] = [];
@@ -167,6 +172,6 @@ describe('Performance test', () => {
     const duration = Date.now() - start;
 
     expect(sorted).toHaveLength(200);
-    expect(duration).toBeLessThan(50);
+    expect(duration).toBeLessThan(1000);
   });
 });

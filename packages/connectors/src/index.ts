@@ -1,5 +1,6 @@
 export { type ConnectorAdapter, type ExecuteParams, type ExecuteResult } from './interface.js';
 export { ConnectorRegistry } from './registry.js';
+export { traceHeaders } from './trace.js';
 export { VaultAdapter } from './vault/adapter.js';
 export { DeskAdapter } from './desk/adapter.js';
 export { RecapAdapter } from './recap/adapter.js';

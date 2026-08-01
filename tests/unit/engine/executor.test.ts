@@ -142,10 +142,14 @@ describe('ExecutionExecutor — parallel levels & timeout', () => {
     const elapsed = Date.now() - started;
 
     expect(stats.calls).toBe(2);
-    // Both nodes were in flight at once → genuine parallelism.
+    // Both nodes were in flight at once → genuine parallelism. This event-driven
+    // counter is the authoritative proof of concurrency (it never flakes under load).
     expect(stats.maxInFlight).toBe(2);
-    // Sequential would take ≥160ms; parallel completes in roughly one delay.
-    expect(elapsed).toBeLessThan(160);
+    // V1.5 M1 (F-4', TH2): wall-clock sanity bound only. The previous 160ms ceiling
+    // (just under the ~160ms sequential cost) raced OS scheduling jitter under high
+    // load; the generous 1500ms cap still asserts the run completes promptly (well
+    // under the 5000ms node timeout) while parallelism is proven by maxInFlight above.
+    expect(elapsed).toBeLessThan(1500);
 
     const execution = await store.executions.getById(executionId);
     expect(execution?.status).toBe('succeeded');
@@ -195,10 +199,12 @@ describe('ExecutionExecutor — parallel levels & timeout', () => {
     };
     const executionId = await seedExecution(store, definition);
 
-    // 50ms node timeout; the adapter never resolves.
-    const executor = new ExecutionExecutor(store, connectors, 10, 50);
+    // V1.5 M1 (F-4', TH2): node timeout widened 50ms→200ms so the timer is not
+    // starved under high load; the adapter still never resolves, so the timeout
+    // race is deterministic. The assertion is unchanged apart from the value.
+    const executor = new ExecutionExecutor(store, connectors, 10, 200);
 
-    await expect(executor.execute(executionId, definition, {})).rejects.toThrow(/timed out after 50ms/);
+    await expect(executor.execute(executionId, definition, {})).rejects.toThrow(/timed out after 200ms/);
 
     const execution = await store.executions.getById(executionId);
     expect(execution?.status).toBe('failed');
@@ -219,15 +225,17 @@ describe('ExecutionExecutor — parallel levels & timeout', () => {
 
     const definition: WorkflowDefinition = {
       version: '1.0',
-      nodes: [{ id: 'stuck', type: 'hang.op', position: { x: 0, y: 0 }, config: {}, timeout_ms: 30 }],
+      nodes: [{ id: 'stuck', type: 'hang.op', position: { x: 0, y: 0 }, config: {}, timeout_ms: 200 }],
       edges: [],
       variables: {},
       metadata: { name: 'per-node-timeout' },
     };
     const executionId = await seedExecution(store, definition);
 
-    // Executor-wide timeout is large, but the node override (30ms) wins.
+    // Executor-wide timeout is large, but the node override (200ms) wins.
+    // V1.5 M1 (F-4', TH2): override widened 30ms→200ms for high-load stability;
+    // it still differs from the 60_000ms executor default, so the override is proven.
     const executor = new ExecutionExecutor(store, connectors, 10, 60_000);
-    await expect(executor.execute(executionId, definition, {})).rejects.toThrow(/timed out after 30ms/);
+    await expect(executor.execute(executionId, definition, {})).rejects.toThrow(/timed out after 200ms/);
   });
 });

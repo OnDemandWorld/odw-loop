@@ -21,6 +21,7 @@ import { registerRoutes } from './routes/index.js';
 import { registerExecutionWebSocket } from './routes/ws.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestIdHook } from './middleware/requestId.js';
+import { traceIdHook } from './middleware/traceId.js';
 
 const logger = createLogger({ name: 'loop:api', component: 'api' });
 
@@ -35,6 +36,9 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   // ─── Middleware & hooks ──────────────────────────────────────────────────
 
   app.addHook('onRequest', requestIdHook);
+  // V1.5 M1 (F-3, TR1): distributed tracing — read/generate X-Trace-Id and run
+  // the request lifecycle inside a correlation context carrying trace_id.
+  app.addHook('onRequest', traceIdHook);
 
   // CORS
   await app.register(import('@fastify/cors'), {

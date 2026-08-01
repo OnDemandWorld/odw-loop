@@ -1,11 +1,20 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CircuitBreaker } from '../../../packages/engine/src/circuitBreaker';
 
 describe('CircuitBreaker', () => {
   let cb: CircuitBreaker;
 
   beforeEach(() => {
+    // V1.5 M1 (F-4', TH2): the cooldown transition is pure logic keyed off
+    // Date.now(). Drive it with fake timers instead of real `setTimeout` waits
+    // so the suite stays stable under high load (no wall-clock races). Every
+    // assertion below is preserved — only the wait mechanism changed.
+    vi.useFakeTimers();
     cb = new CircuitBreaker('test-circuit', 3, 1000); // threshold=3, cooldown=1000ms
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('CLOSED state', () => {
@@ -103,8 +112,8 @@ describe('CircuitBreaker', () => {
       await expect(cbShort.execute(fn)).rejects.toThrow('fail');
       expect(cbShort.getState()).toBe('open');
 
-      // Wait for cooldown
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Wait for cooldown (fake timers — advance the mocked clock past the 50ms cooldown)
+      await vi.advanceTimersByTimeAsync(100);
 
       // Should transition to HALF_OPEN on next call
       const successFn = vi.fn().mockResolvedValue('success');
@@ -125,8 +134,8 @@ describe('CircuitBreaker', () => {
       await expect(cbShort.execute(failFn)).rejects.toThrow('fail');
       expect(cbShort.getState()).toBe('open');
 
-      // Wait for cooldown
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Wait for cooldown (fake timers — advance the mocked clock past the 50ms cooldown)
+      await vi.advanceTimersByTimeAsync(100);
 
       // Successful test request should close circuit
       const successFn = vi.fn().mockResolvedValue('success');
@@ -143,8 +152,8 @@ describe('CircuitBreaker', () => {
       await expect(cbShort.execute(failFn)).rejects.toThrow('fail');
       expect(cbShort.getState()).toBe('open');
 
-      // Wait for cooldown
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Wait for cooldown (fake timers — advance the mocked clock past the 50ms cooldown)
+      await vi.advanceTimersByTimeAsync(100);
 
       // Failed test request should reopen circuit
       await expect(cbShort.execute(failFn)).rejects.toThrow('fail');
@@ -161,8 +170,8 @@ describe('CircuitBreaker', () => {
       await expect(cbShort.execute(failFn)).rejects.toThrow('fail');
       expect(cbShort.getState()).toBe('open');
 
-      // Wait for cooldown
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Wait for cooldown (fake timers — advance the mocked clock past the 50ms cooldown)
+      await vi.advanceTimersByTimeAsync(100);
 
       // Successful request should reset counter and close circuit
       const successFn = vi.fn().mockResolvedValue('success');

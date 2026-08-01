@@ -14,6 +14,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced scheduling with timezone support
 - Multi-tenancy support
 
+## [1.5.0-M1] - 2026-08-01
+
+### Added — PostgreSQL Scale layer completion (F-1, PG1–PG4)
+- **`packages/state/src/postgres/index.ts`**: implemented every entity that
+  previously threw `not implemented`, with parameterized (`$1...`) SQL mirroring
+  the SQLite reference adapter — `executions`, `nodeExecutions` (idempotency-key
+  lookup + conditional `updateStatus`), `workflowDefinitions`, `connectors`,
+  `triggers`, `audit` (3-attempt retry), `users`, `secrets`, `egressPolicies`
+  (alongside the already-implemented `workflows` and `events`). The PostgreSQL
+  Scale layer now reaches CRUD parity with SQLite across all 10 entities.
+- Row mappers normalise PostgreSQL `TIMESTAMP`/`JSONB` values to the same
+  ISO-string / object shapes the SQLite adapter returns.
+
+### Added — Distributed tracing, Loop side (F-3, TR1–TR2)
+- **`apps/api/src/middleware/traceId.ts`**: `onRequest` hook (registered after
+  `requestIdHook`) reads the inbound `X-Trace-Id` header (generating a UUIDv4
+  when absent) and runs the request lifecycle inside a correlation context
+  carrying `trace_id`.
+- **`packages/observability/src/logger.ts`**: pino `mixin` (`correlationMixin`)
+  injects `trace_id`/`request_id` into every structured log line emitted while a
+  correlation context is active (best-effort, no-op outside a request).
+- **`packages/connectors/src/trace.ts`**: `traceHeaders()` — the Vault/Desk/Recap
+  adapters forward the active `trace_id` as an outbound `X-Trace-Id` header
+  (best-effort, from `AsyncLocalStorage`).
+
+### Changed — Test hardening (F-4', TH1–TH3)
+- Timing-sensitive unit tests hardened **without deleting assertions**: fake
+  timers for the circuit-breaker cooldown logic; widened wall-clock margins
+  (scheduler 50→1000ms, executor parallel 160→1500ms, node/workflow timeouts
+  30/50→200ms). Event-driven assertions (e.g. `maxInFlight`) are unchanged.
+- **`vitest.config.ts`**: unit test files run serially (`fileParallelism: false`)
+  to remove native better-sqlite3 / CPU contention under high load.
+
+### Compatibility
+- Fully backward compatible. SQLite remains the default store; the connector
+  request/response contract is unchanged (INTEGRATION_CONTRACT.md §4) — tracing
+  only adds an outbound header. Migrations are idempotent and unchanged.
+
+### Tests
+- 375 unit + 141 integration + 29 e2e baseline preserved; +35 new unit tests
+  (23 PostgreSQL mock-client, 6 trace middleware/mixin, 6 connector trace
+  forwarding) → 410 unit total. `undici` added as a root devDependency for the
+  connector tests' `MockAgent`.
+
 ## [1.4.0-M2] - 2026-08-01
 
 ### Added — Replay Output Persistence (M2: F-2)

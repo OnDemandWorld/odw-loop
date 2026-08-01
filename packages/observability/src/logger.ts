@@ -1,4 +1,21 @@
 import pino from 'pino';
+import { getCorrelationContext } from './correlation.js';
+
+/**
+ * V1.5 M1 (F-3, TR1): pino mixin that injects the active correlation context
+ * (trace_id, request_id) into every structured log line. Best-effort — when no
+ * context is active (e.g. background work outside a request) it adds nothing, so
+ * existing log output is unchanged. This is what makes a single `trace_id`
+ * correlate every log emitted while handling a traced request.
+ */
+export function correlationMixin(): Record<string, unknown> {
+  const ctx = getCorrelationContext();
+  if (ctx === undefined) return {};
+  const fields: Record<string, unknown> = {};
+  if (ctx.trace_id !== undefined) fields['trace_id'] = ctx.trace_id;
+  if (ctx.request_id !== undefined) fields['request_id'] = ctx.request_id;
+  return fields;
+}
 
 export interface LoopLogger {
   info(obj: unknown, msg?: string): void;
@@ -33,6 +50,9 @@ export function createLogger(opts: LoggerOptions): LoopLogger {
     name: opts.name,
     level,
     base: opts.component ? { component: opts.component } : undefined,
+    // V1.5 M1 (F-3, TR1): inject trace_id/request_id from the active correlation
+    // context into every log line (best-effort, no-op outside a request).
+    mixin: correlationMixin,
   });
   return logger;
 }

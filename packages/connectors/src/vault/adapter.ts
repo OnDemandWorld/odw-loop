@@ -18,6 +18,7 @@ import type { ConnectorAdapter, ExecuteParams, ExecuteResult } from '../interfac
 import type { ConnectorCapabilities } from '@loop/types';
 import { UpstreamError } from '@loop/types';
 import { createLogger } from '@loop/observability';
+import { traceHeaders } from '../trace.js';
 
 const logger = createLogger({ name: 'loop:connectors:vault', component: 'connectors' });
 
@@ -148,6 +149,7 @@ export class VaultAdapter implements ConnectorAdapter {
         headers: {
           ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
           ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+          ...traceHeaders(),
         },
         body: form,
       });
@@ -186,6 +188,7 @@ export class VaultAdapter implements ConnectorAdapter {
           ...(body ? { 'content-type': 'application/json' } : {}),
           ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
           ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+          ...traceHeaders(),
         },
         body: body ? JSON.stringify(body) : undefined,
       });

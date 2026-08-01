@@ -19,6 +19,7 @@ import type { ConnectorAdapter, ExecuteParams, ExecuteResult } from '../interfac
 import type { ConnectorCapabilities } from '@loop/types';
 import { UpstreamError } from '@loop/types';
 import { createLogger } from '@loop/observability';
+import { traceHeaders } from '../trace.js';
 
 const logger = createLogger({ name: 'loop:connectors:recap', component: 'connectors' });
 
@@ -102,6 +103,7 @@ export class RecapAdapter implements ConnectorAdapter {
           ...(body ? { 'content-type': 'application/json' } : {}),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
           ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+          ...traceHeaders(),
         },
         body: body ? JSON.stringify(body) : undefined,
       });

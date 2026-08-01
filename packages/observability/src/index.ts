@@ -1,4 +1,4 @@
-export { createLogger } from './logger.js';
+export { createLogger, correlationMixin } from './logger.js';
 export type { LoopLogger, LoggerOptions } from './logger.js';
 export {
   generateRequestId,

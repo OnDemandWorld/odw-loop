@@ -22,6 +22,13 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/unit/**/*.test.ts', 'packages/*/tests/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**', 'tests/integration', 'tests/e2e'],
+    // V1.5 M1 (F-4', TH2): run unit test files serially. Each file still gets its
+    // own isolated worker context, but files no longer execute concurrently. This
+    // removes inter-file contention for the native better-sqlite3 module (the root
+    // cause of rare high-load SIGSEGV) and for CPU time (which skewed the wall-clock
+    // timing assertions). Combined with the per-test fake-timer / widened-margin
+    // hardening, this keeps `make verify` stably green under high load.
+    fileParallelism: false,
     coverage: {
       reporter: ['text', 'json', 'html'],
       thresholds: {

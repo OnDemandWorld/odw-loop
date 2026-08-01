@@ -1,7 +1,79 @@
 # Loop — Development Status
 
 **Last Updated:** 2026-08-01
-**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) + V1.2 M3 (sub-workflow invocation) + V1.3 M1 (event-sourced replay) + V1.3 RBAC (role-based access control) + V1.4 M2 (replay output persistence) implemented
+**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) + V1.2 M3 (sub-workflow invocation) + V1.3 M1 (event-sourced replay) + V1.3 RBAC (role-based access control) + V1.4 M2 (replay output persistence) + V1.5 M1 (PostgreSQL Scale layer + test hardening + distributed tracing) implemented
+
+---
+
+## V1.5 — Milestone M1: PostgreSQL Scale Layer + Test Hardening + Distributed Tracing (2026-08-01)
+
+Implements PRD F-1 (PostgreSQL Scale 层补全), F-4' (测试加固) and the Loop side of
+F-3 (分布式追踪) — see `roadmap/V1.5_PRD.md` and `roadmap/V1.5_LOOP_DESIGN.md`
+(tasks PG1–PG4, TH1–TH3, TR1–TR2). Incremental and backward compatible; the
+SQLite default path and the connector contract (INTEGRATION_CONTRACT.md §4) are
+unchanged.
+
+### F-1 — PostgreSQL Scale layer completion (PG1–PG4)
+- `packages/state/src/postgres/index.ts`: every entity that previously threw
+  `not implemented` is now fully implemented with parameterized (`$1...`) SQL,
+  mirroring the SQLite reference adapter's semantics — `executions`,
+  `nodeExecutions` (incl. idempotency-key lookup + conditional `updateStatus`),
+  `events`, `workflowDefinitions`, `connectors`, `workflows`, `triggers`,
+  `audit` (3-attempt retry), `users`, `secrets`, `egressPolicies`. The PostgreSQL
+  Scale layer reaches CRUD parity with SQLite across all 10 entities.
+- Row mappers normalise PostgreSQL `TIMESTAMP`/`JSONB` values (Date or string)
+  to the same ISO-string / object shapes the SQLite adapter returns.
+- Migrations remain idempotent (`IF NOT EXISTS`, `migrations-pg.ts`); no schema
+  change was required — the V1.1/V1.2 migrations already covered these tables.
+- **Tests** (`tests/unit/state/postgres.test.ts`, 23 tests): a MOCK pg client
+  (fake `pool.query`) records every SQL string + parameter list and returns
+  programmable rows, asserting correct parameterized SQL and row mapping WITHOUT
+  a real PostgreSQL server (PRD §7).
+
+### F-4' — Test hardening (TH1–TH3)
+- Timing-sensitive tests hardened **without deleting any assertion**:
+  - `circuitBreaker.test.ts`: cooldown transitions now driven by fake timers
+    (`vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync`) instead of real
+    `setTimeout` waits (pure-logic timing → deterministic under load).
+  - `scheduler.test.ts`: 200-node sort perf bound widened 50ms→1000ms (the
+    `toHaveLength(200)` correctness assertion is unchanged).
+  - `executor.test.ts`: parallel wall-clock bound widened 160ms→1500ms (the
+    event-driven `maxInFlight === 2` parallelism proof is unchanged); node
+    timeout values widened 50/30ms→200ms.
+  - `executor-resume.test.ts`: workflow-timeout value widened 50ms→200ms.
+- `vitest.config.ts`: unit test files now run serially
+  (`fileParallelism: false`) — each file keeps its own isolated worker context,
+  but concurrent execution no longer contends for the native better-sqlite3
+  module (the root cause of rare high-load SIGSEGV) or CPU time.
+- **Test stability note:** the combination above (fake timers for pure-logic
+  timing, widened margins for real-async waits, serial file execution) is what
+  keeps `make verify` stably green under high load. If a future suite proves
+  conflict-prone, prefer injecting a controllable clock or switching a wall-clock
+  assertion to an event-driven one over deleting it; reach for
+  `fileParallelism: false` / `poolOptions` only when isolation is genuinely needed.
+
+### F-3 — Distributed tracing, Loop side (TR1–TR2)
+- `apps/api/src/middleware/traceId.ts` (registered in `server.ts` after
+  `requestIdHook`): reads the inbound `X-Trace-Id` header (generating a UUIDv4
+  when absent), attaches it to the request, and runs the request lifecycle inside
+  a correlation context carrying `trace_id`.
+- `packages/observability/src/logger.ts`: a pino `mixin` (`correlationMixin`)
+  stamps `trace_id` (and `request_id`) onto every structured log line emitted
+  while a correlation context is active — best-effort, no-op outside a request.
+- `packages/connectors/src/trace.ts` (`traceHeaders()`): the Vault/Desk/Recap
+  adapters forward the active `trace_id` as an outbound `X-Trace-Id` header
+  (best-effort, from `AsyncLocalStorage`). Adds ONLY a header — the
+  request/response contract is unchanged (INTEGRATION_CONTRACT.md §4), exactly
+  like the existing best-effort `idempotency-key` header.
+- **Tests**: `tests/unit/api/trace.test.ts` (middleware with/without header +
+  log mixin) and `tests/unit/connectors/trace-propagation.test.ts` (outbound
+  header forwarding via an undici `MockAgent`, no network). `undici` was added as
+  a root devDependency so the test can use its `MockAgent`.
+
+### Tests
+- Baseline preserved: 375 unit + 141 integration + 29 e2e all green.
+- Added: 23 (PG mock-client) + 6 (trace middleware/mixin) + 6 (connector trace
+  forwarding) = 35 new unit tests → **410 unit** total. `pnpm typecheck` clean.
 
 ---
 
