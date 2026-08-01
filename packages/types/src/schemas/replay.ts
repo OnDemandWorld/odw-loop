@@ -15,7 +15,13 @@ import type { ExecutionEventType, ExecutionStatus, NodeExecutionStatus } from '.
 export interface NodeSnapshot {
   /** Last known status of the node, folded from its lifecycle events. */
   status: NodeExecutionStatus;
-  /** Node output — present when the event stream carries it (forward compatible). */
+  /**
+   * Node output — present when the event stream carries it. Since V1.4 M2 the
+   * executor persists the (size-capped) output in the `node_succeeded` payload,
+   * so this is populated on reconstruction. An oversized output is surfaced as
+   * a `{ __truncated__: true, size, preview }` marker rather than the full
+   * payload; old events without an output leave this `undefined`.
+   */
   output?: Record<string, unknown>;
   /** Error message — present when the node failed. */
   error?: string;

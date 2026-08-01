@@ -103,6 +103,11 @@ export function foldExecutionEvents(executionId: string, events: ExecutionEvent[
         break;
       case 'node_succeeded': {
         if (nodeId) {
+          // V1.4 M2 (F-2): the executor persists the node output (size-capped)
+          // in the payload. Read it back into the snapshot verbatim — a
+          // `{__truncated__: true, size, preview}` marker for an oversized
+          // output is a plain record and is preserved unchanged. Old events
+          // without `output` leave snapshot.output undefined (backward compat).
           const output = asRecord(payload['output']);
           setNode(nodeId, { status: 'succeeded', ...(output !== undefined ? { output } : {}) });
         }

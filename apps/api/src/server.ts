@@ -112,6 +112,10 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     // V1.1 M2 (F5): publish node/execution status to the same bus the WS route
     // subscribes to (wired below) for real-time monitoring.
     executionEventBus,
+    // V1.2 M3: sub-workflow recursion ceiling — keep the executor default.
+    undefined,
+    // V1.4 M2 (F-2): size cap for the node output persisted into event payloads.
+    cfg.LOOP_EVENT_OUTPUT_MAX_BYTES,
   );
   const triggerDispatcher = new TriggerDispatcher(store);
   const cronHandler = new CronTriggerHandler(store);

@@ -14,6 +14,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced scheduling with timezone support
 - Multi-tenancy support
 
+## [1.4.0-M2] - 2026-08-01
+
+### Added — Replay Output Persistence (M2: F-2)
+- **`packages/engine/src/executor.ts`**: when the executor records a
+  `node_succeeded` event it now persists the node's output in the event payload
+  as `{ duration_ms, output }`, so a replay can reconstruct full node outputs
+  from the append-only `execution_events` log (not just status/timeline).
+  - **Size cap**: the output is JSON-serialised and measured against
+    `LOOP_EVENT_OUTPUT_MAX_BYTES` (default `65536` = 64KB). When it fits, the
+    full output is stored; when it exceeds the cap, a small truncated marker
+    `{ __truncated__: true, size, preview }` is stored instead (`size` = original
+    serialised byte length, `preview` = a short leading slice of the JSON), so
+    oversized outputs cannot bloat the events table.
+- **`packages/engine/src/replay.ts`**: `foldExecutionEvents` /
+  `reconstructExecution` read the persisted `output` back into
+  `NodeSnapshot.output`, preserving a truncation marker verbatim.
+- **Config** (`apps/api/src/config.ts`): added `LOOP_EVENT_OUTPUT_MAX_BYTES`
+  (number, default `65536`), wired into the `ExecutionExecutor`.
+
+### Compatibility
+- Fully backward compatible. Events written before M2 carry no `output` field,
+  so a reconstructed snapshot's `NodeSnapshot.output` stays `undefined` for them
+  (prior behaviour). Dry-run replay decisions are unchanged. Connector adapters'
+  outward contract is unchanged (INTEGRATION_CONTRACT.md §4) — only the internal
+  event payload gained a size-capped `output` field.
+
+### Tests
+- Integration (`tests/integration/engine/replay-output.test.ts`): execute →
+  reconstruct asserts node outputs are persisted and folded back; an oversized
+  output is stored as a truncation marker (full output NOT persisted); legacy
+  events without `output` fold to `output === undefined`.
+
 ## [1.3.0-M1] - 2026-08-01
 
 ### Added — Event-Sourced Replay (M1: F-Loop-1)

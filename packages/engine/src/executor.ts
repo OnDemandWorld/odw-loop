@@ -34,6 +34,42 @@ function defaultMaxSubWorkflowDepth(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
 }
 
+/**
+ * Default size cap (bytes) for the node output persisted into a
+ * `node_succeeded` event payload (V1.4 M2, F-2). Env-overridable, 64KB
+ * fallback — bounds what a single event may store so large outputs cannot
+ * bloat the append-only `execution_events` table.
+ */
+function defaultEventOutputMaxBytes(): number {
+  const raw = process.env['LOOP_EVENT_OUTPUT_MAX_BYTES'];
+  const parsed = raw === undefined ? Number.NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 65_536;
+}
+
+/** Leading characters of the serialised output retained in a truncated marker. */
+const EVENT_OUTPUT_PREVIEW_CHARS = 1024;
+
+/**
+ * V1.4 M2 (F-2): cap a node output for persistence into a `node_succeeded`
+ * event payload. When the JSON-serialised output fits within `maxBytes` it is
+ * returned unchanged; otherwise a small truncated marker
+ * `{ __truncated__: true, size, preview }` is returned instead, so oversized
+ * outputs cannot bloat the append-only events table. `size` is the original
+ * serialised byte length; `preview` is a short leading slice of the JSON.
+ */
+function capOutputForEvent(
+  output: Record<string, unknown>,
+  maxBytes: number,
+): Record<string, unknown> {
+  const serialized = JSON.stringify(output) ?? '';
+  const size = Buffer.byteLength(serialized, 'utf8');
+  if (size <= maxBytes) {
+    return output;
+  }
+  const preview = serialized.slice(0, Math.max(0, Math.min(EVENT_OUTPUT_PREVIEW_CHARS, maxBytes)));
+  return { __truncated__: true, size, preview };
+}
+
 export interface ExecutorContext {
   executionId: string;
   workflowId: string;
@@ -90,6 +126,10 @@ export class ExecutionExecutor {
     private eventBus: EventBus = executionEventBus,
     // V1.2 M3 (F-Loop-1): ceiling for `workflow.invoke` recursion depth.
     private maxSubWorkflowDepth: number = defaultMaxSubWorkflowDepth(),
+    // V1.4 M2 (F-2): size cap (bytes) for the node output persisted into a
+    // `node_succeeded` event payload. Oversized outputs are stored as a
+    // truncated marker instead of the full payload (see capOutputForEvent).
+    private eventOutputMaxBytes: number = defaultEventOutputMaxBytes(),
   ) {}
 
   /**
@@ -421,6 +461,10 @@ export class ExecutionExecutor {
       });
       await recordEvent(this.store, ctx.executionId, 'node_succeeded', node.id, {
         duration_ms: Date.now() - startTime,
+        // V1.4 M2 (F-2): persist the node output (size-capped) so replay can
+        // reconstruct full node outputs from the event log. Oversized outputs
+        // are stored as a `{__truncated__, size, preview}` marker.
+        output: capOutputForEvent(result, this.eventOutputMaxBytes),
       });
       this.emit({
         type: 'node_succeeded',

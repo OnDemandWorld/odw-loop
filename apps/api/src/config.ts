@@ -35,6 +35,11 @@ const configSchema = z.object({
   // Falls back to 300s; a per-workflow definition.settings.workflow_timeout_ms
   // overrides this when present.
   LOOP_WORKFLOW_TIMEOUT_MS: z.coerce.number().default(300_000),
+  // V1.4 M2 (F-2): size cap (bytes) for the node output persisted into a
+  // `node_succeeded` event payload. Oversized outputs are stored as a truncated
+  // marker `{__truncated__, size, preview}` so large outputs cannot bloat the
+  // append-only execution_events table.
+  LOOP_EVENT_OUTPUT_MAX_BYTES: z.coerce.number().default(65_536),
   LOOP_DEFAULT_RETRY_COUNT: z.coerce.number().default(3),
   LOOP_DEFAULT_BACKOFF: z.enum(['exponential', 'linear', 'fixed']).default('exponential'),
 

@@ -1,7 +1,49 @@
 # Loop — Development Status
 
 **Last Updated:** 2026-08-01
-**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) + V1.2 M3 (sub-workflow invocation) + V1.3 M1 (event-sourced replay) + V1.3 RBAC (role-based access control) implemented
+**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) + V1.2 M3 (sub-workflow invocation) + V1.3 M1 (event-sourced replay) + V1.3 RBAC (role-based access control) + V1.4 M2 (replay output persistence) implemented
+
+---
+
+## V1.4 — Milestone M2: Replay Output Persistence (2026-08-01)
+
+Implements PRD F-2 (replay 输出持久化) — see `roadmap/V1.4_PRD.md` and
+`roadmap/V1.4_LOOP_DESIGN.md` (tasks O1–O5). Resolves the V1.3 limitation noted
+below (durable `node_succeeded` events stored only `duration_ms`). Incremental
+and backward compatible.
+
+### F-2 — Persist node output in `node_succeeded` events (O1–O3)
+- **`packages/engine/src/executor.ts`**:
+  - On `node_succeeded`, the event payload is now `{ duration_ms, output }`.
+  - `capOutputForEvent(output, maxBytes)` enforces the size cap: the output is
+    JSON-serialised and measured with `Buffer.byteLength`; if it fits
+    (`<= maxBytes`) the full output is stored, otherwise a truncated marker
+    `{ __truncated__: true, size, preview }` is stored (`size` = original byte
+    length, `preview` = a short leading slice, bounded by both 1KB and the cap).
+  - New trailing constructor param `eventOutputMaxBytes` (default from
+    `LOOP_EVENT_OUTPUT_MAX_BYTES`, fallback `65536`). Added LAST so every
+    existing positional caller (server + tests) is unaffected.
+- **`packages/engine/src/replay.ts`**: `foldExecutionEvents` reads
+  `payload.output` into `NodeSnapshot.output` (already forward-compatible from
+  V1.3); the truncation marker is a plain record and is preserved verbatim.
+- **Config** (`apps/api/src/config.ts`): added `LOOP_EVENT_OUTPUT_MAX_BYTES`
+  (number, default `65536`), wired into the executor in `apps/api/src/server.ts`.
+- **Types** (`packages/types/src/schemas/replay.ts`): `NodeSnapshot.output` doc
+  updated to describe the M2 persistence + truncation marker.
+
+### Backward compatibility
+- Pre-M2 events carry no `output` field → reconstructed `NodeSnapshot.output`
+  stays `undefined` (prior behaviour). Dry-run replay decisions are unchanged.
+- The real-time `EventBus` `node_succeeded` emission still carries the full
+  (uncapped) output for live monitors; only the *persisted* event payload is
+  size-capped. Connector adapters' outward contract is unchanged
+  (INTEGRATION_CONTRACT.md §4).
+
+### Tests
+- `tests/integration/engine/replay-output.test.ts` — execute → reconstruct
+  asserts node outputs are persisted + folded back; an oversized output is
+  stored as a truncation marker (full output NOT persisted); legacy events
+  without `output` fold to `output === undefined`.
 
 ---
 

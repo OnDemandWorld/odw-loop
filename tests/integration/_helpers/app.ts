@@ -69,6 +69,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     LOOP_MAX_CONCURRENT: 10,
     LOOP_EXECUTION_TIMEOUT_MS: 5_000,
     LOOP_NODE_TIMEOUT_MS: 1_000,
+    LOOP_EVENT_OUTPUT_MAX_BYTES: 65_536,
     LOOP_DEFAULT_RETRY_COUNT: 0,
     LOOP_DEFAULT_BACKOFF: 'fixed',
     LOOP_SANDBOX_TYPE: 'gvisor',
