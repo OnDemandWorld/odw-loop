@@ -9,6 +9,46 @@ import * as schema from '../schema.js';
 
 const logger = createLogger({ name: 'loop:state:sqlite', component: 'state' });
 
+// ─── V1.6 M1 (F-1, DB3): connection registry + process-exit safety net ──────
+//
+// The rare high-load SIGSEGV that `scripts/run_with_retry.sh` papers over comes
+// from better-sqlite3's native handle being torn down by GC during process
+// exit instead of an explicit `db.close()`. Every connection opened here is
+// registered, and a synchronous `process.on('exit')` handler releases any
+// handles still open when the process terminates — best-effort, never throws.
+
+const openClients = new Set<Database.Database>();
+let exitHookInstalled = false;
+
+function installProcessExitHook(): void {
+  if (exitHookInstalled) return;
+  exitHookInstalled = true;
+  process.on('exit', () => {
+    closeAllSqliteConnections();
+  });
+}
+
+/**
+ * Best-effort close of every registered open connection (the same routine the
+ * process `exit` hook runs). Idempotent; never throws.
+ */
+export function closeAllSqliteConnections(): void {
+  for (const client of openClients) {
+    try {
+      client.close();
+    } catch {
+      // best-effort — a handle that refuses close at teardown is exactly the
+      // situation this hook exists to tolerate.
+    }
+  }
+  openClients.clear();
+}
+
+/** Number of connections currently registered as open (diagnostics / tests). */
+export function openSqliteConnectionCount(): number {
+  return openClients.size;
+}
+
 export interface SqliteConnection {
   db: BetterSQLite3Database<typeof schema>;
   client: Database.Database;
@@ -24,6 +64,8 @@ export interface SqliteConnectionOptions {
 
 export function createSqliteConnection(opts: SqliteConnectionOptions): SqliteConnection {
   const client = new Database(opts.path);
+  openClients.add(client);
+  installProcessExitHook();
 
   // Pragmas for performance and safety
   if (opts.wal !== false) {
@@ -41,6 +83,9 @@ export function createSqliteConnection(opts: SqliteConnectionOptions): SqliteCon
     db,
     client,
     close() {
+      // Unregister first so the exit hook never double-closes an explicit close.
+      // better-sqlite3's close() is itself idempotent.
+      openClients.delete(client);
       client.close();
       logger.info('SQLite connection closed');
     },

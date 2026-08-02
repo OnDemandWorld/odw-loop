@@ -1,7 +1,79 @@
 # Loop — Development Status
 
-**Last Updated:** 2026-08-01
-**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) + V1.2 M3 (sub-workflow invocation) + V1.3 M1 (event-sourced replay) + V1.3 RBAC (role-based access control) + V1.4 M2 (replay output persistence) + V1.5 M1 (PostgreSQL Scale layer + test hardening + distributed tracing) implemented
+**Last Updated:** 2026-08-02
+**Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) + V1.2 M3 (sub-workflow invocation) + V1.3 M1 (event-sourced replay) + V1.3 RBAC (role-based access control) + V1.4 M2 (replay output persistence) + V1.5 M1 (PostgreSQL Scale layer + test hardening + distributed tracing) + V1.6 M1 (DB lifecycle root-cause fix + tracing spans) implemented
+
+---
+
+## V1.6 — Milestone M1: DB Lifecycle Root-Cause Fix + Distributed Tracing Spans (2026-08-02)
+
+Implements PRD F-1 (DB 生命周期根因修复) and the Loop side of F-2 (span 模型 +
+采样 + 导出) — see `roadmap/V1.6_PRD.md` and `roadmap/V1.6_LOOP_DESIGN.md`
+(tasks DB1–DB4, SP1–SP4). Incremental and backward compatible; the connector
+contract (INTEGRATION_CONTRACT.md §4) and the `StateStore` interface are
+unchanged; defaults (sampling 1.0, console exporter) preserve V1.5 behaviour.
+
+### F-1 — DB lifecycle root-cause fix (DB1–DB4)
+- **Root cause**: the rare high-load SIGSEGV (exit 139) that V1.5 papered over
+  with serial test files + the `scripts/run_with_retry.sh` Makefile wrapper
+  comes from better-sqlite3's native handle being destroyed by GC during
+  process teardown instead of an explicit `db.close()`.
+- **DB1**: `StateStore.close()` was already on the interface (required) and
+  implemented by both adapters (SQLite `client.close()`, PostgreSQL
+  `conn.close()`); it now has dedicated lifecycle tests (handle release,
+  idempotent double-close) in `tests/unit/state/store-lifecycle.test.ts`.
+- **DB2**: `tests/helpers/testStore.ts` provides `withTestStore(fn)` /
+  `withSeededTestStore(fn)` — create an in-memory store, run the test body,
+  and GUARANTEE close in a `finally`. `tests/setup.ts` (wired via
+  `setupFiles` in `vitest.config.ts`, `vitest.integration.config.ts` and
+  `vitest.e2e.config.ts`) registers a global `afterEach` safety net that
+  closes any tracked connection a test leaked. The integration
+  security/egress suite (the one suite still leaking a per-test store) now
+  closes its connection in `afterEach`. Existing engine/state/recovery suites
+  already closed their stores (V1.5 pattern) and were left untouched.
+- **DB3**: `packages/state/src/sqlite/connection.ts` keeps a registry of open
+  connections and installs a synchronous `process.on('exit')` hook that
+  closes whatever is still open at process termination (best-effort, never
+  throws; explicit `close()` unregisters first). Diagnostics/test hooks:
+  `closeAllSqliteConnections()`, `openSqliteConnectionCount()`.
+- **DB4 — stability conclusion**: after DB1–DB3, `typecheck + unit +
+  integration + e2e` ran green 3 consecutive times WITHOUT the retry wrapper
+  (448/141/29 each round, zero exit 139). The `scripts/run_with_retry.sh`
+  wrapper in the top-level Makefile was nonetheless **kept** (per the design
+  doc's conservative clause): the original SIGSEGV was non-deterministic and
+  load-dependent, so 3 clean runs reduce but do not prove zero residual risk
+  on loaded CI hardware, and the wrapper is a zero-cost safety net that only
+  ever retries a genuine exit 139 (never a real failure). Recommendation:
+  revisit removal after a longer CI soak (e.g. a few weeks of green
+  `make verify` runs).
+
+### F-2 — Distributed tracing spans, Loop side (SP1–SP4)
+- **SP1** (`packages/observability/src/tracing.ts`): span model
+  `{name, trace_id, span_id, parent_span_id?, start_ms, duration_ms?, attrs?,
+  status}`; `startSpan(name, attrs?)` / `span.end(status?)` over an
+  `AsyncLocalStorage` span stack — child spans started inside `runInSpan` /
+  `withSpan` are auto-parented (also across awaited boundaries). Sampling via
+  `TRACE_SAMPLE_RATE` (default 1.0): rolled once per trace root, inherited by
+  every child (trace-level consistency); unsampled spans are true no-ops.
+  Root spans reuse the V1.5 correlation `trace_id`, so spans and structured
+  logs share one trace id.
+- **SP2** (`packages/observability/src/exporters.ts`): `SpanExporter` +
+  `ConsoleSpanExporter` (default; one structured pino line per span) +
+  `OtlpHttpSpanExporter` (fire-and-forget OTLP/HTTP JSON POST to
+  `<OTLP_ENDPOINT>/v1/traces` with a 2s abort budget; errors/non-2xx/timeouts
+  degrade silently to a debug log). `TRACE_EXPORTER=console|otlp|none`.
+- **SP3** (`packages/engine/src/executor.ts`): `execute()` wraps the run in a
+  `loop.execution` span; `executeNode` wraps each node in a `loop.node` span
+  parented to it; a `workflow.invoke` child execution parents under its
+  invoking node span. Best-effort — results, events and WS fan-out unchanged.
+- **SP4**: `TRACE_SAMPLE_RATE` / `TRACE_EXPORTER` / `OTLP_ENDPOINT`
+  documented in `.env.example`; the tracing module reads env directly with
+  `configureTracing()` overrides for tests/embedders (deliberately NOT added
+  to the zod `LoopConfig` — nothing in the API app consumes it).
+
+### Tests
+- 410 → 448 unit (+38: 8 DB lifecycle, 16 tracing, 11 exporters, 3 executor
+  span-tree); 141 integration + 29 e2e baselines preserved; typecheck clean.
 
 ---
 

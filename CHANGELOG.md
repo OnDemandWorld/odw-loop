@@ -14,6 +14,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced scheduling with timezone support
 - Multi-tenancy support
 
+## [1.6.0-M1] - 2026-08-02
+
+### Added — DB lifecycle root-cause fix (F-1, DB1–DB4)
+- **`packages/state/src/sqlite/connection.ts`**: every SQLite connection is
+  now registered in a module-level registry; a synchronous
+  `process.on('exit')` hook releases any handles still open when the process
+  terminates (best-effort, never throws). Explicit `close()` unregisters
+  first, so the exit hook never double-closes. This attacks the root cause of
+  the rare better-sqlite3 teardown SIGSEGV (exit 139): native handles are no
+  longer left for GC to destroy during process exit. Exported diagnostics /
+  test hooks: `closeAllSqliteConnections()`, `openSqliteConnectionCount()`.
+- **DB1**: `StateStore.close()` (already on the interface since V1.0; SQLite
+  `db.close()` + PostgreSQL `conn.close()`) is now covered by dedicated
+  lifecycle tests — handle release + idempotent double-close.
+- **DB2**: `tests/helpers/testStore.ts` — `withTestStore(fn)` /
+  `withSeededTestStore(fn)` guarantee the connection is closed even when the
+  test body throws; `tests/setup.ts` (wired via `setupFiles` in all three
+  vitest configs) adds a global `afterEach` safety net closing any tracked
+  connection a test leaked. The integration security/egress suite now closes
+  its per-test store in `afterEach` (previously leaked).
+- **DB4**: stability verified — 3 consecutive full runs of
+  `typecheck + unit + integration + e2e` (no retry wrapper) all green.
+  Conclusion: the `scripts/run_with_retry.sh` wrapper in the top-level
+  Makefile was **kept** (not removed) as a cheap CI safety net — see
+  DEVELOPMENT.md for the reasoning.
+
+### Added — Distributed tracing spans, Loop side (F-2, SP1–SP4)
+- **`packages/observability/src/tracing.ts`**: lightweight span model
+  `{name, trace_id, span_id, parent_span_id?, start_ms, duration_ms?, attrs?,
+  status}` with `startSpan(name, attrs?)` / `span.end(status?)`. An
+  `AsyncLocalStorage` span stack auto-parents child spans (including across
+  awaited boundaries); `runInSpan` / `withSpan` establish the active-span
+  context. Sampling via `TRACE_SAMPLE_RATE` (0.0–1.0, default **1.0**): the
+  decision is rolled once per trace root and inherited by every child, so a
+  trace is never partially sampled; unsampled spans are true no-ops (nothing
+  recorded, nothing exported). Root spans reuse the V1.5 correlation
+  `trace_id` (inbound `X-Trace-Id`) when present, so spans and structured
+  logs share one trace id.
+- **`packages/observability/src/exporters.ts`**: `SpanExporter` with
+  `ConsoleSpanExporter` (default — one structured pino line per span) and
+  `OtlpHttpSpanExporter` (fire-and-forget OTLP/HTTP JSON POST to
+  `<OTLP_ENDPOINT>/v1/traces`; network errors, non-2xx and timeouts degrade
+  silently to a debug log). `TRACE_EXPORTER=console|otlp|none` (default
+  **console**). Export is best-effort and can never throw into the caller.
+- **`packages/engine/src/executor.ts`**: `execute()` wraps the run in a
+  `loop.execution` span and `executeNode` wraps each node in a `loop.node`
+  span parented to it (sub-workflow child executions parent under their
+  invoking node span). Best-effort — execution results, events and EventBus
+  fan-out are unchanged; with sampling off the wrappers are pass-throughs.
+- **Config** (SP4): `TRACE_SAMPLE_RATE`, `TRACE_EXPORTER`, `OTLP_ENDPOINT`
+  documented in `.env.example`; read directly by the tracing module with
+  programmatic overrides (`configureTracing`) for tests/embedders.
+
+### Compatibility
+- Fully backward compatible. Default sampling 1.0 + console exporter preserve
+  existing behaviour (spans appear as additional structured log lines). The
+  connector request/response contract is unchanged (INTEGRATION_CONTRACT.md
+  §4). DB close is best-effort; the `StateStore` interface is unchanged
+  (`close()` already required). No schema/migration changes.
+
+### Tests
+- 410 → **448 unit** (+38: 8 DB lifecycle, 16 tracing, 11 exporters,
+  3 executor span-tree); **141 integration** and **29 e2e** baselines
+  preserved. All suites green across 3 consecutive runs without the
+  retry wrapper.
+
 ## [1.5.0-M1] - 2026-08-01
 
 ### Added — PostgreSQL Scale layer completion (F-1, PG1–PG4)

@@ -20,6 +20,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // V1.6 M1 (F-1, DB2): global safety net — closes any SQLite connection a
+    // test leaked (see tests/setup.ts + tests/helpers/testStore.ts).
+    setupFiles: ['tests/setup.ts'],
     include: ['tests/unit/**/*.test.ts', 'packages/*/tests/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**', 'tests/integration', 'tests/e2e'],
     // V1.5 M1 (F-4', TH2): run unit test files serially. Each file still gets its

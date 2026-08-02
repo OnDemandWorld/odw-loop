@@ -5,6 +5,8 @@
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '@loop/observability';
 import { metricsRegistry } from '@loop/observability';
+// V1.6 M1 (F-2, SP3): execution/node lifecycle spans (best-effort observability).
+import { startSpan, runInSpan } from '@loop/observability';
 import { LoopError, type WorkflowDefinition, type WorkflowNode } from '@loop/types';
 import type { StateStore } from '@loop/state';
 import type { ConnectorRegistry } from '@loop/connectors';
@@ -155,8 +157,40 @@ export class ExecutionExecutor {
    * (V1.2 M3); root callers may ignore the return value. `options` carries
    * sub-workflow recursion state and is supplied by the engine itself when it
    * recurses into a child — external callers leave it unset.
+   *
+   * V1.6 M1 (F-2, SP3): the whole run is wrapped in a `loop.execution` span;
+   * every node span started below it is auto-parented to that span via the
+   * tracing AsyncLocalStorage context. Best-effort — tracing never changes
+   * the execution result, and an unsampled/no-op span makes this a thin
+   * pass-through.
    */
   async execute(
+    executionId: string,
+    definition: WorkflowDefinition,
+    triggerPayload: Record<string, unknown>,
+    options?: ExecuteOptions,
+  ): Promise<Map<string, Record<string, unknown>>> {
+    const span = startSpan('loop.execution', {
+      'execution.id': executionId,
+      'workflow.id': definition.metadata?.name ?? '',
+      'execution.depth': options?.depth ?? 0,
+    });
+    let failed = false;
+    try {
+      return await runInSpan(span, () =>
+        this.executeInner(executionId, definition, triggerPayload, options),
+      );
+    } catch (err) {
+      failed = true;
+      span.setAttr('error.message', String(err));
+      throw err;
+    } finally {
+      span.end(failed ? 'error' : 'ok');
+    }
+  }
+
+  /** The execution pipeline proper (see `execute` for the public contract). */
+  private async executeInner(
     executionId: string,
     definition: WorkflowDefinition,
     triggerPayload: Record<string, unknown>,
@@ -348,7 +382,36 @@ export class ExecutionExecutor {
     });
   }
 
-  private async executeNode(node: WorkflowNode, ctx: ExecutorContext, _definition: WorkflowDefinition, signal?: AbortSignal): Promise<void> {
+  /**
+   * V1.6 M1 (F-2, SP3): wrap the node lifecycle in a `loop.node` span. Started
+   * inside the active `loop.execution` context, so it is auto-parented to the
+   * execution span; a `workflow.invoke` child execution started below it is in
+   * turn parented to this node span. Best-effort — never changes node results.
+   */
+  private async executeNode(
+    node: WorkflowNode,
+    ctx: ExecutorContext,
+    definition: WorkflowDefinition,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const span = startSpan('loop.node', {
+      'node.id': node.id,
+      'node.type': node.type,
+      'execution.id': ctx.executionId,
+    });
+    let failed = false;
+    try {
+      return await runInSpan(span, () => this.executeNodeInner(node, ctx, definition, signal));
+    } catch (err) {
+      failed = true;
+      span.setAttr('error.message', String(err));
+      throw err;
+    } finally {
+      span.end(failed ? 'error' : 'ok');
+    }
+  }
+
+  private async executeNodeInner(node: WorkflowNode, ctx: ExecutorContext, _definition: WorkflowDefinition, signal?: AbortSignal): Promise<void> {
     // V1.1 M1 (F1 resume / F2 idempotency): if this node already succeeded for
     // this execution, skip dispatch entirely and reuse its stored output — no
     // connector call, no duplicate side effects.

@@ -6,7 +6,7 @@
  * priority ordering, and default-deny behaviour.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   createSqliteConnection,
   SqliteStateStore,
@@ -45,6 +45,12 @@ describe('Egress policy enforcement', () => {
     store = new SqliteStateStore(conn);
     await store.initialise();
     engine = new EgressEngine(() => store.egressPolicies.listEnabled());
+  });
+
+  // V1.6 M1 (F-1, DB2): release the native SQLite handle after every test so it
+  // is never left for GC teardown at process exit.
+  afterEach(() => {
+    conn.close();
   });
 
   it('default deny — URL without a matching allow policy is blocked', async () => {
