@@ -4,6 +4,22 @@
 
 import { z } from 'zod';
 
+/**
+ * Correct boolean env-var parser. `z.coerce.boolean()` uses `Boolean(value)`,
+ * which treats ANY non-empty string (including "false"/"0") as `true` — a
+ * well-known Zod footgun that made e.g. `LOOP_REQUIRE_AUTH=false` enable auth.
+ * This helper parses the conventional truthy strings ("true"/"1"/"yes"/"on")
+ * as true and everything else (incl. "false"/"0"/"no"/"off"/"") as false,
+ * falling back to `def` when the variable is unset.
+ */
+const booleanEnv = (def: boolean) =>
+  z.preprocess((v) => {
+    if (v === undefined || v === null || v === '') return def;
+    if (typeof v === 'boolean') return v;
+    const s = String(v).trim().toLowerCase();
+    return s === 'true' || s === '1' || s === 'yes' || s === 'on';
+  }, z.boolean());
+
 const configSchema = z.object({
   // §10.1 Core
   LOOP_PORT: z.coerce.number().default(3000),
@@ -21,7 +37,7 @@ const configSchema = z.object({
   LOOP_DB_NAME: z.string().optional(),
   LOOP_DB_USER: z.string().optional(),
   LOOP_DB_PASSWORD: z.string().optional(),
-  LOOP_DB_SSL: z.coerce.boolean().default(false),
+  LOOP_DB_SSL: booleanEnv(false),
 
   // §10.3 Redis (Scale)
   LOOP_REDIS_URL: z.string().optional(),
@@ -72,7 +88,7 @@ const configSchema = z.object({
   // When true, /api/v1/* routes require a valid API key or JWT. Defaults to
   // false (open) for backward compatibility — health/ready/metrics/webhooks are
   // always public regardless of this flag.
-  LOOP_REQUIRE_AUTH: z.coerce.boolean().default(false),
+  LOOP_REQUIRE_AUTH: booleanEnv(false),
   // Static API key accepted via `Authorization: Bearer <key>` or `x-api-key`.
   // Optional: when unset, only JWT bearer tokens authenticate.
   LOOP_API_KEY: z.string().optional(),
@@ -83,11 +99,11 @@ const configSchema = z.object({
 
   // §10.9 Egress
   LOOP_EGRESS_DEFAULT_POLICY: z.enum(['allow', 'deny']).default('deny'),
-  LOOP_AIRGAP_MODE: z.coerce.boolean().default(false),
+  LOOP_AIRGAP_MODE: booleanEnv(false),
 
   // §10.10 Observability
-  LOOP_METRICS_ENABLED: z.coerce.boolean().default(true),
-  LOOP_OTEL_ENABLED: z.coerce.boolean().default(false),
+  LOOP_METRICS_ENABLED: booleanEnv(true),
+  LOOP_OTEL_ENABLED: booleanEnv(false),
   LOOP_OTEL_ENDPOINT: z.string().optional(),
 });
 
