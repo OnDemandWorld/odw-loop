@@ -45,6 +45,22 @@ export function errorHandler(error: FastifyError | LoopError | Error, request: F
     return;
   }
 
+  // Rate limiting — @fastify/rate-limit raises a FastifyError with statusCode
+  // 429 (code FST_RATE_LIMIT). Map it to the proper RATE_LIMIT_EXCEEDED code
+  // instead of falling through to INTERNAL_ERROR.
+  const rateLimited = (err.statusCode === 429 || err.code === 'FST_RATE_LIMIT');
+  if (rateLimited) {
+    reply.status(429).send({
+      success: false,
+      error: {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'Rate limit exceeded',
+      },
+      meta: { request_id, timestamp: new Date().toISOString() },
+    });
+    return;
+  }
+
   // Unexpected errors
   logger.error({ error: String(error), stack: error.stack }, 'Unhandled error');
   reply.status((error as FastifyError).statusCode ?? 500).send({

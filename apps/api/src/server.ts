@@ -46,11 +46,20 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     credentials: true,
   });
 
-  // Rate limiting
-  await app.register(import('@fastify/rate-limit'), {
-    max: 100,
-    timeWindow: '1 minute',
-  });
+  // Rate limiting (configurable; LOOP_RATE_LIMIT_MAX=0 disables). Health/ready/
+  // metrics are exempt so monitoring is never throttled. The previous hardcoded
+  // 100/min per IP blocked legitimate multi-user traffic from a shared IP
+  // (found via 100-user load testing — see RUNTIME_VERIFICATION.md).
+  if (cfg.LOOP_RATE_LIMIT_MAX > 0) {
+    await app.register(import('@fastify/rate-limit'), {
+      max: cfg.LOOP_RATE_LIMIT_MAX,
+      timeWindow: cfg.LOOP_RATE_LIMIT_WINDOW,
+      allowList: (req) => {
+        const path = req.url.split('?')[0];
+        return path === '/health' || path === '/ready' || path === '/metrics';
+      },
+    });
+  }
 
   // Global error handler
   app.setErrorHandler(errorHandler);

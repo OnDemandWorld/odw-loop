@@ -24,6 +24,11 @@ const configSchema = z.object({
   // §10.1 Core
   LOOP_PORT: z.coerce.number().default(3000),
   LOOP_HOST: z.string().default('0.0.0.0'),
+  // Per-IP API rate limit. Self-hosted deployments often serve many users from
+  // a shared IP (NAT/office/team server), so the default is generous and fully
+  // configurable; set LOOP_RATE_LIMIT_MAX=0 to disable.
+  LOOP_RATE_LIMIT_MAX: z.coerce.number().default(1000),
+  LOOP_RATE_LIMIT_WINDOW: z.string().default('1 minute'),
   LOOP_LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   LOOP_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOOP_DATA_DIR: z.string().default('./data'),
