@@ -157,6 +157,28 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const body = request.body as { payload?: Record<string, unknown> };
     const actor = getActor(request);
     const executionId = await deps.manualHandler.trigger(id, body?.payload ?? {}, actor.principal);
+    // The manual trigger only persists a *pending* execution record; actually
+    // run the workflow asynchronously. The executor transitions the execution
+    // pending -> running -> succeeded/failed and the client polls
+    // GET /executions/:id for status. (Found via cross-product integration
+    // testing: executions previously stayed 'pending' forever because nothing
+    // ever invoked the executor, so workflow nodes — incl. the Vault/Desk
+    // connectors — never ran.)
+    const payload = body?.payload ?? {};
+    void (async () => {
+      try {
+        const workflow = await deps.authoring.getById(id);
+        await deps.executor.execute(executionId, workflow.definition, payload);
+      } catch (err) {
+        await deps.store.executions
+          .updateStatus(executionId, {
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+            error: String(err),
+          })
+          .catch(() => {});
+      }
+    })();
     return reply.status(202).send({ success: true, data: { execution_id: executionId, status: 'pending' }, meta: meta(request) });
   });
 

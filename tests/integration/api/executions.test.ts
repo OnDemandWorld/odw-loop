@@ -62,6 +62,24 @@ describe('Execution API', () => {
     ctx.conn.close();
   });
 
+  /**
+   * Poll an execution until it reaches a terminal state (succeeded/failed/
+   * cancelled). POST /execute now runs the executor asynchronously (it used to
+   * leave executions stuck 'pending'), so tests must wait for the run to settle
+   * rather than asserting the immediate post-trigger state.
+   */
+  async function waitForTerminal(executionId: string, timeoutMs = 8000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const exec = await ctx.store.executions.getById(executionId);
+      if (exec && (exec.status === 'succeeded' || exec.status === 'failed' || exec.status === 'cancelled')) {
+        return exec;
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error(`Execution ${executionId} did not reach a terminal state within ${timeoutMs}ms`);
+  }
+
   // ── POST /api/v1/workflows/:id/execute ────────────────────────────────────
 
   it('POST /api/v1/workflows/:id/execute triggers a manual execution (202)', async () => {
@@ -80,13 +98,13 @@ describe('Execution API', () => {
     expect(typeof body.data.execution_id).toBe('string');
     expect(body.data.status).toBe('pending');
 
-    // Execution should exist in the DB as 'pending'
-    const dbExecution = await ctx.store.executions.getById(body.data.execution_id);
-    expect(dbExecution).toBeDefined();
-    expect(dbExecution!.workflow_id).toBe(wf.id);
-    expect(dbExecution!.trigger_type).toBe('manual');
-    expect(dbExecution!.status).toBe('pending');
-    expect(dbExecution!.trigger_payload).toEqual({ key: 'value' });
+    // The route now runs the executor asynchronously; the execution transitions
+    // pending -> running -> succeeded. Wait for it to settle, then verify.
+    const dbExecution = await waitForTerminal(body.data.execution_id);
+    expect(dbExecution.workflow_id).toBe(wf.id);
+    expect(dbExecution.trigger_type).toBe('manual');
+    expect(dbExecution.status).toBe('succeeded');
+    expect(dbExecution.trigger_payload).toEqual({ key: 'value' });
   });
 
   it('POST execute fails for unknown workflow id (FK violation)', async () => {
@@ -110,28 +128,15 @@ describe('Execution API', () => {
   it('GET /api/v1/executions/:id returns execution with node results', async () => {
     const wf = await seedWorkflow(ctx.store, { definition: STUB_THREE_NODE });
 
-    // Trigger execution
+    // Trigger execution — the route runs the executor asynchronously over the
+    // full 3-node workflow; wait for it to settle.
     const execRes = await app.inject({
       method: 'POST',
       url: `/api/v1/workflows/${wf.id}/execute`,
       payload: {},
     });
     const executionId = execRes.json().data.execution_id;
-
-    // Seed some node executions to simulate partial progress
-    const node1 = await ctx.store.nodeExecutions.create({
-      id: crypto.randomUUID(),
-      execution_id: executionId,
-      node_id: 'node_vault',
-      node_type: 'stub.vault_search',
-      input: { query: 'hello' },
-    });
-    await ctx.store.nodeExecutions.updateStatus(node1.id, {
-      status: 'succeeded',
-      output: { documents: [{ id: 'd1', title: 'Found' }] },
-      started_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
-    });
+    await waitForTerminal(executionId);
 
     const res = await app.inject({
       method: 'GET',
@@ -144,10 +149,9 @@ describe('Execution API', () => {
     expect(body.data.id).toBe(executionId);
     expect(body.data.workflow_id).toBe(wf.id);
     expect(Array.isArray(body.data.nodes)).toBe(true);
-    expect(body.data.nodes).toHaveLength(1);
+    expect(body.data.nodes).toHaveLength(3);
     expect(body.data.nodes[0].node_type).toBe('stub.vault_search');
     expect(body.data.nodes[0].status).toBe('succeeded');
-    expect(body.data.nodes[0].output.documents).toHaveLength(1);
   });
 
   // ── GET /api/v1/executions (list) ─────────────────────────────────────────
@@ -220,7 +224,7 @@ describe('Execution API', () => {
   it('full cycle: create workflow, trigger execution, run executor, verify nodes', async () => {
     const wf = await seedWorkflow(ctx.store, { definition: STUB_THREE_NODE });
 
-    // 1. Trigger execution
+    // 1. Trigger execution — the route now runs the executor asynchronously.
     const triggerRes = await app.inject({
       method: 'POST',
       url: `/api/v1/workflows/${wf.id}/execute`,
@@ -228,8 +232,8 @@ describe('Execution API', () => {
     });
     const executionId = triggerRes.json().data.execution_id;
 
-    // 2. Manually run the executor (in production this is event-driven)
-    await ctx.executor.execute(executionId, STUB_THREE_NODE, { input: 'data' });
+    // 2. Wait for the asynchronous execution to complete.
+    await waitForTerminal(executionId);
 
     // 3. Fetch execution
     const res = await app.inject({
