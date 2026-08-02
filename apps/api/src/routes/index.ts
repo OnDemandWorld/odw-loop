@@ -19,7 +19,7 @@ import {
   type UpdateWorkflowRequest,
 } from '@loop/types';
 import type { LoopConfig } from '../config.js';
-import { createAuthGuard, requireRole, type Role } from '../middleware/auth.js';
+import { createAuthGuard, isProtectedPath, requireRole, type Role } from '../middleware/auth.js';
 
 /** Extract the request ID attached by the requestIdHook middleware. */
 function getRequestId(request: FastifyRequest): string {
@@ -75,6 +75,37 @@ export interface RouteDeps {
 export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   // ─── Auth guard (§11) — no-op unless LOOP_REQUIRE_AUTH=true ──────────────
   app.addHook('onRequest', createAuthGuard(deps.config));
+
+  // ─── JIT user provisioning ───────────────────────────────────────────────
+  // created_by columns FK-reference the users table, but only the 'system'
+  // account is seeded at startup. Without this, a JWT-authenticated user's
+  // first write failed with a FOREIGN KEY constraint violation (found via
+  // role-based UAT: admin/editor could not create workflows). Provision the
+  // authenticated principal on first write so the FK is satisfied. Runs after
+  // the auth guard; reads are skipped; a concurrent duplicate create is safe.
+  app.addHook('onRequest', async (request) => {
+    const principal = request.authPrincipal;
+    if (!principal || principal === 'system') return;
+    const method = request.method.toUpperCase();
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return;
+    if (!isProtectedPath(request.url)) return;
+    const existing = await deps.store.users.getById(principal);
+    if (existing) return;
+    const storeRole: 'read' | 'write' | 'admin' =
+      request.authRole === 'admin' ? 'admin' : request.authRole === 'editor' ? 'write' : 'read';
+    try {
+      await deps.store.users.create({
+        id: principal,
+        username: principal,
+        password_hash: '',
+        email: `${principal}@users.loop.internal`,
+        role: storeRole,
+        display_name: principal,
+      });
+    } catch {
+      // A concurrent request already provisioned this user (race) — safe to ignore.
+    }
+  });
 
   // ─── Workflows (§5.3) ───────────────────────────────────────────────────
 
