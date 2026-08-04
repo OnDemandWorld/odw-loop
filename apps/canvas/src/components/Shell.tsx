@@ -41,18 +41,20 @@ export function Shell() {
 
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
       <aside className="relative z-10 w-60 shrink-0 border-r border-ink-700/60 bg-ink-900/70 backdrop-blur-md flex flex-col">
-        {/* Brand — ODW.ai logo (light/dark variants) */}
+        {/* Brand — ODW.ai logo (light/dark variants), links to official site */}
         <div className="px-5 pt-6 pb-5 border-b border-ink-700/60">
-          <img
-            src="/brand/odwai-logo.png"
-            alt="ODW.ai"
-            className="h-10 w-auto dark:hidden"
-          />
-          <img
-            src="/brand/odwai-logo-dark.png"
-            alt="ODW.ai"
-            className="h-10 w-auto hidden dark:block"
-          />
+          <a href="https://odw.ai/" target="_blank" rel="noopener">
+            <img
+              src="/brand/odwai-logo.png"
+              alt="ODW.ai"
+              className="h-10 w-auto dark:hidden"
+            />
+            <img
+              src="/brand/odwai-logo-dark.png"
+              alt="ODW.ai"
+              className="h-10 w-auto hidden dark:block"
+            />
+          </a>
           <div className="flex items-center justify-between mt-3">
             <div>
               <span className="font-display font-bold text-base leading-none tracking-tight text-ink-100">
@@ -64,6 +66,14 @@ export function Shell() {
             </div>
             <ThemeToggle />
           </div>
+          <a
+            href="https://odw.ai/"
+            target="_blank"
+            rel="noopener"
+            className="inline-block mt-2.5 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-500 hover:text-volt transition-colors"
+          >
+            odw.ai &nearr;
+          </a>
         </div>
 
         {/* Nav */}
