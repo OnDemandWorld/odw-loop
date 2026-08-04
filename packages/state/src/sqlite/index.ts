@@ -266,7 +266,20 @@ export class SqliteStateStore implements StateStore {
     },
 
     findInterrupted: async () => {
-      const rows = this.db.select().from(schema.workflowExecutions).where(eq(schema.workflowExecutions.status, 'running')).all();
+      // Both states are non-terminal and owned by the (now dead) process:
+      // 'running' died mid-execution; 'pending' was created but never picked
+      // up (e.g. crash between record creation and dispatch). Excluding
+      // 'pending' leaves those executions stuck forever (bug 12).
+      const rows = this.db
+        .select()
+        .from(schema.workflowExecutions)
+        .where(
+          or(
+            eq(schema.workflowExecutions.status, 'running'),
+            eq(schema.workflowExecutions.status, 'pending'),
+          ),
+        )
+        .all();
       return rows.map(mapExecution);
     },
   };

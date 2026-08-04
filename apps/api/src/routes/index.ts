@@ -274,6 +274,24 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       body: request.body,
       rawBody: raw ? raw.toString('utf8') : JSON.stringify(request.body),
     });
+    // The handler only persists a *pending* execution record — actually run
+    // the workflow asynchronously, mirroring the manual /execute route.
+    // Without this dispatch webhook executions stayed pending forever (bug 13).
+    const payload = (request.body ?? {}) as Record<string, unknown>;
+    void (async () => {
+      try {
+        const workflow = await deps.authoring.getById(result.workflow_id);
+        await deps.executor.execute(result.execution_id, workflow.definition, payload);
+      } catch (err) {
+        await deps.store.executions
+          .updateStatus(result.execution_id, {
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+            error: String(err),
+          })
+          .catch(() => {});
+      }
+    })();
     return reply.status(200).send({ accepted: true, execution_id: result.execution_id });
   });
 

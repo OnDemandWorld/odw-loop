@@ -24,7 +24,7 @@ export class WebhookTriggerHandler {
     signature: string | null;
     body: unknown;
     rawBody: string;
-  }): Promise<{ execution_id: string }> {
+  }): Promise<{ execution_id: string; workflow_id: string }> {
     // Find the trigger
     const trigger = await this.store.triggers.getById(params.triggerId);
     if (!trigger) throw new NotFoundError('trigger', params.triggerId);
@@ -64,7 +64,7 @@ export class WebhookTriggerHandler {
     });
 
     logger.info({ triggerId: params.triggerId, executionId }, 'Webhook trigger fired');
-    return { execution_id: executionId };
+    return { execution_id: executionId, workflow_id: trigger.workflow_id };
   }
 
   private checkRateLimit(triggerId: string): boolean {

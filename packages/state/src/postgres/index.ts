@@ -3,17 +3,14 @@
  * Mirrors the SQLite implementation but uses PostgreSQL-specific features (JSONB, GIN indexes).
  */
 
-import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '@loop/observability';
 import type { WorkflowDefinition } from '@loop/types';
 import type {
   StateStore,
   PaginationParams,
-  PaginatedResult,
   WorkflowFilter,
   ExecutionFilter,
 } from '../interface.js';
-import * as schema from '../schema.js';
 import { runPostgresMigrations } from './migrations.js';
 import type { PostgresConnection } from './connection.js';
 
@@ -314,7 +311,10 @@ export class PostgresStateStore implements StateStore {
     },
 
     findInterrupted: async () => {
-      const result = await this.conn.pool.query("SELECT * FROM workflow_executions WHERE status = 'running'");
+      // 'running' (died mid-execution) AND 'pending' (created but never
+      // dispatched — e.g. crash between record creation and executor pickup).
+      // Excluding 'pending' leaves those executions stuck forever (bug 12).
+      const result = await this.conn.pool.query("SELECT * FROM workflow_executions WHERE status IN ('running', 'pending')");
       return result.rows.map((r: Record<string, unknown>) => mapExecution(r));
     },
   };

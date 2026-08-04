@@ -150,7 +150,9 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     cfg.LOOP_EVENT_OUTPUT_MAX_BYTES,
   );
   const triggerDispatcher = new TriggerDispatcher(store);
-  const cronHandler = new CronTriggerHandler(store);
+  const cronHandler = new CronTriggerHandler(store, async ({ executionId, workflowId, payload }) => {
+    await dispatchToExecutor(executionId, workflowId, payload);
+  });
   const webhookHandler = new WebhookTriggerHandler(store);
   const manualHandler = new ManualTriggerHandler(store);
   const egressEngine = new EgressEngine(() => store.egressPolicies.listEnabled());
@@ -158,7 +160,33 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
 
   // ─── Execution recovery on startup ───────────────────────────────────────
 
-  const recovery = new ExecutionRecovery(store);
+  // Re-dispatch recovered executions to the executor — resetting to 'pending'
+  // alone leaves them stuck because nothing polls the store (bugs 12/13).
+  // The closure fire-and-forgets execute() so startup is not blocked.
+  async function dispatchToExecutor(
+    executionId: string,
+    workflowId: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const workflow = await authoring.getById(workflowId);
+    void executor.execute(executionId, workflow.definition, payload).catch((err) => {
+      store.executions
+        .updateStatus(executionId, {
+          status: 'failed',
+          completed_at: new Date().toISOString(),
+          error: String(err),
+        })
+        .catch(() => {});
+    });
+  }
+
+  const recovery = new ExecutionRecovery(store, async (execution) => {
+    await dispatchToExecutor(
+      execution.id,
+      execution.workflow_id,
+      (execution.trigger_payload ?? {}) as Record<string, unknown>,
+    );
+  });
   await recovery.recover();
 
   // ─── Cron triggers ──────────────────────────────────────────────────────

@@ -77,7 +77,18 @@ describe('Trigger → Execution flow', () => {
     expect(execution!.workflow_id).toBe(wf.id);
     expect(execution!.trigger_type).toBe('webhook');
     expect(execution!.trigger_payload).toMatchObject(payload);
-    expect(execution!.status).toBe('pending');
+
+    // 5. The webhook dispatch must actually RUN the workflow (bug 13):
+    // poll until the execution reaches a terminal state. MINIMAL_DEFINITION
+    // has zero nodes, so a dispatched execution succeeds almost immediately —
+    // before the fix the record stayed 'pending' forever.
+    let finalStatus = execution!.status;
+    for (let i = 0; i < 50 && (finalStatus === 'pending' || finalStatus === 'running'); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      const current = await ctx.store.executions.getById(body.execution_id);
+      finalStatus = current!.status;
+    }
+    expect(finalStatus).toBe('succeeded');
   });
 
   it('POST /webhooks/:triggerId with invalid signature is rejected', async () => {

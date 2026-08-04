@@ -143,10 +143,10 @@ describe('PostgresStateStore — executions (PG2)', () => {
     expect(call.params).toEqual(['exec-1', 'failed', null, null, null, 'boom']);
   });
 
-  it('findInterrupted selects running executions', async () => {
+  it('findInterrupted selects running and pending executions (bug 12)', async () => {
     mock.enqueueRows([]);
     await store.executions.findInterrupted();
-    expect(lastCall(mock.calls).sql).toBe("SELECT * FROM workflow_executions WHERE status = 'running'");
+    expect(lastCall(mock.calls).sql).toBe("SELECT * FROM workflow_executions WHERE status IN ('running', 'pending')");
   });
 });
 

@@ -5,7 +5,7 @@ export { ExecutionExecutor, type ExecutorContext, type ExecuteOptions } from './
 export { executeWithRetry, calculateBackoff, type RetryConfig } from './retry.js';
 export { CircuitBreaker, type CircuitBreakerState } from './circuitBreaker.js';
 export { BranchNode, LoopNode, ParallelNode, ApprovalNode, DelayNode } from './nodes/index.js';
-export { ExecutionRecovery } from './recovery.js';
+export { ExecutionRecovery, type RecoveryDispatcher } from './recovery.js';
 export { recordEvent } from './eventLog.js';
 export { EventBus, executionEventBus, type ExecutionBusEvent, type ExecutionBusListener } from './eventBus.js';
 export {

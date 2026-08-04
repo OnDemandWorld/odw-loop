@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Execution recovery now actually re-dispatches (bug 12).** `findInterrupted()`
+  selects both `running` and `pending` executions in the SQLite and PostgreSQL
+  stores (previously `pending` records were invisible and stayed stuck forever).
+  `ExecutionRecovery` accepts an injected `RecoveryDispatcher`; recovered
+  executions are re-dispatched to the executor instead of merely being reset to
+  `pending` with nothing to pick them up. Running executions with zero completed
+  nodes still settle to `failed` (ambiguous in-flight side effects); dispatch
+  failures (e.g. archived workflow) settle to `failed` with the reason.
+- **Webhook triggers now run the workflow (bug 13).** `POST /webhooks/:triggerId`
+  previously persisted only a `pending` execution record and never invoked the
+  executor, so webhook-triggered workflows never ran. The route now dispatches
+  asynchronously, mirroring the manual `/execute` route; the handler also returns
+  `workflow_id`. Verified end-to-end: signed webhook → execution reaches a
+  terminal state.
+- **Cron triggers now run the workflow (bug 14).** `CronTriggerHandler` accepts an
+  optional dispatcher; each fired tick executes the created execution (and settles
+  it to `failed` with a reason if dispatch cannot start) instead of leaving a
+  permanent `pending` record.
+- **PostgreSQL store import cleanup.** Removed dead `drizzle-orm` / `schema` /
+  `PaginatedResult` imports (queries are raw SQL); clears 10 lint errors.
+
 ### Planned
 - Real-time collaborative editing for workflows
 - Workflow marketplace for sharing templates

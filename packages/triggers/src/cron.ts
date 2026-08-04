@@ -14,10 +14,20 @@ interface ScheduledJob {
   task: cron.ScheduledTask;
 }
 
+/** Runs the execution created by a cron tick (bug 14: records alone were never executed). */
+export type CronDispatcher = (params: {
+  executionId: string;
+  workflowId: string;
+  payload: Record<string, unknown>;
+}) => Promise<void>;
+
 export class CronTriggerHandler {
   private jobs = new Map<string, ScheduledJob>();
 
-  constructor(private store: StateStore) {}
+  constructor(
+    private store: StateStore,
+    private dispatcher?: CronDispatcher,
+  ) {}
 
   /** Initialise — load all enabled cron triggers and register them. */
   async initialise(): Promise<void> {
@@ -49,14 +59,32 @@ export class CronTriggerHandler {
       } catch {
         logger.warn({ workflowId }, 'Failed to read workflow version, defaulting to 1');
       }
+      const payload = { scheduled_at: new Date().toISOString() };
       await this.store.executions.create({
         id: executionId,
         workflow_id: workflowId,
         workflow_version: workflowVersion,
         trigger_type: 'cron',
-        trigger_payload: { scheduled_at: new Date().toISOString() },
+        trigger_payload: payload,
       });
       logger.info({ triggerId, executionId, workflowVersion }, 'Cron trigger fired');
+
+      // Actually run the workflow — creating the record alone leaves it
+      // pending forever (bug 14). Settle to failed if dispatch cannot start.
+      if (this.dispatcher) {
+        try {
+          await this.dispatcher({ executionId, workflowId, payload });
+        } catch (err) {
+          await this.store.executions
+            .updateStatus(executionId, {
+              status: 'failed',
+              error: `Cron dispatch failed: ${String(err)}`,
+              completed_at: new Date().toISOString(),
+            })
+            .catch(() => {});
+          logger.error({ triggerId, executionId, error: String(err) }, 'Cron dispatch failed');
+        }
+      }
     }, {
       timezone: config.timezone ?? 'UTC',
       scheduled: true,

@@ -114,4 +114,117 @@ describe('ExecutionRecovery — event recording (V1.1 M1)', () => {
     const events = await store.events.listByExecution(executionId);
     expect(events.find((e) => e.event_type === 'execution_recovered')).toBeUndefined();
   });
+
+  it('findInterrupted returns pending as well as running executions (bug 12)', async () => {
+    const { conn, store } = await createStore();
+    conns.push(conn);
+    const runningId = await seedRunningExecution(store);
+    // A second execution left in 'pending' (created, never dispatched).
+    const pendingId = crypto.randomUUID();
+    const workflows = await store.workflows.list({}, { page: 1, per_page: 1 });
+    await store.executions.create({
+      id: pendingId,
+      workflow_id: workflows.data[0]!.id,
+      workflow_version: 1,
+      trigger_type: 'webhook',
+    });
+
+    const interrupted = await store.executions.findInterrupted();
+    const ids = interrupted.map((e) => e.id);
+    expect(ids).toContain(runningId);
+    expect(ids).toContain(pendingId);
+  });
+
+  it('re-dispatches a resumable execution via the injected dispatcher', async () => {
+    const { conn, store } = await createStore();
+    conns.push(conn);
+    const executionId = await seedRunningExecution(store);
+    const neId = crypto.randomUUID();
+    await store.nodeExecutions.create({
+      id: neId,
+      execution_id: executionId,
+      node_id: 'node_a',
+      node_type: 'vault.search',
+    });
+    await store.nodeExecutions.updateStatus(neId, {
+      status: 'succeeded',
+      output: { ok: true },
+      completed_at: new Date().toISOString(),
+    });
+
+    const dispatched: string[] = [];
+    const recovery = new ExecutionRecovery(store, async (execution) => {
+      dispatched.push(execution.id);
+    });
+    const result = await recovery.recover();
+
+    expect(result.recovered).toBe(1);
+    expect(dispatched).toEqual([executionId]);
+  });
+
+  it('re-dispatches a pending execution that never started (bug 13)', async () => {
+    const { conn, store } = await createStore();
+    conns.push(conn);
+    // Seed a pending execution with no node executions at all.
+    const workflowId = crypto.randomUUID();
+    await store.workflows.create({
+      id: workflowId,
+      name: 'Pending recovery',
+      description: '',
+      definition: DEFINITION,
+      created_by: 'system',
+    });
+    const executionId = crypto.randomUUID();
+    await store.executions.create({
+      id: executionId,
+      workflow_id: workflowId,
+      workflow_version: 1,
+      trigger_type: 'cron',
+    });
+
+    const dispatched: string[] = [];
+    const recovery = new ExecutionRecovery(store, async (execution) => {
+      dispatched.push(execution.id);
+    });
+    const result = await recovery.recover();
+
+    expect(result.recovered).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(dispatched).toEqual([executionId]);
+
+    const events = await store.events.listByExecution(executionId);
+    const recovered = events.find((e) => e.event_type === 'execution_recovered');
+    expect(recovered?.payload).toMatchObject({ reason: 'never_started' });
+  });
+
+  it('marks the execution failed when the dispatcher rejects', async () => {
+    const { conn, store } = await createStore();
+    conns.push(conn);
+    const workflowId = crypto.randomUUID();
+    await store.workflows.create({
+      id: workflowId,
+      name: 'Dispatch failure',
+      description: '',
+      definition: DEFINITION,
+      created_by: 'system',
+    });
+    const executionId = crypto.randomUUID();
+    await store.executions.create({
+      id: executionId,
+      workflow_id: workflowId,
+      workflow_version: 1,
+      trigger_type: 'manual',
+    });
+
+    const recovery = new ExecutionRecovery(store, async () => {
+      throw new Error('workflow archived');
+    });
+    const result = await recovery.recover();
+
+    expect(result.recovered).toBe(0);
+    expect(result.failed).toBe(1);
+    const execution = await store.executions.getById(executionId);
+    expect(execution?.status).toBe('failed');
+    expect(execution?.error).toContain('workflow archived');
+  });
 });
