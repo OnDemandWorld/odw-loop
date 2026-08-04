@@ -30,12 +30,20 @@ export class WebhookTriggerHandler {
     if (!trigger) throw new NotFoundError('trigger', params.triggerId);
     if (!trigger.enabled) throw new AuthenticationError('AUTH_EXPIRED', 'Trigger is disabled');
 
-    const config = trigger.config as { secret: string };
+    const config = trigger.config as { secret?: string };
 
-    // Verify HMAC signature
-    if (params.signature) {
-      const expected = `sha256=${createHmac('sha256', config.secret).update(params.rawBody).digest('hex')}`;
-      if (!timingSafeEqual(Buffer.from(params.signature), Buffer.from(expected))) {
+    // Verify HMAC signature. Mandatory when the trigger has a secret —
+    // omitting the header must not bypass verification (tsd §11.6).
+    // Triggers without a secret accept unsigned events.
+    if (config.secret) {
+      if (!params.signature) {
+        throw new AuthenticationError('AUTH_INVALID_TOKEN', 'Missing webhook signature');
+      }
+      const expected = Buffer.from(
+        `sha256=${createHmac('sha256', config.secret).update(params.rawBody).digest('hex')}`,
+      );
+      const provided = Buffer.from(params.signature);
+      if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
         throw new AuthenticationError('AUTH_INVALID_TOKEN', 'Invalid webhook signature');
       }
     }

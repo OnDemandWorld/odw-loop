@@ -3,7 +3,7 @@
  */
 
 import { request } from 'undici';
-import { createHash } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { createLogger } from '@loop/observability';
 
 const logger = createLogger({ name: 'loop:connectors:notification', component: 'connectors' });
@@ -43,7 +43,9 @@ export class WebhookNotifier {
 
   async send(payload: unknown): Promise<void> {
     const body = JSON.stringify(payload);
-    const signature = createHash('sha256').update(this.secret + body).digest('hex');
+    // HMAC-SHA256 over the raw body — must match the inbound verification in
+    // @loop/triggers WebhookTriggerHandler (tsd §11.6).
+    const signature = createHmac('sha256', this.secret).update(body).digest('hex');
     await request(this.url, {
       method: 'POST',
       headers: {

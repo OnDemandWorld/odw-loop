@@ -106,4 +106,71 @@ describe('WebhookTriggerHandler', () => {
       handler.handle({ triggerId, signature, body, rawBody })
     ).rejects.toThrow('Rate limit exceeded');
   });
+
+  it('rejects a missing signature when the trigger has a secret (no bypass)', async () => {
+    const triggerId = uniqueTriggerId();
+    const mockStore = {
+      triggers: {
+        getById: vi.fn().mockResolvedValue({
+          id: triggerId,
+          workflow_id: 'workflow-1',
+          enabled: true,
+          config: { secret: 'test-secret' },
+        }),
+      },
+      executions: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+    } as any;
+
+    const handler = new WebhookTriggerHandler(mockStore);
+
+    await expect(
+      handler.handle({ triggerId, signature: null, body: {}, rawBody: '{}' })
+    ).rejects.toThrow('Missing webhook signature');
+    expect(mockStore.executions.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a wrong-length signature without crashing', async () => {
+    const triggerId = uniqueTriggerId();
+    const mockStore = {
+      triggers: {
+        getById: vi.fn().mockResolvedValue({
+          id: triggerId,
+          workflow_id: 'workflow-1',
+          enabled: true,
+          config: { secret: 'test-secret' },
+        }),
+      },
+    } as any;
+
+    const handler = new WebhookTriggerHandler(mockStore);
+
+    await expect(
+      handler.handle({ triggerId, signature: 'sha256=short', body: {}, rawBody: '{}' })
+    ).rejects.toThrow('Invalid webhook signature');
+  });
+
+  it('accepts unsigned events for triggers without a secret', async () => {
+    const triggerId = uniqueTriggerId();
+    const mockStore = {
+      triggers: {
+        getById: vi.fn().mockResolvedValue({
+          id: triggerId,
+          workflow_id: 'workflow-1',
+          enabled: true,
+          config: {},
+        }),
+      },
+      executions: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+    } as any;
+
+    const handler = new WebhookTriggerHandler(mockStore);
+    const result = await handler.handle({ triggerId, signature: null, body: { ok: true }, rawBody: '{"ok":true}' });
+
+    expect(result.execution_id).toBeDefined();
+    expect(mockStore.executions.create).toHaveBeenCalled();
+  });
 });

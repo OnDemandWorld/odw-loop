@@ -207,8 +207,16 @@ export class VaultAdapter implements ConnectorAdapter {
       }
     } catch (err) {
       if (err instanceof UpstreamError) throw err;
-      logger.error({ error: String(err) }, 'Vault call failed');
-      throw new UpstreamError('UPSTREAM_VAULT_UNAVAILABLE', String(err));
+      // Include the target URL and underlying cause — bare "AggregateError"
+      // gave no clue which host was unreachable (found via combo testing).
+      const detail =
+        err instanceof Error
+          ? err.cause
+            ? `${err.message} (${String(err.cause)})`
+            : err.message
+          : String(err);
+      logger.error({ error: detail, url: `${baseUrl}${path}`, method }, 'Vault call failed');
+      throw new UpstreamError('UPSTREAM_VAULT_UNAVAILABLE', `${method} ${baseUrl}${path}: ${detail}`);
     }
   }
 }

@@ -265,11 +265,14 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   app.post('/webhooks/:triggerId', async (request, reply) => {
     const { triggerId } = request.params as { triggerId: string };
+    // Verify against the exact bytes received (captured by the JSON content
+    // type parser); fall back to re-serialisation for injected test requests.
+    const raw = (request.raw as { rawBody?: Buffer }).rawBody;
     const result = await deps.webhookHandler.handle({
       triggerId,
       signature: request.headers['x-loop-signature'] as string | null,
       body: request.body,
-      rawBody: JSON.stringify(request.body),
+      rawBody: raw ? raw.toString('utf8') : JSON.stringify(request.body),
     });
     return reply.status(200).send({ accepted: true, execution_id: result.execution_id });
   });

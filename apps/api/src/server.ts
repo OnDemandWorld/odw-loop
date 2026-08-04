@@ -46,6 +46,25 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     credentials: true,
   });
 
+  // Capture the raw request body on the raw IncomingMessage so byte-exact
+  // HMAC verification is possible on /webhooks/:triggerId (tsd §11.6: the
+  // signature is computed over the raw body; re-serialising the parsed body
+  // is not guaranteed to reproduce the sender's bytes).
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+    (req as { rawBody?: Buffer }).rawBody = body as Buffer;
+    const text = (body as Buffer).toString('utf8');
+    if (text.length === 0) {
+      done(null, undefined);
+      return;
+    }
+    try {
+      done(null, JSON.parse(text));
+    } catch (err) {
+      (err as { statusCode?: number }).statusCode = 400;
+      done(err as Error, undefined);
+    }
+  });
+
   // Rate limiting (configurable; LOOP_RATE_LIMIT_MAX=0 disables). Health/ready/
   // metrics are exempt so monitoring is never throttled. The previous hardcoded
   // 100/min per IP blocked legitimate multi-user traffic from a shared IP
