@@ -11,13 +11,21 @@ import { replayExecution, snapshotToJson } from '@loop/engine';
 import type { TriggerDispatcher, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
 import type { EgressEngine } from '@loop/egress';
 import type { SecretsManager } from '@loop/secrets';
+import { z } from 'zod';
 import {
   CreateWorkflowRequestSchema,
   UpdateWorkflowRequestSchema,
   LoopError,
+  NotFoundError,
   type CreateWorkflowRequest,
   type UpdateWorkflowRequest,
 } from '@loop/types';
+import {
+  TemplateRegistry,
+  INDUSTRIES,
+  CATEGORIES,
+  type TemplateFilters,
+} from '@loop/templates';
 import type { LoopConfig } from '../config.js';
 import { createAuthGuard, isProtectedPath, requireRole, type Role } from '../middleware/auth.js';
 
@@ -59,6 +67,13 @@ function meta(request: FastifyRequest, extra?: Record<string, unknown>) {
   return { request_id: getRequestId(request), timestamp: new Date().toISOString(), ...extra };
 }
 
+/** POST /api/v1/templates/:id/instantiate body — both fields optional overrides. */
+const InstantiateTemplateRequestSchema = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(4000).optional(),
+});
+type InstantiateTemplateRequest = z.infer<typeof InstantiateTemplateRequestSchema>;
+
 export interface RouteDeps {
   store: SqliteStateStore;
   connectors: ConnectorRegistry;
@@ -69,6 +84,8 @@ export interface RouteDeps {
   manualHandler: ManualTriggerHandler;
   egressEngine: EgressEngine;
   secretsManager: SecretsManager;
+  /** Template marketplace registry (loads templates/*.json once at startup). */
+  templates: TemplateRegistry;
   config: LoopConfig;
 }
 
@@ -300,6 +317,56 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/v1/connectors', async (request) => {
     const connectors = await deps.store.connectors.list();
     return { success: true, data: connectors, meta: meta(request) };
+  });
+
+  // ─── Templates / marketplace ────────────────────────────────────────────
+
+  // Read-only gallery browse: industry/category facets, free-text search and
+  // a featured-only toggle. Featured templates sort first; summaries exclude
+  // the heavy definition so listing stays cheap. The facet vocabularies ride
+  // along in meta so the UI renders chips from a single source of truth.
+  app.get('/api/v1/templates', async (request) => {
+    const query = request.query as Record<string, string>;
+    const templates = deps.templates.list({
+      industry: query['industry'] as TemplateFilters['industry'],
+      category: query['category'] as TemplateFilters['category'],
+      search: query['search'],
+      featuredOnly: query['featured'] === 'true',
+    });
+    return {
+      success: true,
+      data: templates,
+      meta: meta(request, { total: templates.length, industries: INDUSTRIES, categories: CATEGORIES }),
+    };
+  });
+
+  // Full template (definition included) for the marketplace detail view.
+  app.get('/api/v1/templates/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    const template = deps.templates.get(id);
+    if (!template) throw new NotFoundError('template', id);
+    return { success: true, data: template, meta: meta(request) };
+  });
+
+  // One-click "Use template" (Zapier-style): deep-copy the template's
+  // definition, apply the caller's name/description overrides and persist it
+  // through the standard authoring path (validated + versioned + audited).
+  // The `template:<id>` tag records provenance so the gallery can badge
+  // workflows that started from a template.
+  app.post('/api/v1/templates/:id/instantiate', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = parseBody<InstantiateTemplateRequest>(InstantiateTemplateRequestSchema, request.body ?? {});
+    const actor = getActor(request);
+    const template = deps.templates.instantiate(id, body);
+    if (!template) throw new NotFoundError('template', id);
+    const workflow = await deps.authoring.create({
+      name: template.name,
+      description: template.description,
+      definition: template.definition,
+      tags: [...template.tags, `template:${id}`],
+      created_by: actor.principal,
+    });
+    return reply.status(201).send({ success: true, data: workflow, meta: meta(request, { template_id: id }) });
   });
 
   // ─── System / admin endpoints ────────────────────────────────────────────

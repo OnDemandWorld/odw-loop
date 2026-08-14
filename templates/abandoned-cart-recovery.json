@@ -1,0 +1,111 @@
+{
+  "name": "Abandoned Cart Recovery",
+  "description": "Revenue recovery engine: scores every abandoned cart by value tier, routes high-value carts to personal customer-success outreach with an internal alert, sends automated reminder emails for standard carts, and logs every event to Vault for funnel analytics",
+  "industry": "ecommerce",
+  "category": "automation",
+  "featured": true,
+  "icon": "🛒",
+  "use_cases": [
+    "Recover revenue from abandoned checkouts automatically",
+    "Give high-value carts white-glove human follow-up",
+    "Build a funnel dataset of abandonment events in Vault"
+  ],
+  "trigger": {
+    "type": "webhook",
+    "config": { "secret": "{{secrets.webhook_secret}}" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "recap.classify",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "content": "Cart {{trigger.payload.cart_id}} worth {{trigger.payload.cart_value}} containing {{trigger.payload.items}} was abandoned by customer {{trigger.payload.customer_email}} (segment: {{trigger.payload.segment}})",
+          "categories": ["high-value", "standard", "low"]
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 20000
+      },
+      {
+        "id": "node_2",
+        "type": "control.branch",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "condition": "{{node_1.output.category}} == high-value"
+        },
+        "timeout_ms": 5000
+      },
+      {
+        "id": "node_3",
+        "type": "desk.create_task",
+        "position": { "x": 700, "y": 100 },
+        "config": {
+          "title": "Personal outreach: cart {{trigger.payload.cart_id}}",
+          "description": "High-value cart ({{trigger.payload.cart_value}}) abandoned by {{trigger.payload.customer_email}}. Reach out personally with an incentive.",
+          "priority": "high",
+          "assignee": "{{variables.csm_team}}"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_4",
+        "type": "desk.send_notification",
+        "position": { "x": 1000, "y": 100 },
+        "config": {
+          "channel": "{{variables.ecom_channel}}",
+          "title": "High-value cart abandoned",
+          "body": "Cart {{trigger.payload.cart_id}} worth {{trigger.payload.cart_value}} is waiting on outreach.",
+          "priority": "high"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_5",
+        "type": "generic.rest_call",
+        "position": { "x": 700, "y": 380 },
+        "config": {
+          "method": "POST",
+          "url": "{{variables.email_api_url}}",
+          "body": {
+            "to": "{{trigger.payload.customer_email}}",
+            "template": "cart-reminder",
+            "vars": { "cart_id": "{{trigger.payload.cart_id}}", "items": "{{trigger.payload.items}}" }
+          }
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 2000 },
+        "timeout_ms": 15000
+      },
+      {
+        "id": "node_6",
+        "type": "vault.create_document",
+        "position": { "x": 400, "y": 560 },
+        "config": {
+          "title": "Abandoned cart log - {{trigger.payload.cart_id}}",
+          "content": "Cart {{trigger.payload.cart_id}} ({{trigger.payload.cart_value}}) tiered as {{node_1.output.category}} by customer {{trigger.payload.customer_email}}",
+          "tags": ["ecommerce", "cart-abandonment", "funnel", "{{node_1.output.category}}"]
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "true", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_3", "source_port": "output", "target": "node_4", "target_port": "input" },
+      { "id": "e4", "source": "node_2", "source_port": "false", "target": "node_5", "target_port": "input" },
+      { "id": "e5", "source": "node_1", "source_port": "output", "target": "node_6", "target_port": "input" }
+    ],
+    "variables": {
+      "csm_team": { "type": "string", "default": "customer-success" },
+      "ecom_channel": { "type": "string", "default": "#ecommerce-csm" },
+      "email_api_url": { "type": "string", "default": "https://mailer.internal/api/send" }
+    },
+    "metadata": {
+      "name": "Abandoned Cart Recovery",
+      "description": "Classify Cart Tier → Personal Outreach + Alert (high-value) or Automated Email, always Log",
+      "tags": ["ecommerce", "cart-recovery", "revenue", "retail", "automation"]
+    }
+  }
+}

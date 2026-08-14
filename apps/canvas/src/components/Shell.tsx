@@ -8,6 +8,7 @@ import { ThemeToggle } from './ThemeToggle';
 const NAV = [
   { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
   { to: '/workflows', label: 'Workflows', icon: 'workflow', end: false },
+  { to: '/templates', label: 'Templates', icon: 'globe', end: false },
   { to: '/executions', label: 'Executions', icon: 'bolt', end: false },
 ];
 

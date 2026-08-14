@@ -1,0 +1,108 @@
+{
+  "name": "Course Feedback Analysis",
+  "description": "Weekly academic pulse: gathers the week's course feedback from Vault, summarizes recurring themes, classifies overall sentiment, publishes a digest report and briefs the academics channel on the trend",
+  "industry": "education",
+  "category": "reporting",
+  "featured": false,
+  "icon": "🎓",
+  "use_cases": [
+    "Track student sentiment across courses every week",
+    "Spot recurring themes in feedback before evaluations",
+    "Publish a shareable weekly digest for faculty"
+  ],
+  "trigger": {
+    "type": "cron",
+    "config": { "expression": "0 8 * * 1", "timezone": "UTC" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "vault.search",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "query": "type:course-feedback",
+          "filters": { "limit": 100 }
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 20000
+      },
+      {
+        "id": "node_2",
+        "type": "recap.summarize",
+        "position": { "x": 400, "y": 120 },
+        "config": {
+          "content": "{{node_1.output.documents}}",
+          "format": "bullet_points",
+          "prompt": "Summarize this week's course feedback into key themes, praising points and improvement areas, grouped by course."
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 30000
+      },
+      {
+        "id": "node_3",
+        "type": "recap.classify",
+        "position": { "x": 400, "y": 380 },
+        "config": {
+          "content": "{{node_1.output.documents}}",
+          "categories": ["very-positive", "positive", "neutral", "negative"]
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 30000
+      },
+      {
+        "id": "node_4",
+        "type": "vault.create_document",
+        "position": { "x": 750, "y": 120 },
+        "config": {
+          "title": "Course feedback digest - {{trigger.scheduled_at}}",
+          "content": "{{node_2.output.summary}}",
+          "tags": ["education", "course-feedback", "weekly-report"]
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      },
+      {
+        "id": "node_5",
+        "type": "desk.send_notification",
+        "position": { "x": 1100, "y": 120 },
+        "config": {
+          "channel": "{{variables.academics_channel}}",
+          "title": "Weekly course feedback digest ready",
+          "body": "Overall sentiment: {{node_3.output.category}}.\n{{node_2.output.summary}}",
+          "priority": "normal"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_6",
+        "type": "desk.create_task",
+        "position": { "x": 750, "y": 380 },
+        "config": {
+          "title": "Review negative feedback themes",
+          "description": "Sentiment classified as {{node_3.output.category}}. Review the digest and propose interventions for weak themes.",
+          "priority": "normal",
+          "assignee": "{{variables.academic_lead}}"
+        },
+        "timeout_ms": 10000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_1", "source_port": "output", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_2", "source_port": "output", "target": "node_4", "target_port": "input" },
+      { "id": "e4", "source": "node_3", "source_port": "output", "target": "node_6", "target_port": "input" },
+      { "id": "e5", "source": "node_4", "source_port": "output", "target": "node_5", "target_port": "input" }
+    ],
+    "variables": {
+      "academics_channel": { "type": "string", "default": "#academics" },
+      "academic_lead": { "type": "string", "default": "dean-of-studies" }
+    },
+    "metadata": {
+      "name": "Course Feedback Analysis",
+      "description": "Search Feedback → Summarize + Classify → Publish Digest + Notify + Task",
+      "tags": ["education", "feedback", "sentiment", "weekly-report", "academics"]
+    }
+  }
+}

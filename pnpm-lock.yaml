@@ -95,6 +95,9 @@ importers:
       '@loop/state':
         specifier: workspace:*
         version: link:../../packages/state
+      '@loop/templates':
+        specifier: workspace:*
+        version: link:../../packages/templates
       '@loop/triggers':
         specifier: workspace:*
         version: link:../../packages/triggers
@@ -433,6 +436,16 @@ importers:
       vitest:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@20.19.43)
+
+  packages/templates:
+    dependencies:
+      '@loop/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
 
   packages/triggers:
     dependencies:

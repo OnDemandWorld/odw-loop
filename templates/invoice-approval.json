@@ -1,0 +1,97 @@
+{
+  "name": "Invoice Approval Workflow",
+  "description": "Accounts payable intake: classifies incoming invoices by expense category, routes them through a finance approval gate, archives approved invoices to Vault and schedules the payment while notifying requesters on rejection",
+  "industry": "finance",
+  "category": "approval",
+  "featured": true,
+  "icon": "🧾",
+  "use_cases": [
+    "Accounts payable intake from email or upload webhooks",
+    "Enforce managerial control before any payment is scheduled",
+    "Archive approved invoices with category tags for audit trails"
+  ],
+  "trigger": {
+    "type": "webhook",
+    "config": { "secret": "{{secrets.webhook_secret}}" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "recap.classify",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "content": "Invoice {{trigger.payload.invoice_number}} from {{trigger.payload.vendor}} for {{trigger.payload.amount}}. Details: {{trigger.payload.invoice_text}}",
+          "categories": ["utilities", "software", "travel", "services", "office-supplies", "other"]
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 20000
+      },
+      {
+        "id": "node_2",
+        "type": "control.approval",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "approvers": ["{{variables.approver_role}}"],
+          "message": "Invoice {{trigger.payload.invoice_number}} from {{trigger.payload.vendor}} for {{trigger.payload.amount}} awaits approval (category: {{node_1.output.category}})",
+          "timeout_hours": 72
+        },
+        "timeout_ms": 259200000
+      },
+      {
+        "id": "node_3",
+        "type": "vault.create_document",
+        "position": { "x": 700, "y": 100 },
+        "config": {
+          "title": "Invoice {{trigger.payload.invoice_number}} - {{trigger.payload.vendor}}",
+          "content": "{{trigger.payload.invoice_text}}",
+          "tags": ["invoice", "{{node_1.output.category}}", "approved"],
+          "folder": "{{variables.vault_folder}}"
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      },
+      {
+        "id": "node_4",
+        "type": "desk.create_task",
+        "position": { "x": 1000, "y": 100 },
+        "config": {
+          "title": "Schedule payment: invoice {{trigger.payload.invoice_number}}",
+          "description": "Pay {{trigger.payload.vendor}} {{trigger.payload.amount}} before {{trigger.payload.due_date}}",
+          "priority": "high",
+          "due_date": "{{trigger.payload.due_date}}"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_5",
+        "type": "desk.send_notification",
+        "position": { "x": 700, "y": 350 },
+        "config": {
+          "channel": "{{variables.notify_channel}}",
+          "title": "Invoice rejected: {{trigger.payload.invoice_number}}",
+          "body": "The invoice from {{trigger.payload.vendor}} was not approved. Reason: {{node_2.output.rejection_reason}}",
+          "priority": "high"
+        },
+        "timeout_ms": 10000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "approved", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_2", "source_port": "approved", "target": "node_4", "target_port": "input" },
+      { "id": "e4", "source": "node_2", "source_port": "rejected", "target": "node_5", "target_port": "input" }
+    ],
+    "variables": {
+      "approver_role": { "type": "string", "default": "finance-manager" },
+      "vault_folder": { "type": "string", "default": "/finance/invoices" },
+      "notify_channel": { "type": "string", "default": "#finance-ops" }
+    },
+    "metadata": {
+      "name": "Invoice Approval Workflow",
+      "description": "Classify → Approval Gate → Archive + Schedule Payment (approved) or Notify (rejected)",
+      "tags": ["invoice", "finance", "approval", "payment", "accounts-payable"]
+    }
+  }
+}

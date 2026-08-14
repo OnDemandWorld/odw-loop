@@ -86,6 +86,168 @@ function toRfEdge(e: WorkflowDefinition['edges'][number]): Edge {
   };
 }
 
+/** Reconstruct the full dotted node type (e.g. `vault.search`) from RF node data. */
+function fullNodeType(node: Node): string {
+  return node.type === 'control'
+    ? `control.${node.data.controlType}`
+    : node.type === 'code'
+      ? `code.${node.data.language ?? 'typescript'}`
+      : `${node.data.connectorType}.${node.data.operation}`;
+}
+
+// ── Form-based node configuration (n8n-style) ────────────────────────────
+// Field vocabulary distilled from the 23 built-in templates so the form
+// covers what real workflows actually configure. Unknown keys still surface
+// in the "Additional fields" JSON block; raw JSON mode remains available.
+
+type FieldType = 'text' | 'textarea' | 'number' | 'select' | 'boolean' | 'list' | 'json';
+
+interface FieldSpec {
+  key: string;
+  label: string;
+  type: FieldType;
+  placeholder?: string;
+  options?: string[];
+  hint?: string;
+}
+
+const FIELD_SPECS: Record<string, FieldSpec[]> = {
+  'vault.search': [
+    { key: 'query', label: 'Query', type: 'text', placeholder: '{{trigger.payload.query}}' },
+    { key: 'limit', label: 'Max results', type: 'number', placeholder: '10' },
+    { key: 'filters', label: 'Filters (JSON)', type: 'json', placeholder: '{ "folder": "invoices" }' },
+  ],
+  'vault.create_document': [
+    { key: 'title', label: 'Title', type: 'text' },
+    { key: 'content', label: 'Content', type: 'textarea' },
+    { key: 'tags', label: 'Tags', type: 'list', hint: 'comma separated' },
+    { key: 'folder', label: 'Folder', type: 'text' },
+  ],
+  'vault.update_document': [
+    { key: 'id', label: 'Document ID', type: 'text' },
+    { key: 'metadata', label: 'Metadata (JSON)', type: 'json' },
+  ],
+  'vault.manage_tags': [
+    { key: 'document_id', label: 'Document ID', type: 'text' },
+    { key: 'add_tags', label: 'Add tags', type: 'list' },
+    { key: 'remove_tags', label: 'Remove tags', type: 'list' },
+  ],
+  'vault.rag_query': [
+    { key: 'question', label: 'Question', type: 'textarea' },
+    { key: 'context', label: 'Context', type: 'textarea' },
+    { key: 'output_format', label: 'Output format', type: 'select', options: ['json', 'text', 'markdown'] },
+  ],
+  'desk.create_task': [
+    { key: 'title', label: 'Title', type: 'text' },
+    { key: 'description', label: 'Description', type: 'textarea' },
+    { key: 'assignee', label: 'Assignee', type: 'text' },
+    { key: 'priority', label: 'Priority', type: 'select', options: ['low', 'normal', 'medium', 'high', 'urgent'] },
+    { key: 'labels', label: 'Labels', type: 'list' },
+    { key: 'project_id', label: 'Project ID', type: 'text' },
+    { key: 'due_date', label: 'Due date', type: 'text', placeholder: '2026-12-31 or {{…}}' },
+  ],
+  'desk.create_project': [
+    { key: 'name', label: 'Name', type: 'text' },
+    { key: 'description', label: 'Description', type: 'textarea' },
+    { key: 'owner', label: 'Owner', type: 'text' },
+  ],
+  'desk.create_calendar_event': [
+    { key: 'title', label: 'Title', type: 'text' },
+    { key: 'description', label: 'Description', type: 'textarea' },
+    { key: 'offset_hours', label: 'Offset (hours)', type: 'number' },
+    { key: 'duration_minutes', label: 'Duration (minutes)', type: 'number' },
+    { key: 'attendees', label: 'Attendees', type: 'list' },
+  ],
+  'desk.list_tasks': [
+    { key: 'status', label: 'Status', type: 'select', options: ['open', 'in_progress', 'done'] },
+    { key: 'updated_since', label: 'Updated since', type: 'text', placeholder: 'ISO 8601 date' },
+  ],
+  'desk.send_notification': [
+    { key: 'channel', label: 'Channel', type: 'text' },
+    { key: 'title', label: 'Title', type: 'text' },
+    { key: 'body', label: 'Body', type: 'textarea' },
+    { key: 'message', label: 'Message', type: 'textarea' },
+    { key: 'priority', label: 'Priority', type: 'select', options: ['low', 'normal', 'high', 'urgent'] },
+    { key: 'recipient', label: 'Recipient', type: 'text' },
+  ],
+  'recap.summarize': [
+    { key: 'transcript_id', label: 'Transcript ID', type: 'text' },
+    { key: 'content', label: 'Content', type: 'textarea' },
+    { key: 'max_length', label: 'Max length (words)', type: 'number' },
+    { key: 'format', label: 'Format', type: 'select', options: ['bullet_points', 'executive_summary', 'paragraph', 'markdown'] },
+    { key: 'prompt', label: 'Custom prompt', type: 'textarea' },
+  ],
+  'recap.extract_action_items': [
+    { key: 'transcript_id', label: 'Transcript ID', type: 'text' },
+    { key: 'content', label: 'Content', type: 'textarea' },
+    { key: 'assignee', label: 'Default assignee', type: 'text' },
+    { key: 'include_owners', label: 'Include owners', type: 'boolean' },
+    { key: 'include_due_dates', label: 'Include due dates', type: 'boolean' },
+  ],
+  'recap.classify': [
+    { key: 'content', label: 'Content', type: 'textarea' },
+    { key: 'categories', label: 'Categories', type: 'list' },
+  ],
+  'generic.rest_call': [
+    { key: 'method', label: 'Method', type: 'select', options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
+    { key: 'url', label: 'URL', type: 'text', placeholder: 'https://…' },
+    { key: 'path', label: 'Path', type: 'text' },
+    { key: 'headers', label: 'Headers (JSON)', type: 'json' },
+    { key: 'params', label: 'Query params (JSON)', type: 'json' },
+    { key: 'body', label: 'Body (JSON)', type: 'json' },
+  ],
+  'control.branch': [{ key: 'condition', label: 'Condition', type: 'text', placeholder: 'tasks.total > 0' }],
+  'control.condition': [
+    { key: 'condition', label: 'Condition', type: 'text' },
+    { key: 'true_port', label: 'True port', type: 'text' },
+    { key: 'false_port', label: 'False port', type: 'text' },
+  ],
+  'control.approval': [
+    { key: 'approvers', label: 'Approvers', type: 'list' },
+    { key: 'reviewer', label: 'Reviewer', type: 'text' },
+    { key: 'message', label: 'Message', type: 'textarea' },
+    { key: 'timeout_hours', label: 'Timeout (hours)', type: 'number' },
+    { key: 'document_id', label: 'Document ID', type: 'text' },
+  ],
+  'control.loop': [
+    { key: 'condition', label: 'Continue condition', type: 'text' },
+    { key: 'max_iterations', label: 'Max iterations', type: 'number' },
+  ],
+  'control.delay': [{ key: 'duration_ms', label: 'Duration (ms)', type: 'number' }],
+  'control.parallel': [],
+  'code.typescript': [{ key: 'code', label: 'Code', type: 'textarea', placeholder: 'return { result: input }' }],
+  'code.python': [{ key: 'code', label: 'Code', type: 'textarea' }],
+};
+
+/** Render a typed config value as an editable string. */
+function fieldToString(spec: FieldSpec, value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (spec.type === 'list') return Array.isArray(value) ? value.join(', ') : String(value);
+  if (spec.type === 'json') return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+/** Parse an edited string back into the typed config value. */
+function stringToField(spec: FieldSpec, raw: string): unknown {
+  const s = raw.trim();
+  if (s === '') return undefined;
+  switch (spec.type) {
+    case 'number': {
+      const n = Number(s);
+      if (Number.isNaN(n)) throw new Error(`${spec.label} must be a number`);
+      return n;
+    }
+    case 'boolean':
+      return s === 'true';
+    case 'list':
+      return s.split(',').map((v) => v.trim()).filter(Boolean);
+    case 'json':
+      return JSON.parse(s) as unknown;
+    default:
+      return raw;
+  }
+}
+
 function ConfigPanel({
   node,
   onChange,
@@ -96,20 +258,63 @@ function ConfigPanel({
   onDelete: (id: string) => void;
 }) {
   const config = (node.data.config ?? {}) as Record<string, unknown>;
+  const type = fullNodeType(node);
+  const specs = FIELD_SPECS[type] ?? [];
+  const specKeys = new Set(specs.map((s) => s.key));
+  const extraKeys = Object.keys(config).filter((k) => !specKeys.has(k));
+
+  const [mode, setMode] = useState<'form' | 'json'>(specs.length > 0 ? 'form' : 'json');
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const spec of specs) init[spec.key] = fieldToString(spec, config[spec.key]);
+    return init;
+  });
+  const [extraDraft, setExtraDraft] = useState<string>(() =>
+    JSON.stringify(Object.fromEntries(extraKeys.map((k) => [k, config[k]])), null, 2),
+  );
   const [draft, setDraft] = useState<string>(() => JSON.stringify(config, null, 2));
   const [parseError, setParseError] = useState<string | null>(null);
 
   useEffect(() => {
+    const init: Record<string, string> = {};
+    for (const spec of specs) init[spec.key] = fieldToString(spec, config[spec.key]);
+    setValues(init);
+    const extras = Object.keys(config).filter((k) => !specKeys.has(k));
+    setExtraDraft(JSON.stringify(Object.fromEntries(extras.map((k) => [k, config[k]])), null, 2));
     setDraft(JSON.stringify(config, null, 2));
     setParseError(null);
-  }, [node.id]);
+    setMode(specs.length > 0 ? 'form' : 'json');
+    // Reset everything when switching nodes; the spec objects are derived
+    // deterministically from `type` so they need not be dependencies.
+  }, [node.id, type]);
 
-  const apply = () => {
+  const setField = (key: string, v: string) => setValues((prev) => ({ ...prev, [key]: v }));
+
+  const applyForm = () => {
+    try {
+      const next: Record<string, unknown> = {};
+      for (const spec of specs) {
+        const parsed = stringToField(spec, values[spec.key] ?? '');
+        if (parsed !== undefined) next[spec.key] = parsed;
+      }
+      const extraRaw = extraDraft.trim();
+      if (extraRaw && extraRaw !== '{}') {
+        const extra = JSON.parse(extraRaw) as Record<string, unknown>;
+        Object.assign(next, extra);
+      }
+      setParseError(null);
+      onChange(node.id, next);
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Invalid value');
+    }
+  };
+
+  const applyJson = () => {
     try {
       const parsed = JSON.parse(draft) as Record<string, unknown>;
       setParseError(null);
       onChange(node.id, parsed);
-    } catch (e) {
+    } catch {
       setParseError('Invalid JSON');
     }
   };
@@ -127,26 +332,120 @@ function ConfigPanel({
           />
           {node.id}
         </div>
-        <div className="font-mono text-[11px] text-ink-400 mt-0.5">
-          {node.type === 'connector'
-            ? `${node.data.connectorType}.${node.data.operation}`
-            : node.type === 'control'
-              ? `control.${node.data.controlType}`
-              : 'code'}
+        <div className="font-mono text-[11px] text-ink-400 mt-0.5">{type}</div>
+        <div className="flex gap-1 mt-2.5">
+          {(['form', 'json'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              disabled={m === 'form' && specs.length === 0}
+              className={
+                'px-2.5 py-1 rounded-md text-[10px] font-display font-semibold uppercase tracking-wider border transition-all disabled:opacity-40 ' +
+                (mode === m
+                  ? 'bg-volt-glow border-volt/30 text-volt'
+                  : 'border-ink-700 text-ink-400 hover:text-ink-200')
+              }
+            >
+              {m === 'form' ? 'Form' : 'JSON'}
+            </button>
+          ))}
         </div>
       </div>
       <div className="flex-1 p-4 overflow-y-auto">
-        <label className="block text-[10px] font-display font-semibold uppercase tracking-widest text-ink-500 mb-1.5">
-          Config (JSON)
-        </label>
-        <textarea
-          className="input font-mono text-xs resize-none"
-          rows={14}
-          spellCheck={false}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        {parseError && <div className="text-xs text-bad mt-1.5">{parseError}</div>}
+        {mode === 'form' ? (
+          <div className="space-y-3.5">
+            {specs.map((spec) => (
+              <div key={spec.key}>
+                <label className="block text-[10px] font-display font-semibold uppercase tracking-widest text-ink-500 mb-1.5">
+                  {spec.label}
+                  {spec.hint && <span className="normal-case font-body font-normal text-ink-600"> ({spec.hint})</span>}
+                </label>
+                {spec.type === 'textarea' ? (
+                  <textarea
+                    className="input resize-none text-xs"
+                    rows={4}
+                    spellCheck={false}
+                    placeholder={spec.placeholder}
+                    value={values[spec.key] ?? ''}
+                    onChange={(e) => setField(spec.key, e.target.value)}
+                  />
+                ) : spec.type === 'select' ? (
+                  <select
+                    className="input"
+                    value={values[spec.key] ?? ''}
+                    onChange={(e) => setField(spec.key, e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {spec.options?.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                    {/* keep values outside the suggestion list selectable */}
+                    {values[spec.key] && !spec.options?.includes(values[spec.key] ?? '') && (
+                      <option value={values[spec.key]}>{values[spec.key]}</option>
+                    )}
+                  </select>
+                ) : spec.type === 'boolean' ? (
+                  <select
+                    className="input"
+                    value={values[spec.key] ?? ''}
+                    onChange={(e) => setField(spec.key, e.target.value)}
+                  >
+                    <option value="">—</option>
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                  </select>
+                ) : spec.type === 'json' ? (
+                  <textarea
+                    className="input resize-none font-mono text-xs"
+                    rows={5}
+                    spellCheck={false}
+                    placeholder={spec.placeholder ?? '{}'}
+                    value={values[spec.key] ?? ''}
+                    onChange={(e) => setField(spec.key, e.target.value)}
+                  />
+                ) : (
+                  <input
+                    className={spec.type === 'number' ? 'input' : 'input'}
+                    type={spec.type === 'number' ? 'number' : 'text'}
+                    placeholder={spec.placeholder}
+                    value={values[spec.key] ?? ''}
+                    onChange={(e) => setField(spec.key, e.target.value)}
+                  />
+                )}
+              </div>
+            ))}
+
+            <div>
+              <label className="block text-[10px] font-display font-semibold uppercase tracking-widest text-ink-500 mb-1.5">
+                Additional fields (JSON)
+              </label>
+              <textarea
+                className="input resize-none font-mono text-xs"
+                rows={4}
+                spellCheck={false}
+                placeholder="{}"
+                value={extraDraft}
+                onChange={(e) => setExtraDraft(e.target.value)}
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <label className="block text-[10px] font-display font-semibold uppercase tracking-widest text-ink-500 mb-1.5">
+              Config (JSON)
+            </label>
+            <textarea
+              className="input font-mono text-xs resize-none"
+              rows={14}
+              spellCheck={false}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+          </>
+        )}
+        {parseError && <div className="text-xs text-bad mt-2">{parseError}</div>}
         <div className="text-[11px] text-ink-500 mt-3 leading-relaxed">
           Reference outputs with{' '}
           <code className="font-mono text-volt">{'{{node_id.output.field}}'}</code> and trigger data with{' '}
@@ -154,7 +453,7 @@ function ConfigPanel({
         </div>
       </div>
       <div className="p-4 border-t border-ink-700/60 space-y-2">
-        <button className="btn-primary w-full justify-center" onClick={apply}>
+        <button className="btn-primary w-full justify-center" onClick={mode === 'form' ? applyForm : applyJson}>
           <Icon name="check" />
           Apply config
         </button>
@@ -178,6 +477,7 @@ export function WorkflowEditor() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [validation, setValidation] = useState<{ valid: boolean; errors: string[]; warnings: string[] } | null>(null);
+  const [paletteQuery, setPaletteQuery] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -334,6 +634,17 @@ export function WorkflowEditor() {
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) ?? null, [nodes, selectedId]);
   const categories = useMemo(() => [...new Set(PALETTE.map((p) => p.category))], []);
+  // Searchable palette (n8n-style): match on label, dotted type or category.
+  const paletteMatches = useMemo(() => {
+    const q = paletteQuery.trim().toLowerCase();
+    if (!q) return null;
+    return PALETTE.filter(
+      (p) =>
+        p.label.toLowerCase().includes(q) ||
+        p.type.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q),
+    );
+  }, [paletteQuery]);
   const dark = useTheme() === 'dark';
 
   if (loadError) {
@@ -411,8 +722,50 @@ export function WorkflowEditor() {
             <div className="text-[10px] font-display font-semibold uppercase tracking-widest text-ink-500">
               Node palette
             </div>
-            <div className="text-[11px] text-ink-400 mt-1">Click a node to add it to the canvas.</div>
+            <div className="relative mt-2.5">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-500 pointer-events-none">
+                <Icon name="search" className="w-3.5 h-3.5" />
+              </span>
+              <input
+                className="input !pl-7 !py-1.5 !text-xs"
+                placeholder="Search nodes…"
+                value={paletteQuery}
+                onChange={(e) => setPaletteQuery(e.target.value)}
+                aria-label="Search node palette"
+              />
+            </div>
           </div>
+          {paletteMatches ? (
+            <div className="px-4 py-3">
+              {paletteMatches.length === 0 ? (
+                <div className="text-[11px] text-ink-500 py-2">
+                  No nodes match “{paletteQuery.trim()}”.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {paletteMatches.map((item) => (
+                    <button
+                      key={item.type}
+                      onClick={() => addNode(item)}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md border border-ink-700/70 bg-ink-800/50 hover:border-ink-600 hover:bg-ink-750 hover:translate-x-0.5 transition-all text-left"
+                    >
+                      <span
+                        className="w-6 h-6 rounded flex items-center justify-center text-xs shrink-0"
+                        style={{ background: `${nodeTypeColor(item.type)}22`, color: nodeTypeColor(item.type) }}
+                      >
+                        {item.icon}
+                      </span>
+                      <span>
+                        <span className="block text-xs font-medium text-ink-200">{item.label}</span>
+                        <span className="block font-mono text-[10px] text-ink-500">{item.type}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+          <>
           {categories.map((cat) => (
             <div key={cat} className="px-4 py-3">
               <div className="text-[10px] font-display font-semibold uppercase tracking-widest text-ink-500 mb-2">
@@ -440,6 +793,8 @@ export function WorkflowEditor() {
               </div>
             </div>
           ))}
+          </>
+          )}
         </div>
 
         {/* Canvas */}

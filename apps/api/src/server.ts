@@ -16,6 +16,7 @@ import { ExecutionExecutor, ExecutionRecovery, executionEventBus } from '@loop/e
 import { TriggerDispatcher, CronTriggerHandler, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
 import { EgressEngine } from '@loop/egress';
 import { SecretsManager } from '@loop/secrets';
+import { TemplateRegistry } from '@loop/templates';
 import { loadConfig, type LoopConfig } from './config.js';
 import { registerRoutes } from './routes/index.js';
 import { registerExecutionWebSocket } from './routes/ws.js';
@@ -158,6 +159,14 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   const egressEngine = new EgressEngine(() => store.egressPolicies.listEnabled());
   const secretsManager = new SecretsManager(store, cfg.LOOP_ENCRYPTION_KEY);
 
+  // Template marketplace registry — loads templates/*.json once at startup.
+  // Files failing schema validation are skipped (recorded in loadErrors)
+  // rather than blocking the server; warn so operators notice drift.
+  const templates = new TemplateRegistry();
+  if (templates.getLoadErrors().length > 0) {
+    logger.warn({ errors: templates.getLoadErrors() }, 'Template registry skipped invalid template files');
+  }
+
   // ─── Execution recovery on startup ───────────────────────────────────────
 
   // Re-dispatch recovered executions to the executor — resetting to 'pending'
@@ -205,6 +214,7 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     manualHandler,
     egressEngine,
     secretsManager,
+    templates,
     config: cfg,
   });
 

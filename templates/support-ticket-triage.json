@@ -1,0 +1,117 @@
+{
+  "name": "Support Ticket Triage",
+  "description": "Front-line triage agent: classifies every incoming support ticket by topic and urgency, escalates urgent tickets with a task and channel alert, queues routine tickets normally, and files knowledge-base candidates extracted from recurring issues",
+  "industry": "customer-support",
+  "category": "automation",
+  "featured": true,
+  "icon": "🎧",
+  "use_cases": [
+    "Auto-route inbound tickets to the right queue in seconds",
+    "Escalate urgent issues to the support lead with full context",
+    "Grow the knowledge base from recurring ticket patterns"
+  ],
+  "trigger": {
+    "type": "webhook",
+    "config": { "secret": "{{secrets.webhook_secret}}" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "recap.classify",
+        "position": { "x": 100, "y": 120 },
+        "config": {
+          "content": "Subject: {{trigger.payload.subject}}\n\nBody: {{trigger.payload.body}}",
+          "categories": ["billing", "technical", "feature-request", "bug", "how-to"]
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 20000
+      },
+      {
+        "id": "node_2",
+        "type": "recap.classify",
+        "position": { "x": 100, "y": 400 },
+        "config": {
+          "content": "Subject: {{trigger.payload.subject}}\n\nBody: {{trigger.payload.body}}\n\nCustomer tier: {{trigger.payload.customer_tier}}",
+          "categories": ["urgent", "high", "normal", "low"]
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 20000
+      },
+      {
+        "id": "node_3",
+        "type": "control.branch",
+        "position": { "x": 450, "y": 260 },
+        "config": {
+          "condition": "{{node_2.output.category}} == urgent"
+        },
+        "timeout_ms": 5000
+      },
+      {
+        "id": "node_4",
+        "type": "desk.create_task",
+        "position": { "x": 750, "y": 100 },
+        "config": {
+          "title": "[{{node_1.output.category}}] {{trigger.payload.subject}}",
+          "description": "Urgent ticket {{trigger.payload.ticket_id}}.\n\n{{trigger.payload.body}}",
+          "priority": "urgent",
+          "assignee": "{{variables.support_lead}}"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_5",
+        "type": "desk.send_notification",
+        "position": { "x": 1050, "y": 100 },
+        "config": {
+          "channel": "{{variables.escalation_channel}}",
+          "title": "Urgent ticket: {{trigger.payload.ticket_id}}",
+          "body": "[{{node_1.output.category}}] {{trigger.payload.subject}} — {{trigger.payload.body}}",
+          "priority": "urgent"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_6",
+        "type": "desk.create_task",
+        "position": { "x": 750, "y": 400 },
+        "config": {
+          "title": "[{{node_1.output.category}}] {{trigger.payload.subject}}",
+          "description": "Ticket {{trigger.payload.ticket_id}} queued at {{node_2.output.category}} priority.\n\n{{trigger.payload.body}}",
+          "priority": "normal"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_7",
+        "type": "vault.create_document",
+        "position": { "x": 1050, "y": 400 },
+        "config": {
+          "title": "KB candidate: {{trigger.payload.subject}}",
+          "content": "Issue: {{trigger.payload.body}}\nTopic: {{node_1.output.category}}",
+          "tags": ["support", "kb-candidate", "{{node_1.output.category}}"]
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_3", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "output", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_3", "source_port": "true", "target": "node_4", "target_port": "input" },
+      { "id": "e4", "source": "node_4", "source_port": "output", "target": "node_5", "target_port": "input" },
+      { "id": "e5", "source": "node_3", "source_port": "false", "target": "node_6", "target_port": "input" },
+      { "id": "e6", "source": "node_6", "source_port": "output", "target": "node_7", "target_port": "input" }
+    ],
+    "variables": {
+      "support_lead": { "type": "string", "default": "support-lead" },
+      "escalation_channel": { "type": "string", "default": "#support-escalations" }
+    },
+    "metadata": {
+      "name": "Support Ticket Triage",
+      "description": "Classify Topic + Urgency → Escalate (urgent) or Queue, capture KB candidates",
+      "tags": ["support", "triage", "ticketing", "customer-service", "escalation"]
+    }
+  }
+}

@@ -34,3 +34,6 @@ pnpm-debug.log*
 
 # Claude Code
 .claude/
+
+# Local verification scratch (screenshots, harness scripts)
+.tmp-verify/

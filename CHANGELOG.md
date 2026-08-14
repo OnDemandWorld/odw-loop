@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Templates marketplace & simplified creation.** Loop now ships an
+  industry-level template platform (inspired by Zapier's creation wizard,
+  n8n's template gallery / searchable palette and Dify/Coze marketplaces):
+  - `@loop/templates` package (`packages/templates`): registry that loads and
+    schema-validates `templates/*.json`, derives industry/category/icon from a
+    12-industry taxonomy when envelopes omit them, featured-first sorting,
+    and `instantiate()` with deep-copy isolation + name/description overrides.
+  - 9 new industry templates (23 total across 12 industries): invoice
+    approval, abandoned-cart recovery, contract renewal tracking, patient
+    intake summary, weekly campaign digest, support ticket triage, equipment
+    maintenance alerts, payment reconciliation alerts, course feedback
+    analysis — plus the 5 featured starters.
+  - API: `GET /api/v1/templates` (industry/category/featured/search filters
+    + facet vocabularies in meta), `GET /api/v1/templates/:id` (full
+    definition), `POST /api/v1/templates/:id/instantiate` (201 draft workflow
+    tagged `template:<id>` provenance).
+  - Canvas `/templates` marketplace page: industry chips, search, featured
+    toggle, detail modal with node/agent breakdown, one-click "Use template".
+  - Simplified creation flow: two-step "New workflow" wizard (blank canvas /
+    featured quick-picks / browse-all link, prefilled name+description+tags),
+    searchable node palette ("Search nodes…", empty state), and a form-based
+    node config panel with Form/JSON toggle and `{{node_id.output.field}}`
+    syntax hints.
+  - Tests: 12 unit cases (`tests/unit/templates/registry.test.ts`) + 10
+    integration cases (`tests/integration/api/templates.test.ts`).
+
 ### Fixed
 - **Execution recovery now actually re-dispatches (bug 12).** `findInterrupted()`
   selects both `running` and `pending` executions in the SQLite and PostgreSQL
@@ -31,7 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 - Real-time collaborative editing for workflows
-- Workflow marketplace for sharing templates
 - Natural language workflow generation
 - Advanced scheduling with timezone support
 - Multi-tenancy support

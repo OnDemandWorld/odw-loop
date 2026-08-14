@@ -11,6 +11,7 @@
     { "path": "packages/egress" },
     { "path": "packages/workflow-authoring" },
     { "path": "packages/engine" },
+    { "path": "packages/templates" },
     { "path": "packages/triggers" },
     { "path": "apps/api" },
     { "path": "apps/sandbox" },

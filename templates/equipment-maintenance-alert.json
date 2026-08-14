@@ -1,0 +1,105 @@
+{
+  "name": "Equipment Maintenance Alert",
+  "description": "Plant-floor guardian: classifies IoT equipment sensor alerts by severity, dispatches urgent maintenance tasks and channel alerts for critical readings, books a maintenance window on the calendar, and archives routine sensor readings as logs in Vault",
+  "industry": "manufacturing",
+  "category": "monitoring",
+  "featured": true,
+  "icon": "🏭",
+  "use_cases": [
+    "Escalate critical IoT sensor readings in seconds",
+    "Auto-book maintenance windows for warning-level drift",
+    "Keep an auditable sensor log without manual paperwork"
+  ],
+  "trigger": {
+    "type": "webhook",
+    "config": { "secret": "{{secrets.webhook_secret}}" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "recap.classify",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "content": "Equipment {{trigger.payload.equipment_id}} sensor {{trigger.payload.sensor_type}} reported {{trigger.payload.value}} against threshold {{trigger.payload.threshold}} at {{trigger.payload.timestamp}}",
+          "categories": ["critical", "warning", "normal"]
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 20000
+      },
+      {
+        "id": "node_2",
+        "type": "control.branch",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "condition": "{{node_1.output.category}} == critical"
+        },
+        "timeout_ms": 5000
+      },
+      {
+        "id": "node_3",
+        "type": "desk.create_task",
+        "position": { "x": 700, "y": 100 },
+        "config": {
+          "title": "URGENT maintenance: {{trigger.payload.equipment_id}}",
+          "description": "{{trigger.payload.sensor_type}} reading {{trigger.payload.value}} (threshold {{trigger.payload.threshold}}). Inspect immediately.",
+          "priority": "urgent",
+          "assignee": "{{variables.maintenance_team}}"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_4",
+        "type": "desk.send_notification",
+        "position": { "x": 1000, "y": 100 },
+        "config": {
+          "channel": "{{variables.plant_channel}}",
+          "title": "Equipment critical: {{trigger.payload.equipment_id}}",
+          "body": "{{trigger.payload.sensor_type}} at {{trigger.payload.value}} exceeds threshold {{trigger.payload.threshold}}.",
+          "priority": "urgent"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_5",
+        "type": "desk.create_calendar_event",
+        "position": { "x": 700, "y": 350 },
+        "config": {
+          "title": "Maintenance window: {{trigger.payload.equipment_id}}",
+          "description": "Planned inspection after {{trigger.payload.sensor_type}} drift ({{trigger.payload.value}} vs {{trigger.payload.threshold}}).",
+          "duration_minutes": 120
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_6",
+        "type": "vault.create_document",
+        "position": { "x": 400, "y": 560 },
+        "config": {
+          "title": "Sensor log {{trigger.payload.equipment_id}} - {{trigger.payload.timestamp}}",
+          "content": "{{trigger.payload.sensor_type}}={{trigger.payload.value}} (threshold {{trigger.payload.threshold}}) severity={{node_1.output.category}}",
+          "tags": ["manufacturing", "iot", "sensor-log", "{{node_1.output.category}}"]
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "true", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_3", "source_port": "output", "target": "node_4", "target_port": "input" },
+      { "id": "e4", "source": "node_2", "source_port": "false", "target": "node_5", "target_port": "input" },
+      { "id": "e5", "source": "node_1", "source_port": "output", "target": "node_6", "target_port": "input" }
+    ],
+    "variables": {
+      "maintenance_team": { "type": "string", "default": "maintenance-crew-a" },
+      "plant_channel": { "type": "string", "default": "#plant-ops" }
+    },
+    "metadata": {
+      "name": "Equipment Maintenance Alert",
+      "description": "Classify Severity → Urgent Task + Alert (critical) or Book Window, always Log Sensor",
+      "tags": ["manufacturing", "iot", "monitoring", "maintenance", "equipment"]
+    }
+  }
+}

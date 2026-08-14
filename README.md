@@ -22,6 +22,8 @@ ODW Loop is a production-ready workflow orchestration platform that connects ODW
 
 **Key Features:**
 - 🎨 Visual workflow builder with React Flow canvas
+- 🧩 Templates marketplace: 23 industry-level templates across 12 industries with one-click use
+- 🪄 Simplified creation: guided wizard, searchable node palette, form-based node config
 - ⚡ DAG-based execution engine with topological scheduling
 - 🔒 Enterprise security (encryption, egress policies, RBAC, audit logging)
 - 🔌 Native ODW agent connectors (Vault, Desk, Recap)
@@ -100,14 +102,15 @@ loop/
 │   ├── secrets/          # Encryption + secrets
 │   ├── egress/           # Network policies
 │   ├── observability/    # Metrics + logging
-│   └── llm/              # LLM provider abstraction
+│   ├── llm/              # LLM provider abstraction
+│   └── templates/        # Template registry + industry taxonomy
 ├── tests/
-│   ├── unit/             # 162 unit tests
-│   ├── integration/      # 55 integration tests
-│   └── e2e/              # 27 E2E tests
+│   ├── unit/             # 574 unit tests
+│   ├── integration/      # 151 integration tests
+│   └── e2e/              # 29 E2E tests
 ├── docker/               # Dockerfiles
 ├── helm/                 # Kubernetes charts
-└── templates/            # Workflow templates
+└── templates/            # Workflow templates (23 across 12 industries)
 ```
 
 ## 🚀 Quick Start
@@ -251,6 +254,30 @@ POST /api/v1/workflows/:id/triggers
 # Webhook endpoint
 POST /webhooks/:trigger_id
 ```
+
+### Templates
+
+Industry-level template marketplace (`@loop/templates` registry; 23 templates
+across 12 industries — finance, legal, HR, marketing, healthcare, education,
+e-commerce, manufacturing, customer support and more):
+
+```bash
+# List templates (summaries; facet vocabularies ride along in meta)
+GET /api/v1/templates?industry=finance&featured=true&search=invoice
+
+# Get a template with its full definition
+GET /api/v1/templates/invoice-approval
+
+# Instantiate a template into a draft workflow (optional name/description overrides;
+# the created workflow is tagged `template:<id>` for provenance)
+POST /api/v1/templates/invoice-approval/instantiate
+{ "name": "ACME invoice flow" }
+```
+
+The canvas app exposes the same capability visually: the `/templates`
+marketplace page (industry chips, search, featured toggle, detail modal,
+one-click "Use template") and a two-step "New workflow" wizard with featured
+quick-picks.
 
 ## 🏭 Deployment
 

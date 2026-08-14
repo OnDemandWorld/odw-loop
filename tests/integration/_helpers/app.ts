@@ -25,6 +25,7 @@ import {
 } from '../../../packages/triggers/src/index.js';
 import { EgressEngine } from '../../../packages/egress/src/index.js';
 import { SecretsManager } from '../../../packages/secrets/src/index.js';
+import { TemplateRegistry } from '../../../packages/templates/src/index.js';
 import { registerRoutes } from '../../../apps/api/src/routes/index.js';
 import { errorHandler } from '../../../apps/api/src/middleware/errorHandler.js';
 import type { LoopConfig } from '../../../apps/api/src/config.js';
@@ -44,6 +45,7 @@ export interface TestApp {
   triggerDispatcher: TriggerDispatcher;
   egressEngine: EgressEngine;
   secretsManager: SecretsManager;
+  templates: TemplateRegistry;
   config: LoopConfig;
 }
 
@@ -136,6 +138,10 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
   const egressEngine = new EgressEngine(() => store.egressPolicies.listEnabled());
   const secretsManager = new SecretsManager(store, config.LOOP_ENCRYPTION_KEY);
 
+  // ── Templates ──────────────────────────────────────────────────────
+  // Loads the real repo templates/ directory (resolved module-relative).
+  const templates = new TemplateRegistry();
+
   // ── Routes ──────────────────────────────────────────────────────────────
   registerRoutes(app, {
     store,
@@ -147,6 +153,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     manualHandler,
     egressEngine,
     secretsManager,
+    templates,
     config,
   });
 
@@ -165,6 +172,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     triggerDispatcher,
     egressEngine,
     secretsManager,
+    templates,
     config,
   };
 }

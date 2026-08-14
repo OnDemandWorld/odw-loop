@@ -1,0 +1,96 @@
+{
+  "name": "Patient Intake Summary",
+  "description": "Clinical intake assistant: summarizes new patient intake forms into structured summaries, extracts follow-up action items for the care coordinator, files the summary in the patient record folder and notifies the clinic channel",
+  "industry": "healthcare",
+  "category": "knowledge",
+  "featured": true,
+  "icon": "🏥",
+  "use_cases": [
+    "Turn free-text intake forms into structured visit summaries",
+    "Surface follow-up actions for the care coordinator automatically",
+    "Keep every intake documented and searchable in Vault"
+  ],
+  "trigger": {
+    "type": "webhook",
+    "config": { "secret": "{{secrets.webhook_secret}}" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "recap.summarize",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "content": "{{trigger.payload.intake_notes}}",
+          "prompt": "Summarize this patient intake into a structured clinical summary covering chief complaint, history, medications and flags. Use neutral clinical language."
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 30000
+      },
+      {
+        "id": "node_2",
+        "type": "recap.extract_action_items",
+        "position": { "x": 100, "y": 450 },
+        "config": {
+          "content": "{{trigger.payload.intake_notes}}",
+          "assignee": "{{variables.care_coordinator}}"
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 30000
+      },
+      {
+        "id": "node_3",
+        "type": "vault.create_document",
+        "position": { "x": 450, "y": 200 },
+        "config": {
+          "title": "Intake summary - {{trigger.payload.patient_ref}}",
+          "content": "{{node_1.output.summary}}",
+          "tags": ["patient-intake", "clinical-summary", "healthcare"],
+          "folder": "{{variables.vault_folder}}"
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      },
+      {
+        "id": "node_4",
+        "type": "desk.create_task",
+        "position": { "x": 800, "y": 350 },
+        "config": {
+          "title": "Follow-up: patient {{trigger.payload.patient_ref}}",
+          "description": "Action items from intake:\n{{node_2.output.action_items}}",
+          "priority": "normal",
+          "assignee": "{{variables.care_coordinator}}"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_5",
+        "type": "desk.send_notification",
+        "position": { "x": 800, "y": 120 },
+        "config": {
+          "channel": "{{variables.clinic_channel}}",
+          "title": "New intake processed: {{trigger.payload.patient_ref}}",
+          "body": "{{node_1.output.summary}}",
+          "priority": "normal"
+        },
+        "timeout_ms": 10000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_3", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "output", "target": "node_4", "target_port": "input" },
+      { "id": "e3", "source": "node_3", "source_port": "output", "target": "node_5", "target_port": "input" }
+    ],
+    "variables": {
+      "care_coordinator": { "type": "string", "default": "care-coordination" },
+      "vault_folder": { "type": "string", "default": "/clinical/intakes" },
+      "clinic_channel": { "type": "string", "default": "#clinic-front-desk" }
+    },
+    "metadata": {
+      "name": "Patient Intake Summary",
+      "description": "Summarize + Extract Actions → File in Vault → Task + Notify",
+      "tags": ["healthcare", "patient-intake", "clinical", "summary", "care-coordination"]
+    }
+  }
+}

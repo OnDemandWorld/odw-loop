@@ -1,0 +1,25 @@
+{
+  "name": "@loop/templates",
+  "version": "1.0.0",
+  "description": "Workflow template registry — loads, classifies and serves industry-level starter templates",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@loop/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0"
+  }
+}

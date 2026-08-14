@@ -1,0 +1,96 @@
+{
+  "name": "Contract Renewal Tracker",
+  "description": "Legal desk sentinel: weekly sweep of contracts approaching renewal in Vault, extracts the renewal action items, alerts the legal channel, assigns review tasks to counsel, and maintains a rolling watchlist document",
+  "industry": "legal",
+  "category": "monitoring",
+  "featured": false,
+  "icon": "⚖️",
+  "use_cases": [
+    "Never miss a contract renewal or auto-renewal deadline",
+    "Assign counsel reviews with a weekly cadence",
+    "Keep a rolling watchlist of upcoming expirations"
+  ],
+  "trigger": {
+    "type": "cron",
+    "config": { "expression": "0 7 * * 1", "timezone": "UTC" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "vault.search",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "query": "type:contract renewal-window:next-30-days",
+          "filters": { "limit": 50 }
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 20000
+      },
+      {
+        "id": "node_2",
+        "type": "recap.extract_action_items",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "content": "{{node_1.output.documents}}",
+          "assignee": "{{variables.counsel_team}}"
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 30000
+      },
+      {
+        "id": "node_3",
+        "type": "desk.send_notification",
+        "position": { "x": 750, "y": 100 },
+        "config": {
+          "channel": "{{variables.legal_channel}}",
+          "title": "Contracts up for renewal (weekly sweep)",
+          "body": "Renewal actions:\n{{node_2.output.action_items}}",
+          "priority": "normal"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_4",
+        "type": "desk.create_task",
+        "position": { "x": 750, "y": 300 },
+        "config": {
+          "title": "Review contracts expiring within 30 days",
+          "description": "Weekly renewal review:\n{{node_2.output.action_items}}",
+          "priority": "high",
+          "assignee": "{{variables.counsel_lead}}"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_5",
+        "type": "vault.create_document",
+        "position": { "x": 1100, "y": 200 },
+        "config": {
+          "title": "Renewal watchlist - {{trigger.scheduled_at}}",
+          "content": "{{node_2.output.action_items}}",
+          "tags": ["legal", "contracts", "renewal", "watchlist"]
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "output", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_2", "source_port": "output", "target": "node_4", "target_port": "input" },
+      { "id": "e4", "source": "node_4", "source_port": "output", "target": "node_5", "target_port": "input" }
+    ],
+    "variables": {
+      "counsel_team": { "type": "string", "default": "legal-team" },
+      "counsel_lead": { "type": "string", "default": "general-counsel" },
+      "legal_channel": { "type": "string", "default": "#legal" }
+    },
+    "metadata": {
+      "name": "Contract Renewal Tracker",
+      "description": "Search Contracts → Extract Renewal Actions → Notify + Task + Watchlist",
+      "tags": ["legal", "contracts", "renewal", "compliance", "monitoring"]
+    }
+  }
+}

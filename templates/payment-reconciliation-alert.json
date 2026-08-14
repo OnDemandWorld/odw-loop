@@ -1,0 +1,107 @@
+{
+  "name": "Payment Reconciliation Alert",
+  "description": "Nightly reconciliation guard: pulls the ledger balance report from your finance system, classifies the discrepancy level, alerts the finance channel and opens an urgent task when a critical mismatch is found, and files a daily report otherwise",
+  "industry": "finance",
+  "category": "monitoring",
+  "featured": false,
+  "icon": "💰",
+  "use_cases": [
+    "Detect payment vs ledger mismatches before month-end close",
+    "Escalate critical discrepancies to the finance channel instantly",
+    "Keep a daily audit trail of reconciliation outcomes in Vault"
+  ],
+  "trigger": {
+    "type": "cron",
+    "config": { "expression": "0 6 * * *", "timezone": "UTC" }
+  },
+  "definition": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "generic.rest_call",
+        "position": { "x": 100, "y": 200 },
+        "config": {
+          "method": "GET",
+          "url": "{{variables.ledger_url}}",
+          "headers": { "Authorization": "Bearer {{secrets.ledger_token}}" }
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 2000 },
+        "timeout_ms": 30000
+      },
+      {
+        "id": "node_2",
+        "type": "recap.classify",
+        "position": { "x": 400, "y": 200 },
+        "config": {
+          "content": "Reconciliation report: {{node_1.output.body}}",
+          "categories": ["balanced", "minor-variance", "critical-mismatch"]
+        },
+        "retry": { "max_attempts": 2, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 20000
+      },
+      {
+        "id": "node_3",
+        "type": "control.branch",
+        "position": { "x": 700, "y": 200 },
+        "config": {
+          "condition": "{{node_2.output.category}} == critical-mismatch"
+        },
+        "timeout_ms": 5000
+      },
+      {
+        "id": "node_4",
+        "type": "desk.send_notification",
+        "position": { "x": 1000, "y": 100 },
+        "config": {
+          "channel": "{{variables.alert_channel}}",
+          "title": "Critical payment mismatch detected",
+          "body": "Ledger report flagged a critical mismatch: {{node_1.output.body}}",
+          "priority": "urgent"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_5",
+        "type": "desk.create_task",
+        "position": { "x": 1300, "y": 100 },
+        "config": {
+          "title": "Reconcile critical payment mismatch",
+          "description": "Investigate and resolve the mismatch reported by the ledger: {{node_1.output.body}}",
+          "priority": "urgent",
+          "assignee": "{{variables.finance_lead}}"
+        },
+        "timeout_ms": 10000
+      },
+      {
+        "id": "node_6",
+        "type": "vault.create_document",
+        "position": { "x": 1000, "y": 350 },
+        "config": {
+          "title": "Daily reconciliation report - {{trigger.scheduled_at}}",
+          "content": "Outcome: {{node_2.output.category}}\n\n{{node_1.output.body}}",
+          "tags": ["reconciliation", "finance", "daily-report"]
+        },
+        "retry": { "max_attempts": 3, "backoff": "exponential", "initial_delay_ms": 1000 },
+        "timeout_ms": 15000
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "node_1", "source_port": "output", "target": "node_2", "target_port": "input" },
+      { "id": "e2", "source": "node_2", "source_port": "output", "target": "node_3", "target_port": "input" },
+      { "id": "e3", "source": "node_3", "source_port": "true", "target": "node_4", "target_port": "input" },
+      { "id": "e4", "source": "node_3", "source_port": "true", "target": "node_5", "target_port": "input" },
+      { "id": "e5", "source": "node_3", "source_port": "false", "target": "node_6", "target_port": "input" }
+    ],
+    "variables": {
+      "ledger_url": { "type": "string", "default": "https://erp.internal/api/reports/reconciliation" },
+      "alert_channel": { "type": "string", "default": "#finance-alerts" },
+      "finance_lead": { "type": "string", "default": "controller" }
+    },
+    "metadata": {
+      "name": "Payment Reconciliation Alert",
+      "description": "Fetch Ledger → Classify Discrepancy → Alert + Task (critical) or Archive Report",
+      "tags": ["reconciliation", "finance", "monitoring", "payments", "audit"]
+    }
+  }
+}

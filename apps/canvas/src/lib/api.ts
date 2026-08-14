@@ -81,6 +81,35 @@ export interface Trigger {
   enabled?: boolean;
 }
 
+// ── Templates (marketplace) ───────────────────────────────────────────
+
+/** Gallery summary — the heavy definition is excluded for cheap listing. */
+export interface TemplateSummary {
+  id: string;
+  name: string;
+  description: string;
+  industry: string;
+  category: string;
+  featured: boolean;
+  icon: string;
+  use_cases: string[];
+  node_count: number;
+  agents: string[];
+  tags: string[];
+}
+
+/** Full template for the detail view (definition included). */
+export interface WorkflowTemplate extends TemplateSummary {
+  definition: WorkflowDefinition;
+}
+
+/** Result of listing templates: summaries plus the facet vocabularies. */
+export interface TemplateListResult {
+  templates: TemplateSummary[];
+  industries: string[];
+  categories: string[];
+}
+
 export interface Paginated<T> {
   data: T[];
   total: number;
@@ -190,6 +219,30 @@ export const api = {
     request<Trigger>(`/api/v1/workflows/${workflowId}/triggers`, {
       method: 'POST',
       body: JSON.stringify({ trigger_type, config }),
+    }),
+
+  // ── Templates ───────────────────────────────────────────────
+  listTemplates: (params?: { industry?: string; category?: string; search?: string; featured?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.industry && params.industry !== 'all') qs.set('industry', params.industry);
+    if (params?.category && params.category !== 'all') qs.set('category', params.category);
+    if (params?.search) qs.set('search', params.search);
+    if (params?.featured) qs.set('featured', 'true');
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return requestEnvelope<TemplateSummary[]>(`/api/v1/templates${suffix}`).then((body) => {
+      const m = (body.meta ?? {}) as Record<string, unknown>;
+      return {
+        templates: body.data ?? [],
+        industries: (m['industries'] as string[]) ?? [],
+        categories: (m['categories'] as string[]) ?? [],
+      } satisfies TemplateListResult;
+    });
+  },
+  getTemplate: (id: string) => request<WorkflowTemplate>(`/api/v1/templates/${id}`),
+  instantiateTemplate: (id: string, overrides?: { name?: string; description?: string }) =>
+    request<Workflow>(`/api/v1/templates/${id}/instantiate`, {
+      method: 'POST',
+      body: JSON.stringify(overrides ?? {}),
     }),
 };
 
