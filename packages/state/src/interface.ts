@@ -132,6 +132,11 @@ export interface StateStore {
       pagination: PaginationParams,
     ): Promise<PaginatedResult<WorkflowExecution>>;
 
+    /**
+     * Update lifecycle fields. Omitted fields are preserved (never overwritten
+     * with NULL) so e.g. completing an execution keeps its `started_at`.
+     * Pass `error: null` explicitly to clear a stored error.
+     */
     updateStatus(
       id: string,
       data: {
@@ -139,9 +144,25 @@ export interface StateStore {
         started_at?: string;
         completed_at?: string;
         duration_ms?: number;
-        error?: string;
+        error?: string | null;
       },
     ): Promise<void>;
+
+    /**
+     * Guarded terminal transition: applies `status` (succeeded/failed/cancelled)
+     * only while the execution is still `pending`/`running`, and returns whether
+     * it was applied. Prevents terminal states from clobbering each other —
+     * e.g. a late executor completion overwriting an API-initiated cancel.
+     */
+    completeIfActive(
+      id: string,
+      data: {
+        status: 'succeeded' | 'failed' | 'cancelled';
+        completed_at?: string;
+        duration_ms?: number;
+        error?: string | null;
+      },
+    ): Promise<boolean>;
 
     findInterrupted(): Promise<WorkflowExecution[]>;
   };
@@ -168,6 +189,11 @@ export interface StateStore {
      */
     findByIdempotencyKey(key: string): Promise<NodeExecution | null>;
 
+    /**
+     * Update lifecycle fields. Omitted fields are preserved (never overwritten
+     * with NULL) so e.g. a succeeded node keeps its `started_at`.
+     * Pass `error: null` explicitly to clear a stored error.
+     */
     updateStatus(
       id: string,
       data: {
@@ -175,7 +201,7 @@ export interface StateStore {
         started_at?: string;
         completed_at?: string;
         output?: Record<string, unknown>;
-        error?: string;
+        error?: string | null;
         retry_count?: number;
         metadata?: Record<string, unknown>;
       },

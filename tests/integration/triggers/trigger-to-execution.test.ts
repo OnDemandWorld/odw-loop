@@ -154,7 +154,9 @@ describe('Trigger → Execution flow', () => {
       payload,
     });
 
-    expect(res.statusCode).toBe(401);
+    // Disabled triggers answer 404 (same as missing) so unauthenticated
+    // callers cannot enumerate valid trigger ids.
+    expect(res.statusCode).toBe(404);
   });
 
   it('POST /api/v1/workflows/:id/triggers creates a trigger (round-trip)', async () => {

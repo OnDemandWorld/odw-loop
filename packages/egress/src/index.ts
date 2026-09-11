@@ -1,3 +1,3 @@
-export { EgressEngine, type EgressDecision } from './engine.js';
+export { EgressEngine, type EgressDecision, type EgressPolicy } from './engine.js';
 export { resolveIP, lookupRegion } from './resolver.js';
-export { EgressInterceptor } from './interceptor.js';
+export { EgressInterceptor, EgressGate, type EgressGateOptions } from './interceptor.js';

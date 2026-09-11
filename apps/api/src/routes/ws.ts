@@ -11,7 +11,7 @@
  */
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { SqliteStateStore } from '@loop/state';
+import type { StateStore } from '@loop/state';
 import type { EventBus, ExecutionBusEvent } from '@loop/engine';
 import { createLogger } from '@loop/observability';
 import type { LoopConfig } from '../config.js';
@@ -33,7 +33,7 @@ interface RealtimeSocket {
 
 export interface WsRouteDeps {
   config: LoopConfig;
-  store: SqliteStateStore;
+  store: StateStore;
   /**
    * The bus the executor publishes to. Required (not defaulted) so the caller
    * wires the exact same instance the executor uses — avoiding any ambiguity

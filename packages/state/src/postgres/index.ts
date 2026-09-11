@@ -207,11 +207,27 @@ export class PostgresStateStore implements StateStore {
     },
 
     delete: async (id: string) => {
-      await this.conn.pool.query('DELETE FROM node_executions WHERE execution_id = $1', [id]);
-      await this.conn.pool.query('DELETE FROM workflow_executions WHERE workflow_id = $1', [id]);
-      await this.conn.pool.query('DELETE FROM workflow_definitions WHERE workflow_id = $1', [id]);
-      await this.conn.pool.query('DELETE FROM workflow_triggers WHERE workflow_id = $1', [id]);
-      await this.conn.pool.query('DELETE FROM workflows WHERE id = $1', [id]);
+      // Mirror the SQLite adapter: cascade through execution_events too, and
+      // match node_executions by the workflow's actual execution ids (a
+      // workflow id is never an execution id).
+      const client = this.conn.pool;
+      const execResult = await client.query('SELECT id FROM workflow_executions WHERE workflow_id = $1', [id]);
+      const execIds = (execResult.rows as Array<{ id: string }>).map((r) => r.id);
+      await client.query('BEGIN');
+      try {
+        if (execIds.length > 0) {
+          await client.query('DELETE FROM execution_events WHERE execution_id = ANY($1::uuid[])', [execIds]);
+          await client.query('DELETE FROM node_executions WHERE execution_id = ANY($1::uuid[])', [execIds]);
+        }
+        await client.query('DELETE FROM workflow_executions WHERE workflow_id = $1', [id]);
+        await client.query('DELETE FROM workflow_definitions WHERE workflow_id = $1', [id]);
+        await client.query('DELETE FROM workflow_triggers WHERE workflow_id = $1', [id]);
+        await client.query('DELETE FROM workflows WHERE id = $1', [id]);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      }
     },
   };
 
@@ -302,12 +318,38 @@ export class PostgresStateStore implements StateStore {
 
     updateStatus: async (id: string, data: {
       status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'paused';
-      started_at?: string; completed_at?: string; duration_ms?: number; error?: string;
+      started_at?: string; completed_at?: string; duration_ms?: number; error?: string | null;
     }) => {
+      // Preserve-on-omit: omitted fields keep their current value (mirrors the
+      // SQLite adapter — unconditional NULLs used to wipe `started_at`).
+      const setClauses = ['status = $2'];
+      const params: unknown[] = [id, data.status];
+      let paramIdx = 3;
+      if (data.started_at !== undefined) { setClauses.push(`started_at = $${paramIdx}`); params.push(data.started_at); paramIdx++; }
+      if (data.completed_at !== undefined) { setClauses.push(`completed_at = $${paramIdx}`); params.push(data.completed_at); paramIdx++; }
+      if (data.duration_ms !== undefined) { setClauses.push(`duration_ms = $${paramIdx}`); params.push(data.duration_ms); paramIdx++; }
+      if (data.error !== undefined) { setClauses.push(`error = $${paramIdx}`); params.push(data.error); paramIdx++; }
       await this.conn.pool.query(
-        `UPDATE workflow_executions SET status = $2, started_at = $3, completed_at = $4, duration_ms = $5, error = $6 WHERE id = $1`,
-        [id, data.status, data.started_at ?? null, data.completed_at ?? null, data.duration_ms ?? null, data.error ?? null],
+        `UPDATE workflow_executions SET ${setClauses.join(', ')} WHERE id = $1`,
+        params,
       );
+    },
+
+    completeIfActive: async (id: string, data: {
+      status: 'succeeded' | 'failed' | 'cancelled';
+      completed_at?: string; duration_ms?: number; error?: string | null;
+    }) => {
+      const setClauses = ['status = $2'];
+      const params: unknown[] = [id, data.status];
+      let paramIdx = 3;
+      if (data.completed_at !== undefined) { setClauses.push(`completed_at = $${paramIdx}`); params.push(data.completed_at); paramIdx++; }
+      if (data.duration_ms !== undefined) { setClauses.push(`duration_ms = $${paramIdx}`); params.push(data.duration_ms); paramIdx++; }
+      if (data.error !== undefined) { setClauses.push(`error = $${paramIdx}`); params.push(data.error); paramIdx++; }
+      const result = await this.conn.pool.query(
+        `UPDATE workflow_executions SET ${setClauses.join(', ')} WHERE id = $1 AND status IN ('pending', 'running')`,
+        params,
+      );
+      return (result.rowCount ?? 0) > 0;
     },
 
     findInterrupted: async () => {
@@ -353,15 +395,18 @@ export class PostgresStateStore implements StateStore {
     updateStatus: async (id: string, data: {
       status: 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
       started_at?: string; completed_at?: string; output?: Record<string, unknown>;
-      error?: string; retry_count?: number; metadata?: Record<string, unknown>;
+      error?: string | null; retry_count?: number; metadata?: Record<string, unknown>;
     }) => {
-      // Mirror the SQLite semantics: status/started_at/completed_at/error are
-      // always written (null when absent); output/retry_count/metadata are only
-      // overwritten when explicitly supplied so existing values are preserved.
-      const setClauses: string[] = ['status = $2', 'started_at = $3', 'completed_at = $4', 'error = $5'];
-      const params: unknown[] = [id, data.status, data.started_at ?? null, data.completed_at ?? null, data.error ?? null];
-      let paramIdx = 6;
+      // Mirror the SQLite semantics: omitted fields preserve their current
+      // value; output/retry_count/metadata are only overwritten when
+      // explicitly supplied.
+      const setClauses = ['status = $2'];
+      const params: unknown[] = [id, data.status];
+      let paramIdx = 3;
+      if (data.started_at !== undefined) { setClauses.push(`started_at = $${paramIdx}`); params.push(data.started_at); paramIdx++; }
+      if (data.completed_at !== undefined) { setClauses.push(`completed_at = $${paramIdx}`); params.push(data.completed_at); paramIdx++; }
       if (data.output !== undefined) { setClauses.push(`output = $${paramIdx}`); params.push(JSON.stringify(data.output)); paramIdx++; }
+      if (data.error !== undefined) { setClauses.push(`error = $${paramIdx}`); params.push(data.error); paramIdx++; }
       if (data.retry_count !== undefined) { setClauses.push(`retry_count = $${paramIdx}`); params.push(data.retry_count); paramIdx++; }
       if (data.metadata !== undefined) { setClauses.push(`metadata = $${paramIdx}`); params.push(JSON.stringify(data.metadata)); paramIdx++; }
       await this.conn.pool.query(`UPDATE node_executions SET ${setClauses.join(', ')} WHERE id = $1`, params);

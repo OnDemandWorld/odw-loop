@@ -39,11 +39,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Execute a function with retry logic. */
+/** Execute a function with retry logic. Stops retrying once `signal` aborts. */
 export async function executeWithRetry<T>(
   fn: () => Promise<T>,
   config: RetryConfig,
   onRetry?: (attempt: number, error: Error) => void,
+  signal?: AbortSignal,
 ): Promise<T> {
   let lastError: Error | null = null;
 
@@ -52,6 +53,9 @@ export async function executeWithRetry<T>(
       return await fn();
     } catch (err) {
       lastError = err as Error;
+      // The node/workflow deadline passed — backoff-and-retry would keep the
+      // node alive past its timeout, so rethrow immediately.
+      if (signal?.aborted) throw lastError;
       if (attempt < config.max_attempts) {
         const delay = calculateBackoff(config.backoff, config.initial_delay_ms, attempt, config.jitter);
         onRetry?.(attempt + 1, lastError);

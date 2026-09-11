@@ -25,10 +25,10 @@ export class WebhookTriggerHandler {
     body: unknown;
     rawBody: string;
   }): Promise<{ execution_id: string; workflow_id: string }> {
-    // Find the trigger
+    // Find the trigger. Disabled triggers report the same 404 as missing ones
+    // so unauthenticated callers cannot enumerate valid trigger ids.
     const trigger = await this.store.triggers.getById(params.triggerId);
-    if (!trigger) throw new NotFoundError('trigger', params.triggerId);
-    if (!trigger.enabled) throw new AuthenticationError('AUTH_EXPIRED', 'Trigger is disabled');
+    if (!trigger || !trigger.enabled) throw new NotFoundError('trigger', params.triggerId);
 
     const config = trigger.config as { secret?: string };
 
@@ -55,10 +55,19 @@ export class WebhookTriggerHandler {
 
     // Create execution
     const executionId = randomUUID();
+    // Snapshot the workflow's current version so replay resolves the same
+    // definition that actually runs.
+    let workflowVersion = 1;
+    try {
+      const workflow = await this.store.workflows.getById(trigger.workflow_id);
+      if (workflow) workflowVersion = workflow.version;
+    } catch {
+      logger.warn({ workflowId: trigger.workflow_id }, 'Failed to read workflow version, defaulting to 1');
+    }
     await this.store.executions.create({
       id: executionId,
       workflow_id: trigger.workflow_id,
-      workflow_version: 1,
+      workflow_version: workflowVersion,
       trigger_type: 'webhook',
       trigger_payload: params.body as Record<string, unknown>,
     });
@@ -69,6 +78,13 @@ export class WebhookTriggerHandler {
 
   private checkRateLimit(triggerId: string): boolean {
     const now = Date.now();
+    // Long-lived map hygiene: drop fully-expired buckets once the map grows,
+    // so deleted triggers do not leak entries forever.
+    if (rateLimitBuckets.size > 1_000) {
+      for (const [id, times] of rateLimitBuckets) {
+        if (times.every((t) => now - t >= RATE_LIMIT_WINDOW_MS)) rateLimitBuckets.delete(id);
+      }
+    }
     const bucket = rateLimitBuckets.get(triggerId) ?? [];
     const recent = bucket.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
     if (recent.length >= RATE_LIMIT_MAX) {

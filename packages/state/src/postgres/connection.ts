@@ -32,7 +32,10 @@ export function createPostgresConnection(opts: PostgresConnectionOptions): Postg
     database: opts.database,
     user: opts.user,
     password: opts.password,
-    ssl: opts.ssl ? { rejectUnauthorized: false } : false,
+    // TLS with certificate verification by default — `ssl: true` previously
+    // disabled verification (rejectUnauthorized: false), letting any MITM
+    // intercept a supposedly encrypted connection.
+    ssl: opts.ssl ? { rejectUnauthorized: true } : false,
     max: opts.poolSize ?? 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,

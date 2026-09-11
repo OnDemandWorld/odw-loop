@@ -2,7 +2,7 @@
  * SQLite implementation of the StateStore interface.
  */
 
-import { eq, and, desc, asc, like, or, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, or, sql, inArray } from 'drizzle-orm';
 import { createLogger } from '@loop/observability';
 import type { WorkflowDefinition } from '@loop/types';
 import type {
@@ -28,6 +28,14 @@ function safeJsonParse(raw: unknown): Record<string, unknown> {
   }
   if (raw && typeof raw === 'object') return raw as Record<string, unknown>;
   return {};
+}
+
+/**
+ * Escape SQL LIKE wildcards so user-supplied search/tag filters match
+ * literally. Use together with the `ESCAPE '\'` clause.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
 function mapWorkflow(row: WfRow) {
@@ -122,11 +130,12 @@ export class SqliteStateStore implements StateStore {
     list: async (filter: WorkflowFilter, pagination: PaginationParams): Promise<PaginatedResult<ReturnType<typeof mapWorkflow>>> => {
       const conditions = [];
       if (filter.status) conditions.push(eq(schema.workflows.status, filter.status));
-      if (filter.tag) conditions.push(sql`${schema.workflows.tags} LIKE ${`%"${filter.tag}"%`}`);
+      if (filter.tag) conditions.push(sql`${schema.workflows.tags} LIKE ${`%${escapeLike(filter.tag)}%`} ESCAPE ${'\\'}`);
       if (filter.search) {
+        const pattern = `%${escapeLike(filter.search)}%`;
         conditions.push(or(
-          like(schema.workflows.name, `%${filter.search}%`),
-          like(schema.workflows.description, `%${filter.search}%`),
+          sql`${schema.workflows.name} LIKE ${pattern} ESCAPE ${'\\'}`,
+          sql`${schema.workflows.description} LIKE ${pattern} ESCAPE ${'\\'}`,
         ));
       }
       const where = conditions.length ? and(...conditions) : undefined;
@@ -164,11 +173,27 @@ export class SqliteStateStore implements StateStore {
     },
 
     delete: async (id: string) => {
-      this.db.delete(schema.nodeExecutions).where(eq(schema.nodeExecutions.execution_id, id)).run();
-      this.db.delete(schema.workflowExecutions).where(eq(schema.workflowExecutions.workflow_id, id)).run();
-      this.db.delete(schema.workflowDefinitions).where(eq(schema.workflowDefinitions.workflow_id, id)).run();
-      this.db.delete(schema.workflowTriggers).where(eq(schema.workflowTriggers.workflow_id, id)).run();
-      this.db.delete(schema.workflows).where(eq(schema.workflows.id, id)).run();
+      // Hard-delete the workflow and every dependent row. The previous
+      // implementation deleted node_executions by `execution_id = <workflow id>`
+      // (matching nothing) and skipped execution_events entirely — with
+      // foreign_keys enabled the delete then failed on the
+      // execution_events → workflow_executions FK once a workflow had run.
+      this.db.transaction((tx) => {
+        const execs = tx
+          .select({ id: schema.workflowExecutions.id })
+          .from(schema.workflowExecutions)
+          .where(eq(schema.workflowExecutions.workflow_id, id))
+          .all();
+        const execIds = execs.map((r) => r.id);
+        if (execIds.length > 0) {
+          tx.delete(schema.executionEvents).where(inArray(schema.executionEvents.execution_id, execIds)).run();
+          tx.delete(schema.nodeExecutions).where(inArray(schema.nodeExecutions.execution_id, execIds)).run();
+        }
+        tx.delete(schema.workflowExecutions).where(eq(schema.workflowExecutions.workflow_id, id)).run();
+        tx.delete(schema.workflowDefinitions).where(eq(schema.workflowDefinitions.workflow_id, id)).run();
+        tx.delete(schema.workflowTriggers).where(eq(schema.workflowTriggers.workflow_id, id)).run();
+        tx.delete(schema.workflows).where(eq(schema.workflows.id, id)).run();
+      });
     },
   };
 
@@ -254,15 +279,34 @@ export class SqliteStateStore implements StateStore {
 
     updateStatus: async (id: string, data: {
       status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'paused';
-      started_at?: string; completed_at?: string; duration_ms?: number; error?: string;
+      started_at?: string; completed_at?: string; duration_ms?: number; error?: string | null;
     }) => {
+      // Omitted fields are preserved — unconditionally writing NULL here used
+      // to wipe `started_at`/`duration_ms` on every terminal transition, which
+      // broke `ORDER BY started_at` listings and audit trails.
       this.db.update(schema.workflowExecutions).set({
         status: data.status,
-        started_at: data.started_at ?? null,
-        completed_at: data.completed_at ?? null,
-        duration_ms: data.duration_ms ?? null,
-        error: data.error ?? null,
+        ...(data.started_at !== undefined ? { started_at: data.started_at } : {}),
+        ...(data.completed_at !== undefined ? { completed_at: data.completed_at } : {}),
+        ...(data.duration_ms !== undefined ? { duration_ms: data.duration_ms } : {}),
+        ...(data.error !== undefined ? { error: data.error } : {}),
       }).where(eq(schema.workflowExecutions.id, id)).run();
+    },
+
+    completeIfActive: async (id: string, data: {
+      status: 'succeeded' | 'failed' | 'cancelled';
+      completed_at?: string; duration_ms?: number; error?: string | null;
+    }) => {
+      const result = this.db.update(schema.workflowExecutions).set({
+        status: data.status,
+        ...(data.completed_at !== undefined ? { completed_at: data.completed_at } : {}),
+        ...(data.duration_ms !== undefined ? { duration_ms: data.duration_ms } : {}),
+        ...(data.error !== undefined ? { error: data.error } : {}),
+      }).where(and(
+        eq(schema.workflowExecutions.id, id),
+        inArray(schema.workflowExecutions.status, ['pending', 'running']),
+      )).run();
+      return result.changes > 0;
     },
 
     findInterrupted: async () => {
@@ -312,16 +356,19 @@ export class SqliteStateStore implements StateStore {
     updateStatus: async (id: string, data: {
       status: 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
       started_at?: string; completed_at?: string; output?: Record<string, unknown>;
-      error?: string; retry_count?: number; metadata?: Record<string, unknown>;
+      error?: string | null; retry_count?: number; metadata?: Record<string, unknown>;
     }) => {
+      // Same preserve-on-omit semantics as executions.updateStatus: writing
+      // NULL unconditionally used to erase a node's `started_at` the moment it
+      // succeeded.
       this.db.update(schema.nodeExecutions).set({
         status: data.status,
-        started_at: data.started_at ?? null,
-        completed_at: data.completed_at ?? null,
-        output: data.output ? (JSON.stringify(data.output) as never) : undefined,
-        error: data.error ?? null,
-        retry_count: data.retry_count ?? undefined,
-        metadata: data.metadata ? (JSON.stringify(data.metadata) as never) : undefined,
+        ...(data.started_at !== undefined ? { started_at: data.started_at } : {}),
+        ...(data.completed_at !== undefined ? { completed_at: data.completed_at } : {}),
+        ...(data.output !== undefined ? { output: JSON.stringify(data.output) as never } : {}),
+        ...(data.error !== undefined ? { error: data.error } : {}),
+        ...(data.retry_count !== undefined ? { retry_count: data.retry_count } : {}),
+        ...(data.metadata !== undefined ? { metadata: JSON.stringify(data.metadata) as never } : {}),
       }).where(eq(schema.nodeExecutions.id, id)).run();
     },
   };

@@ -32,11 +32,19 @@ export class CronTriggerHandler {
   /** Initialise — load all enabled cron triggers and register them. */
   async initialise(): Promise<void> {
     const triggers = await this.store.triggers.listEnabled();
+    let loadErrors = 0;
     for (const trigger of triggers) {
       if (trigger.trigger_type !== 'cron') continue;
-      this.register(trigger.id, trigger.workflow_id, trigger.config as { expression: string; timezone?: string });
+      try {
+        this.register(trigger.id, trigger.workflow_id, trigger.config as { expression: string; timezone?: string });
+      } catch (err) {
+        // One polluted row (e.g. an invalid expression) must not take the
+        // whole server down in a restart loop (M6) — skip and log it.
+        loadErrors++;
+        logger.error({ triggerId: trigger.id, error: String(err) }, 'Skipping invalid cron trigger');
+      }
     }
-    logger.info({ count: this.jobs.size }, 'Cron triggers registered');
+    logger.info({ count: this.jobs.size, skipped: loadErrors }, 'Cron triggers registered');
   }
 
   /** Register a cron trigger. */

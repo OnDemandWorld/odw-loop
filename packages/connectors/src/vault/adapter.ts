@@ -36,17 +36,17 @@ export class VaultAdapter implements ConnectorAdapter {
 
     switch (params.operation) {
       case 'rag_query':
-        return this.ragQuery(baseUrl, apiKey, params.input, idemKey);
+        return this.ragQuery(baseUrl, apiKey, params.input, idemKey, params);
       case 'search':
-        return this.search(baseUrl, apiKey, params.input, idemKey);
+        return this.search(baseUrl, apiKey, params.input, idemKey, params);
       case 'create_document':
-        return this.uploadDocument(baseUrl, apiKey, params.input, idemKey);
+        return this.uploadDocument(baseUrl, apiKey, params.input, idemKey, params);
       case 'get_document':
-        return { output: await this.callVault(baseUrl, apiKey, 'GET', `/files/${String(params.input['id'])}`, undefined, idemKey) };
+        return { output: await this.callVault(baseUrl, apiKey, 'GET', `/files/${String(params.input['id'])}`, undefined, idemKey, params) };
       case 'get_text':
-        return { output: await this.callVault(baseUrl, apiKey, 'GET', `/files/${String(params.input['id'])}/text`, undefined, idemKey) };
+        return { output: await this.callVault(baseUrl, apiKey, 'GET', `/files/${String(params.input['id'])}/text`, undefined, idemKey, params) };
       case 'delete_document':
-        return { output: await this.callVault(baseUrl, apiKey, 'DELETE', `/files/${String(params.input['id'])}`, undefined, idemKey) };
+        return { output: await this.callVault(baseUrl, apiKey, 'DELETE', `/files/${String(params.input['id'])}`, undefined, idemKey, params) };
       default:
         throw new Error(`Unknown Vault operation: ${params.operation}`);
     }
@@ -85,8 +85,9 @@ export class VaultAdapter implements ConnectorAdapter {
     apiKey: string,
     input: Record<string, unknown>,
     idempotencyKey?: string,
+    io?: Pick<ExecuteParams, 'egress' | 'signal'>,
   ): Promise<ExecuteResult> {
-    const data = await this.postQuery(baseUrl, apiKey, input, idempotencyKey);
+    const data = await this.postQuery(baseUrl, apiKey, input, idempotencyKey, io);
     return {
       output: {
         answer: data['answer'] ?? '',
@@ -103,8 +104,9 @@ export class VaultAdapter implements ConnectorAdapter {
     apiKey: string,
     input: Record<string, unknown>,
     idempotencyKey?: string,
+    io?: Pick<ExecuteParams, 'egress' | 'signal'>,
   ): Promise<ExecuteResult> {
-    const data = await this.postQuery(baseUrl, apiKey, input, idempotencyKey);
+    const data = await this.postQuery(baseUrl, apiKey, input, idempotencyKey, io);
     const chunks = (data['retrieved_chunks'] as unknown[] | undefined) ?? [];
     return {
       output: {
@@ -119,6 +121,7 @@ export class VaultAdapter implements ConnectorAdapter {
     apiKey: string,
     input: Record<string, unknown>,
     idempotencyKey?: string,
+    io?: Pick<ExecuteParams, 'egress' | 'signal'>,
   ): Promise<Record<string, unknown>> {
     const body: Record<string, unknown> = {
       query: input['query'] ?? '',
@@ -126,7 +129,7 @@ export class VaultAdapter implements ConnectorAdapter {
     };
     if (input['folder_filter'] !== undefined) body['folder_filter'] = input['folder_filter'];
     if (input['conversation_id'] !== undefined) body['conversation_id'] = input['conversation_id'];
-    return this.callVault(baseUrl, apiKey, 'POST', '/query', body, idempotencyKey);
+    return this.callVault(baseUrl, apiKey, 'POST', '/query', body, idempotencyKey, io);
   }
 
   /** Upload a document built from input.content + input.title/name. */
@@ -135,6 +138,7 @@ export class VaultAdapter implements ConnectorAdapter {
     apiKey: string,
     input: Record<string, unknown>,
     idempotencyKey?: string,
+    io?: Pick<ExecuteParams, 'egress' | 'signal'>,
   ): Promise<ExecuteResult> {
     const content = String(input['content'] ?? '');
     const title = String(input['title'] ?? input['name'] ?? 'document');
@@ -144,7 +148,9 @@ export class VaultAdapter implements ConnectorAdapter {
     form.append('files', new File([content], filename, { type: 'text/markdown' }));
 
     try {
-      const response = await request(`${baseUrl}/files/upload`, {
+      const url = `${baseUrl}/files/upload`;
+      await io?.egress?.check(url);
+      const response = await request(url, {
         method: 'POST',
         headers: {
           ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
@@ -152,9 +158,12 @@ export class VaultAdapter implements ConnectorAdapter {
           ...traceHeaders(),
         },
         body: form,
+        signal: io?.signal,
       });
 
       if (response.statusCode >= 400) {
+        // Consume the body so undici can release the socket back to the pool.
+        await response.body.text().catch(() => {});
         throw new UpstreamError('UPSTREAM_VAULT_UNAVAILABLE', `Vault returned ${response.statusCode}`);
       }
 
@@ -180,9 +189,12 @@ export class VaultAdapter implements ConnectorAdapter {
     path: string,
     body?: Record<string, unknown>,
     idempotencyKey?: string,
+    io?: Pick<ExecuteParams, 'egress' | 'signal'>,
   ): Promise<Record<string, unknown>> {
     try {
-      const response = await request(`${baseUrl}${path}`, {
+      const url = `${baseUrl}${path}`;
+      await io?.egress?.check(url);
+      const response = await request(url, {
         method,
         headers: {
           ...(body ? { 'content-type': 'application/json' } : {}),
@@ -191,9 +203,12 @@ export class VaultAdapter implements ConnectorAdapter {
           ...traceHeaders(),
         },
         body: body ? JSON.stringify(body) : undefined,
+        signal: io?.signal,
       });
 
       if (response.statusCode >= 400) {
+        // Consume the body so undici can release the socket back to the pool.
+        await response.body.text().catch(() => {});
         throw new UpstreamError('UPSTREAM_VAULT_UNAVAILABLE', `Vault returned ${response.statusCode}`);
       }
 

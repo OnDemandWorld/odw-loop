@@ -36,15 +36,15 @@ export class DeskAdapter implements ConnectorAdapter {
 
     switch (params.operation) {
       case 'list_conversations':
-        return this.callDesk(baseUrl, apiKey, 'GET', PREFIX, undefined, idemKey);
+        return this.callDesk(baseUrl, apiKey, 'GET', PREFIX, undefined, idemKey, params);
       case 'get_conversation':
-        return this.callDesk(baseUrl, apiKey, 'GET', `${PREFIX}/${String(params.input['id'])}`, undefined, idemKey);
+        return this.callDesk(baseUrl, apiKey, 'GET', `${PREFIX}/${String(params.input['id'])}`, undefined, idemKey, params);
       case 'send_response': {
         const id = String(params.input['id'] ?? params.input['conversation_id'] ?? '');
         const query = new URLSearchParams();
         if (params.input['agent_id'] !== undefined) query.set('agent_id', String(params.input['agent_id']));
         if (params.input['content'] !== undefined) query.set('content', String(params.input['content']));
-        return this.callDesk(baseUrl, apiKey, 'POST', `${PREFIX}/${id}/respond?${query.toString()}`, undefined, idemKey);
+        return this.callDesk(baseUrl, apiKey, 'POST', `${PREFIX}/${id}/respond?${query.toString()}`, undefined, idemKey, params);
       }
       case 'takeover':
         return this.callDesk(
@@ -54,6 +54,7 @@ export class DeskAdapter implements ConnectorAdapter {
           `${PREFIX}/${String(params.input['id'])}/takeover`,
           params.input['agent_id'] !== undefined ? { agent_id: params.input['agent_id'] } : {},
           idemKey,
+          params,
         );
       case 'resolve':
         return this.callDesk(
@@ -63,6 +64,7 @@ export class DeskAdapter implements ConnectorAdapter {
           `${PREFIX}/${String(params.input['id'])}/resolve`,
           params.input['agent_id'] !== undefined ? { agent_id: params.input['agent_id'] } : {},
           idemKey,
+          params,
         );
       default:
         throw new Error(`Unknown Desk operation: ${params.operation}`);
@@ -101,9 +103,12 @@ export class DeskAdapter implements ConnectorAdapter {
     path: string,
     body?: Record<string, unknown>,
     idempotencyKey?: string,
+    io?: Pick<ExecuteParams, 'egress' | 'signal'>,
   ): Promise<ExecuteResult> {
     try {
-      const response = await request(`${baseUrl}${path}`, {
+      const url = `${baseUrl}${path}`;
+      await io?.egress?.check(url);
+      const response = await request(url, {
         method,
         headers: {
           ...(body ? { 'content-type': 'application/json' } : {}),
@@ -112,8 +117,11 @@ export class DeskAdapter implements ConnectorAdapter {
           ...traceHeaders(),
         },
         body: body ? JSON.stringify(body) : undefined,
+        signal: io?.signal,
       });
       if (response.statusCode >= 400) {
+        // Consume the body so undici can release the socket back to the pool.
+        await response.body.text().catch(() => {});
         throw new UpstreamError('UPSTREAM_DESK_UNAVAILABLE', `Desk returned ${response.statusCode}`);
       }
       const text = await response.body.text();

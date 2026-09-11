@@ -11,6 +11,7 @@ export type ErrorCode =
   | 'VALIDATION_RANGE'
   | 'VALIDATION_TOPOLOGY'
   | 'VALIDATION_ERROR'
+  | 'VALIDATION_INVALID'
   // Auth 401
   | 'AUTH_INVALID_TOKEN'
   | 'AUTH_EXPIRED'
@@ -27,6 +28,8 @@ export type ErrorCode =
   // Conflict 409
   | 'CONFLICT_VERSION'
   | 'CONFLICT_DUPLICATE'
+  | 'REPLAY_IN_PROGRESS'
+  | 'SECRET_CONFLICT'
   // Rate limit 429
   | 'RATE_LIMIT_EXCEEDED'
   // System 500
@@ -46,6 +49,8 @@ export type ErrorCode =
   | 'WORKFLOW_TIMEOUT'
   // Sub-workflow invocation (V1.2 M3 — recursion guard)
   | 'SUBWORKFLOW_DEPTH_EXCEEDED'
+  // Execution lifecycle (cooperative cancellation)
+  | 'EXECUTION_CANCELLED'
   // Generic
   | 'INTERNAL_ERROR';
 

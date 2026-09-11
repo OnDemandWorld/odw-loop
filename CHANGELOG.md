@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security & reliability hardening (full-project review)
+
+**Critical**
+- **Egress policies are now actually enforced (SSRF closed).** The whole
+  egress stack (`EgressEngine`, `EgressInterceptor`, `LOOP_AIRGAP_MODE`) was
+  dead code — every connector called out with zero checks, so any workflow
+  could reach arbitrary hosts (intranet, cloud metadata). A new `EgressGate`
+  is wired into the executor and every adapter (`vault`, `desk`, `recap`,
+  `generic`): airgap mode blocks all outbound calls, configured policies
+  evaluate default-deny, and the no-policies case is governed by the new
+  `LOOP_EGRESS_UNCONFIGURED_POLICY` (default `allow` so fresh installs keep
+  working).
+- **Async DNS in egress resolution.** `resolveIP` fired the callback-based
+  `dns.lookup` but returned before it ran — IP-range/region policies could
+  never match. Now `await`ed, with a pinned-IP result fed to policy checks.
+- **Production refuses publicly known default keys.** With
+  `LOOP_ENV=production`, boot now exits if `LOOP_ENCRYPTION_KEY` (or
+  `LOOP_JWT_SECRET` while auth is on) is still the public dev default;
+  docker-compose no longer ships `:-` fallbacks for them. Auth-disabled
+  production prints a loud warning.
+- **Workflow timeout no longer crashes or leaks work.** The pre-aborted
+  `withTimeout` path could raise an unhandledRejection (process exit), and
+  in-flight connector calls kept running after the deadline. Timed-out nodes
+  now abort their own `AbortController`, the signal reaches every adapter
+  (undici `signal`), later batches stop scheduling, and retries stop on abort.
+- **Branch conditions no longer eval JavaScript.** `BranchNode` compiled
+  condition strings with `new Function` (RCE-by-workflow-author). Replaced
+  with a restricted parser (comparisons, `&&`/`||`/`!`, literals) that fails
+  closed; unresolved references never satisfy comparisons.
+
+**Fixed**
+- Executions/nodes no longer lose `started_at`/`duration_ms` on terminal
+  transitions (`updateStatus` is preserve-on-omit in SQLite and Postgres).
+- `executions.completeIfActive`: guarded terminal transition — an API cancel
+  can no longer be overwritten by a late executor completion (and vice versa);
+  the cancel route, cron/webhook/manual dispatch error paths and the executor
+  all use the guard; executor checks cancellation between levels.
+- Workflow hard-delete cascades through `execution_events` (previously a
+  FOREIGN KEY failure once a workflow had run) and matches node_executions by
+  the workflow's actual execution ids; whole cascade is transactional.
+- Runtime-created cron triggers are scheduled immediately (previously they
+  only worked after a restart) and validated (workflow exists, cron expression
+  parses — bad input is a 400, and the create rolls back); a polluted trigger
+  row no longer blocks server startup. New `DELETE /api/v1/triggers/:id`.
+- Manual/webhook/event/sub-workflow executions snapshot the workflow's current
+  `workflow_version` (hardcoded 1 replayed stale definitions).
+- Inline sub-workflow definitions are structurally validated before execution
+  (dangling edges/duplicate ids used to be silently dropped by the scheduler).
+- Domain wildcards in egress policies match at label boundaries
+  (`*.example.com` no longer matches `evilexample.com`).
+- `LOOP_DB_TYPE=postgres` is honoured by the server (the Postgres store was
+  unreachable; deployments silently ran SQLite). Postgres SSL now verifies
+  certificates. Migrations run in a transaction each (half-applied state no
+  longer bricked startup).
+- API keys compare in constant time (hash + `timingSafeEqual`); the spoofable
+  `x-user-id` attribution fallback is removed; `/metrics` requires auth when
+  auth is enabled; connectors drain upstream error bodies so sockets return to
+  the pool; CORS no longer advertises credentials.
+- Trigger creation validates `trigger_type`/`config`; pagination params are
+  clamped (`?page=abc` no longer 500s); LIKE searches escape `%`/`_`;
+  webhook rate-limit buckets are cleaned up; concurrent replays of the same
+  execution return 409 instead of double-firing side effects.
+- New admin secrets API (`POST/GET/DELETE /api/v1/secrets`) — the encrypted
+  store previously had no API surface at all.
+
 ### Added
 - **Templates marketplace & simplified creation.** Loop now ships an
   industry-level template platform (inspired by Zapier's creation wizard,

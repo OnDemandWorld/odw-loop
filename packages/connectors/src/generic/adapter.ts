@@ -16,10 +16,15 @@ export class GenericAdapter implements ConnectorAdapter {
     const headers = (params.config?.['headers'] as Record<string, string>) ?? {};
     const body = params.input['body'] as Record<string, unknown> | undefined;
 
+    // The generic connector takes arbitrary targets from workflow input —
+    // exactly the shape an SSRF needs. Enforce the egress gate when wired.
+    await params.egress?.check(`${baseUrl}${path}`);
+
     const response = await request(`${baseUrl}${path}`, {
       method: method as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
       headers: { 'content-type': 'application/json', ...headers },
       body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body ?? {}),
+      signal: params.signal,
     });
 
     const data = await response.body.json() as Record<string, unknown>;

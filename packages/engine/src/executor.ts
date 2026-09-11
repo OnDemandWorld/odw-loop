@@ -7,7 +7,7 @@ import { createLogger } from '@loop/observability';
 import { metricsRegistry } from '@loop/observability';
 // V1.6 M1 (F-2, SP3): execution/node lifecycle spans (best-effort observability).
 import { startSpan, runInSpan } from '@loop/observability';
-import { LoopError, type WorkflowDefinition, type WorkflowNode } from '@loop/types';
+import { LoopError, type WorkflowDefinition, type WorkflowNode, type ExecutionStatus } from '@loop/types';
 import type { StateStore } from '@loop/state';
 import type { ConnectorRegistry } from '@loop/connectors';
 import { computeLevels } from './scheduler.js';
@@ -132,6 +132,9 @@ export class ExecutionExecutor {
     // `node_succeeded` event payload. Oversized outputs are stored as a
     // truncated marker instead of the full payload (see capOutputForEvent).
     private eventOutputMaxBytes: number = defaultEventOutputMaxBytes(),
+    // Egress policy gate enforced before every outbound connector call.
+    // Structural type — the engine does not depend on @loop/egress.
+    private egressGate?: { check(url: string): Promise<void> },
   ) {}
 
   /**
@@ -254,6 +257,12 @@ export class ExecutionExecutor {
       }
 
       for (const level of levels) {
+        // Cooperative cancellation (M3): the API cancel route flips the row to
+        // 'cancelled'; stop scheduling further levels instead of racing it.
+        const current = await this.store.executions.getById(executionId);
+        if (current?.status === 'cancelled') {
+          throw new LoopError('EXECUTION_CANCELLED', `Execution '${executionId}' was cancelled`, 400);
+        }
         const settled = await this.executeLevel(level, ctx, definition, controller.signal);
         // Abort the execution on the first node failure in this level; later
         // levels must not run (mirrors the previous fail-fast semantics).
@@ -324,6 +333,10 @@ export class ExecutionExecutor {
     const settled: PromiseSettledResult<void>[] = [];
 
     for (let i = 0; i < level.length; i += limit) {
+      // Stop scheduling further batches once the workflow deadline has passed —
+      // nodes in later batches would otherwise fire connector calls nobody
+      // awaits (side effects continuing after timeout).
+      if (signal?.aborted) break;
       const batch = level.slice(i, i + limit);
       const batchResults = await Promise.allSettled(
         batch.map((node) => this.executeNode(node, ctx, definition, signal)),
@@ -335,38 +348,50 @@ export class ExecutionExecutor {
   }
 
   /**
-   * Bound a node execution with a timeout. An AbortController is aborted when
-   * the deadline elapses and the returned promise rejects with a NODE_TIMEOUT
-   * error, so a hung adapter cannot stall the whole execution.
+   * Bound a node execution with a timeout. The caller-supplied controller is
+   * aborted when the deadline elapses (so the in-flight connector call — which
+   * observes the same signal — stops making network calls) and the returned
+   * promise rejects with a NODE_TIMEOUT error, so a hung adapter cannot stall
+   * the whole execution. An externally aborted controller (workflow-level
+   * timeout) rejects with WORKFLOW_TIMEOUT.
    *
-   * V1.1 M1 (F3): an optional parent `signal` (the workflow-level controller)
-   * also aborts the node — when the whole workflow times out, every in-flight
-   * node rejects with a WORKFLOW_TIMEOUT error instead of hanging.
+   * V1.1 M1 (F3): the workflow-level timeout aborts the controller, so every
+   * in-flight node rejects with a WORKFLOW_TIMEOUT error instead of hanging.
    */
-  private withTimeout<T>(promise: Promise<T>, ms: number, nodeId: string, signal?: AbortSignal): Promise<T> {
+  private withTimeout<T>(controller: AbortController, promise: Promise<T>, ms: number, nodeId: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const controller = new AbortController();
+      // Always attach a no-op rejection handler first: if the controller is
+      // already aborted (or aborts before the promise settles) the main
+      // `promise.then` below may never attach, and an unhandled rejection
+      // would crash the process (Node ≥15 default).
+      promise.catch(() => {});
+
+      // Distinguish the two abort causes: when the timer fires it aborts the
+      // same controller this promise listens on, so the listener must not
+      // race it to the rejection with a WORKFLOW_TIMEOUT.
+      let timedOut = false;
       const timer = setTimeout(() => {
+        timedOut = true;
         controller.abort();
         reject(new LoopError('NODE_TIMEOUT', `Node '${nodeId}' timed out after ${ms}ms`, 500));
       }, ms);
 
-      const onWorkflowAbort = (): void => {
+      const onAbort = (): void => {
+        if (timedOut) return;
         clearTimeout(timer);
         reject(new LoopError('WORKFLOW_TIMEOUT', `Node '${nodeId}' aborted by workflow timeout (workflow_timeout)`, 500));
       };
 
-      if (signal) {
-        if (signal.aborted) {
-          onWorkflowAbort();
-          return;
-        }
-        signal.addEventListener('abort', onWorkflowAbort, { once: true });
+      if (controller.signal.aborted) {
+        clearTimeout(timer);
+        onAbort();
+        return;
       }
+      controller.signal.addEventListener('abort', onAbort, { once: true });
 
       const cleanup = (): void => {
         clearTimeout(timer);
-        signal?.removeEventListener('abort', onWorkflowAbort);
+        controller.signal.removeEventListener('abort', onAbort);
       };
 
       promise.then(
@@ -412,6 +437,11 @@ export class ExecutionExecutor {
   }
 
   private async executeNodeInner(node: WorkflowNode, ctx: ExecutorContext, _definition: WorkflowDefinition, signal?: AbortSignal): Promise<void> {
+    // Workflow deadline already passed — do not start new connector work.
+    if (signal?.aborted) {
+      throw new LoopError('WORKFLOW_TIMEOUT', `Node '${node.id}' aborted by workflow timeout (workflow_timeout)`, 500);
+    }
+
     // V1.1 M1 (F1 resume / F2 idempotency): if this node already succeeded for
     // this execution, skip dispatch entirely and reuse its stored output — no
     // connector call, no duplicate side effects.
@@ -496,53 +526,67 @@ export class ExecutionExecutor {
       // Resolve variable interpolation
       const resolvedInput = this.resolveVariables(node.config, ctx);
 
+      // A per-node controller fuses the workflow-level signal with the node
+      // timeout: both abort THIS controller, and the fused signal is what the
+      // connector observes — so a timed-out node stops making HTTP calls
+      // instead of continuing its side effects in the background.
+      const controller = new AbortController();
+      const forwardAbort = (): void => controller.abort();
+      if (signal?.aborted) controller.abort();
+      else signal?.addEventListener('abort', forwardAbort, { once: true });
+
       // Execute with retry, bounded by the node timeout (per-node override or
-      // the executor-wide default) and the workflow-level signal.
-      const retryConfig = node.retry ?? { max_attempts: 0, backoff: 'fixed' as const, initial_delay_ms: 0 };
-      const timeoutMs = node.timeout_ms ?? this.nodeTimeoutMs;
-      const result = await this.withTimeout(
-        executeWithRetry(
-          async () => this.dispatchNode(node, resolvedInput, ctx, idempotencyKey),
-          retryConfig,
-          (attempt, error) => {
-            logger.warn({ nodeId: node.id, attempt, error: String(error) }, 'Node retry');
-          },
-        ),
-        timeoutMs,
-        node.id,
-        signal,
-      );
+      // the executor-wide default). Retries stop once the controller aborts.
+      try {
+        const retryConfig = node.retry ?? { max_attempts: 0, backoff: 'fixed' as const, initial_delay_ms: 0 };
+        const timeoutMs = node.timeout_ms ?? this.nodeTimeoutMs;
+        const result = await this.withTimeout(
+          controller,
+          executeWithRetry(
+            async () => this.dispatchNode(node, resolvedInput, ctx, idempotencyKey, controller.signal),
+            retryConfig,
+            (attempt, error) => {
+              logger.warn({ nodeId: node.id, attempt, error: String(error) }, 'Node retry');
+            },
+            controller.signal,
+          ),
+          timeoutMs,
+          node.id,
+        );
 
-      // Store output
-      ctx.nodeOutputs.set(node.id, result);
+        // Store output
+        ctx.nodeOutputs.set(node.id, result);
 
-      // Transition to succeeded
-      await this.store.nodeExecutions.updateStatus(nodeExecId, {
-        status: 'succeeded',
-        completed_at: new Date().toISOString(),
-        output: result,
-      });
-      await recordEvent(this.store, ctx.executionId, 'node_succeeded', node.id, {
-        duration_ms: Date.now() - startTime,
-        // V1.4 M2 (F-2): persist the node output (size-capped) so replay can
-        // reconstruct full node outputs from the event log. Oversized outputs
-        // are stored as a `{__truncated__, size, preview}` marker.
-        output: capOutputForEvent(result, this.eventOutputMaxBytes),
-      });
-      this.emit({
-        type: 'node_succeeded',
-        executionId: ctx.executionId,
-        nodeId: node.id,
-        nodeType: node.type,
-        status: 'succeeded',
-        timestamp: new Date().toISOString(),
-        output: result,
-        durationMs: Date.now() - startTime,
-        ...this.parentMarker(ctx),
-      });
+        // Transition to succeeded
+        await this.store.nodeExecutions.updateStatus(nodeExecId, {
+          status: 'succeeded',
+          completed_at: new Date().toISOString(),
+          output: result,
+        });
+        await recordEvent(this.store, ctx.executionId, 'node_succeeded', node.id, {
+          duration_ms: Date.now() - startTime,
+          // V1.4 M2 (F-2): persist the node output (size-capped) so replay can
+          // reconstruct full node outputs from the event log. Oversized outputs
+          // are stored as a `{__truncated__, size, preview}` marker.
+          output: capOutputForEvent(result, this.eventOutputMaxBytes),
+        });
+        this.emit({
+          type: 'node_succeeded',
+          executionId: ctx.executionId,
+          nodeId: node.id,
+          nodeType: node.type,
+          status: 'succeeded',
+          timestamp: new Date().toISOString(),
+          output: result,
+          durationMs: Date.now() - startTime,
+          ...this.parentMarker(ctx),
+        });
 
-      const duration = (Date.now() - startTime) / 1000;
-      metrics.nodeDuration.observe({ node_type: node.type, workflow_id: ctx.workflowId }, duration);
+        const duration = (Date.now() - startTime) / 1000;
+        metrics.nodeDuration.observe({ node_type: node.type, workflow_id: ctx.workflowId }, duration);
+      } finally {
+        signal?.removeEventListener('abort', forwardAbort);
+      }
     } catch (err) {
       await this.store.nodeExecutions.updateStatus(nodeExecId, {
         status: 'failed',
@@ -570,6 +614,7 @@ export class ExecutionExecutor {
     input: Record<string, unknown>,
     ctx: ExecutorContext,
     idempotencyKey?: string,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     // V1.2 M3 (F-Loop-1): `workflow.invoke` is an engine built-in, NOT a
     // connector — intercept it before connector routing so it recurses into a
@@ -607,7 +652,17 @@ export class ExecutionExecutor {
     // V1.1 M1 (F2): forward the idempotency key so connectors can best-effort
     // propagate it upstream (e.g. an `Idempotency-Key` header). Optional — the
     // request/response contract is unchanged (INTEGRATION_CONTRACT.md §4).
-    const result = await adapter.execute({ operation, input, config, secrets, idempotencyKey });
+    // Adapters must consult `egress` before every outbound call and forward
+    // `signal` so timeouts/airgap actually stop the network work.
+    const result = await adapter.execute({
+      operation,
+      input,
+      config,
+      secrets,
+      idempotencyKey,
+      ...(this.egressGate ? { egress: this.egressGate } : {}),
+      ...(signal ? { signal } : {}),
+    });
     return result.output;
   }
 
@@ -628,14 +683,27 @@ export class ExecutionExecutor {
     return template.replace(/\{\{([^}]+)\}\}/g, (_match, varPath: string) => {
       const path = varPath.trim();
       if (path.startsWith('trigger.payload.')) {
-        const key = path.replace('trigger.payload.', '');
-        return String(ctx.triggerPayload[key] ?? '');
+        // Traverse the dotted path segment by segment so nested payloads
+        // (`trigger.payload.data.customer.id`) resolve; the previous flat
+        // lookup silently emitted an empty string for any nesting.
+        const key = path.slice('trigger.payload.'.length);
+        const value = key
+          .split('.')
+          .reduce<unknown>(
+            (obj, segment) =>
+              obj !== null && typeof obj === 'object' ? (obj as Record<string, unknown>)[segment] : undefined,
+            ctx.triggerPayload,
+          );
+        return value === undefined || value === null ? '' : String(value);
       }
-      if (path.match(/^node_\w+\.output\./)) {
-        const parts = path.split('.');
-        const nodeId = parts[0]!.replace('node_', '');
-        const outputKey = parts.slice(2).join('.');
-        const nodeOutput = ctx.nodeOutputs.get(`node_${nodeId}`);
+      // Node outputs: look the reference up against the raw node id first
+      // (works for any id shape, incl. hyphens/UUIDs), falling back to the
+      // legacy `node_X` prefixed-id convention.
+      const outputMatch = path.match(/^([\w-]+)\.output\.(.+)$/);
+      if (outputMatch) {
+        const rawId = outputMatch[1]!;
+        const outputKey = outputMatch[2]!;
+        const nodeOutput = ctx.nodeOutputs.get(rawId) ?? ctx.nodeOutputs.get(`node_${rawId}`);
         return String(this.resolveOutputPath(nodeOutput, outputKey) ?? '');
       }
       return '';
@@ -668,19 +736,26 @@ export class ExecutionExecutor {
     parentExecutionId?: string,
   ): Promise<void> {
     const duration = Date.now() - startTime;
-    await this.store.executions.updateStatus(executionId, {
+    // Guarded transition: never overwrite a terminal status. Without the guard
+    // an executor completion raced (and reverted) an API-initiated cancel.
+    const applied = await this.store.executions.completeIfActive(executionId, {
       status,
       completed_at: new Date().toISOString(),
       duration_ms: duration,
-      error,
+      ...(error !== undefined ? { error } : {}),
     });
-    metrics.executionsTotal.inc({ workflow_id: workflowId ?? 'unknown', status });
+    let finalStatus: ExecutionStatus = status;
+    if (!applied) {
+      const current = await this.store.executions.getById(executionId);
+      if (current) finalStatus = current.status;
+    }
+    metrics.executionsTotal.inc({ workflow_id: workflowId ?? 'unknown', status: finalStatus });
     metrics.executionDuration.observe({ workflow_id: workflowId ?? 'unknown' }, duration / 1000);
     // V1.1 M2 (F5): real-time terminal status for live monitors.
     this.emit({
-      type: status === 'succeeded' ? 'execution_succeeded' : 'execution_failed',
+      type: finalStatus === 'succeeded' ? 'execution_succeeded' : 'execution_failed',
       executionId,
-      status,
+      status: finalStatus,
       timestamp: new Date().toISOString(),
       durationMs: duration,
       ...(error !== undefined ? { error } : {}),
@@ -719,9 +794,16 @@ export class ExecutionExecutor {
     const workflowIdInput = input['workflow_id'];
     let childDefinition: WorkflowDefinition;
     let childWorkflowId: string | undefined;
+    let childVersion: number = 1;
 
     if (inline !== undefined && inline !== null && typeof inline === 'object' && !Array.isArray(inline)) {
-      childDefinition = inline as WorkflowDefinition;
+      const candidate = inline as WorkflowDefinition;
+      // Stored definitions pass authoring validation on save; an inline
+      // definition bypasses that path entirely, so run a structural check
+      // here — otherwise a malformed/cyclic inline graph is silently
+      // "partially executed and successful" (computeLevels drops cycle nodes).
+      validateInlineDefinition(candidate, node.id);
+      childDefinition = candidate;
     } else if (typeof workflowIdInput === 'string' && workflowIdInput.length > 0) {
       const loaded = await this.store.workflows.getById(workflowIdInput);
       if (!loaded) {
@@ -729,6 +811,7 @@ export class ExecutionExecutor {
       }
       childDefinition = loaded.definition;
       childWorkflowId = loaded.id;
+      childVersion = loaded.version;
     } else {
       throw new LoopError(
         'VALIDATION_REQUIRED',
@@ -770,13 +853,17 @@ export class ExecutionExecutor {
         );
       }
       childWorkflowId = parentExecution.workflow_id;
+      childVersion = parentExecution.workflow_version;
     }
 
     const childExecutionId = randomUUID();
     await this.store.executions.create({
       id: childExecutionId,
       workflow_id: childWorkflowId,
-      workflow_version: 1,
+      // The stored workflow's current version, or (for inline definitions
+      // reusing the parent's FK) the parent execution's version — a hardcoded
+      // 1 resolved stale definitions during replay.
+      workflow_version: childVersion,
       trigger_type: 'event',
       trigger_payload: childPayload,
     });
@@ -811,4 +898,32 @@ function subWorkflowKey(definition: WorkflowDefinition, workflowId?: string): st
   const name = definition.metadata?.name;
   if (name !== undefined && name.length > 0) return `name:${name}`;
   return `nodes:${definition.nodes.map((n) => n.id).join(',')}`;
+}
+
+/**
+ * Structural validation for inline sub-workflow definitions. Stored
+ * definitions are validated at authoring time; inline ones arrive straight
+ * from node input, so a malformed graph (missing nodes/edges, dangling edge
+ * references, duplicate node ids) must fail fast instead of being silently
+ * dropped level-by-level by the scheduler.
+ */
+function validateInlineDefinition(definition: WorkflowDefinition, nodeId: string): void {
+  if (!definition || !Array.isArray(definition.nodes)) {
+    throw new LoopError('VALIDATION_INVALID', `workflow.invoke node '${nodeId}': inline definition has no nodes array`, 400);
+  }
+  const ids = new Set<string>();
+  for (const n of definition.nodes) {
+    if (!n || typeof n.id !== 'string' || n.id.length === 0 || typeof n.type !== 'string' || n.type.length === 0) {
+      throw new LoopError('VALIDATION_INVALID', `workflow.invoke node '${nodeId}': inline definition contains a node without a string id/type`, 400);
+    }
+    if (ids.has(n.id)) {
+      throw new LoopError('VALIDATION_INVALID', `workflow.invoke node '${nodeId}': duplicate node id '${n.id}' in inline definition`, 400);
+    }
+    ids.add(n.id);
+  }
+  for (const e of definition.edges ?? []) {
+    if (!e || !ids.has(e.source) || !ids.has(e.target)) {
+      throw new LoopError('VALIDATION_INVALID', `workflow.invoke node '${nodeId}': inline definition edge references an unknown node`, 400);
+    }
+  }
 }

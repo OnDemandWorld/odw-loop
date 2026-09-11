@@ -14,10 +14,19 @@ export class ManualTriggerHandler {
   /** Create a manual execution for a workflow. */
   async trigger(workflowId: string, payload: Record<string, unknown>, userId: string): Promise<string> {
     const executionId = randomUUID();
+    // Snapshot the workflow's current version so replay resolves the same
+    // definition that actually runs (a hardcoded 1 resolved stale versions).
+    let workflowVersion = 1;
+    try {
+      const workflow = await this.store.workflows.getById(workflowId);
+      if (workflow) workflowVersion = workflow.version;
+    } catch {
+      logger.warn({ workflowId }, 'Failed to read workflow version, defaulting to 1');
+    }
     await this.store.executions.create({
       id: executionId,
       workflow_id: workflowId,
-      workflow_version: 1,
+      workflow_version: workflowVersion,
       trigger_type: 'manual',
       trigger_payload: payload,
       initiated_by: userId,

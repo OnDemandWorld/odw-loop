@@ -39,13 +39,21 @@ export async function runMigrations(conn: SqliteConnection): Promise<void> {
     const checksum = createHash('sha256').update(migration.sql).digest('hex');
     logger.info({ version: migration.version, checksum: checksum.slice(0, 12) }, 'Applying migration');
 
-    // Apply migration
-    client.exec(migration.sql);
-
-    // Record in tracking table
-    db.insert(schema.schemaMigrations)
-      .values({ version: migration.version, checksum })
-      .run();
+    // Apply the migration and its tracking row atomically. Without the
+    // explicit transaction a mid-migration failure left the database
+    // half-migrated and untracked, so the next startup replayed DDL that had
+    // already run and crashed on "table already exists".
+    client.exec('BEGIN');
+    try {
+      client.exec(migration.sql);
+      db.insert(schema.schemaMigrations)
+        .values({ version: migration.version, checksum })
+        .run();
+      client.exec('COMMIT');
+    } catch (err) {
+      client.exec('ROLLBACK');
+      throw err;
+    }
   }
 
   logger.info('All migrations applied');

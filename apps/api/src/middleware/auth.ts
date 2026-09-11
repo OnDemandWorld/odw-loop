@@ -24,6 +24,7 @@
 
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import * as jose from 'jose';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { AuthenticationError, ForbiddenError } from '@loop/types';
 import { createLogger } from '@loop/observability';
 import type { LoopConfig } from '../config.js';
@@ -46,7 +47,7 @@ declare module 'fastify' {
 const logger = createLogger({ name: 'loop:api:auth', component: 'api' });
 
 /** Path prefixes that are always public, even when auth is enforced. */
-const PUBLIC_PREFIXES = ['/health', '/ready', '/metrics', '/webhooks'] as const;
+const PUBLIC_PREFIXES = ['/health', '/ready', '/webhooks'] as const;
 
 /** The service account a valid static API key authenticates as. */
 const API_KEY_PRINCIPAL = 'system';
@@ -127,6 +128,16 @@ function extractBearer(request: FastifyRequest): string | undefined {
   return undefined;
 }
 
+/**
+ * Constant-time string comparison (L2). Both sides are hashed first so the
+ * comparison length is fixed and no length leak reveals a prefix of the key.
+ */
+function secretsEqual(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a).digest();
+  const hb = createHash('sha256').update(b).digest();
+  return timingSafeEqual(ha, hb);
+}
+
 /** An authenticated identity: who the caller is plus their RBAC role. */
 interface Identity {
   principal: string;
@@ -149,7 +160,7 @@ async function resolveIdentity(
   // 1. Static API key (x-api-key header or bearer token matching the key).
   const presentedKey =
     (typeof headerKey === 'string' && headerKey.length > 0 ? headerKey : undefined) ?? bearer;
-  if (presentedKey && apiKey && presentedKey === apiKey) {
+  if (presentedKey && apiKey && secretsEqual(presentedKey, apiKey)) {
     return { principal: API_KEY_PRINCIPAL, role: apiKeyRole };
   }
 
@@ -185,7 +196,7 @@ export async function resolveTokenPrincipal(
 
   // 1. Static API key.
   const apiKey = config.LOOP_API_KEY;
-  if (apiKey && token === apiKey) {
+  if (apiKey && secretsEqual(token, apiKey)) {
     return API_KEY_PRINCIPAL;
   }
 

@@ -43,7 +43,7 @@ export class EgressEngine {
     }
 
     const hostname = parsed.hostname;
-    const ip = resolveIP(hostname);
+    const ip = await resolveIP(hostname);
     const region = lookupRegion(ip);
 
     const policies = await this.getPolicies();
@@ -85,6 +85,12 @@ export class EgressEngine {
     this.cache = null;
   }
 
+  /** True when at least one enabled egress policy is configured. */
+  async isConfigured(): Promise<boolean> {
+    const policies = await this.getPolicies();
+    return policies.length > 0;
+  }
+
   private async getPolicies(): Promise<EgressPolicy[]> {
     if (this.cache && Date.now() - this.cache.fetchedAt < this.CACHE_TTL) {
       return this.cache.policies;
@@ -95,12 +101,18 @@ export class EgressEngine {
   }
 }
 
-/** Domain matching with wildcard support (*.example.com). */
+/**
+ * Domain matching with wildcard support (*.example.com). The wildcard only
+ * matches at a label boundary — `*.example.com` must not match
+ * `evilexample.com`, only `a.example.com` (or the bare domain).
+ */
 function matchDomain(hostname: string, pattern: string): boolean {
-  if (pattern === hostname) return true;
-  if (pattern.startsWith('*.')) {
-    const suffix = pattern.slice(2);
-    return hostname.endsWith(suffix) || hostname === suffix;
+  const h = hostname.toLowerCase();
+  const p = pattern.toLowerCase();
+  if (p === h) return true;
+  if (p.startsWith('*.')) {
+    const suffix = p.slice(2);
+    return h === suffix || h.endsWith(`.${suffix}`);
   }
   return false;
 }

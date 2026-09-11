@@ -105,6 +105,11 @@ const configSchema = z.object({
   // §10.9 Egress
   LOOP_EGRESS_DEFAULT_POLICY: z.enum(['allow', 'deny']).default('deny'),
   LOOP_AIRGAP_MODE: booleanEnv(false),
+  // Decision applied when NO egress policies are configured at all. Defaults
+  // to 'allow' so a fresh deployment can still call the ODW agents; set to
+  // 'deny' (or add policies) to lock a deployment down. Once any policy
+  // exists, evaluation is default-deny for non-matching targets.
+  LOOP_EGRESS_UNCONFIGURED_POLICY: z.enum(['allow', 'deny']).default('allow'),
 
   // §10.10 Observability
   LOOP_METRICS_ENABLED: booleanEnv(true),
@@ -120,5 +125,28 @@ export function loadConfig(): LoopConfig {
     console.error('Invalid configuration:', result.error.format());
     process.exit(1);
   }
-  return result.data;
+  const cfg = result.data;
+
+  // Production guardrails (S3): the development defaults are publicly known
+  // values — the encryption key derives every secret-at-rest key and the JWT
+  // secret lets anyone forge admin tokens. Refuse to boot with them.
+  if (cfg.LOOP_ENV === 'production') {
+    const fatal: string[] = [];
+    if (cfg.LOOP_ENCRYPTION_KEY === 'dev-key-change-me-please-32chars!') {
+      fatal.push('LOOP_ENCRYPTION_KEY is still the public development default — every encrypted secret would be readable by anyone');
+    }
+    if (cfg.LOOP_JWT_SECRET === 'dev-jwt-secret-change-me' && cfg.LOOP_REQUIRE_AUTH) {
+      fatal.push('LOOP_JWT_SECRET is still the public development default while LOOP_REQUIRE_AUTH=true — tokens could be forged');
+    }
+    if (fatal.length > 0) {
+      console.error('Refusing to start with insecure configuration (LOOP_ENV=production):');
+      for (const line of fatal) console.error(`  - ${line}`);
+      process.exit(1);
+    }
+    if (!cfg.LOOP_REQUIRE_AUTH) {
+      console.warn('WARNING: LOOP_REQUIRE_AUTH is disabled while LOOP_ENV=production — every API route is open to the network.');
+    }
+  }
+
+  return cfg;
 }

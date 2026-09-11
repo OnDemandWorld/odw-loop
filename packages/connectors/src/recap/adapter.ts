@@ -40,15 +40,15 @@ export class RecapAdapter implements ConnectorAdapter {
 
     switch (params.operation) {
       case 'login':
-        return this.login(baseUrl, params.input, idemKey);
+        return this.login(baseUrl, params.input, idemKey, params);
       case 'list_meetings':
-        return this.callRecap(baseUrl, token, 'GET', '/meetings/', undefined, idemKey);
+        return this.callRecap(baseUrl, token, 'GET', '/meetings/', undefined, idemKey, params);
       case 'get_meeting':
-        return this.callRecap(baseUrl, token, 'GET', `/meetings/${String(params.input['id'])}`, undefined, idemKey);
+        return this.callRecap(baseUrl, token, 'GET', `/meetings/${String(params.input['id'])}`, undefined, idemKey, params);
       case 'create_meeting':
-        return this.callRecap(baseUrl, token, 'POST', '/meetings/', params.input, idemKey);
+        return this.callRecap(baseUrl, token, 'POST', '/meetings/', params.input, idemKey, params);
       case 'sync':
-        return this.callRecap(baseUrl, token, 'POST', '/sync', params.input, idemKey);
+        return this.callRecap(baseUrl, token, 'POST', '/sync', params.input, idemKey, params);
       default:
         throw new Error(`Unknown Recap operation: ${params.operation}`);
     }
@@ -80,11 +80,11 @@ export class RecapAdapter implements ConnectorAdapter {
   }
 
   /** POST /auth/login → {token}. No Bearer required. */
-  private async login(baseUrl: string, input: Record<string, unknown>, idempotencyKey?: string): Promise<ExecuteResult> {
+  private async login(baseUrl: string, input: Record<string, unknown>, idempotencyKey?: string, io?: Pick<ExecuteParams, 'egress' | 'signal'>): Promise<ExecuteResult> {
     const data = await this.callRecap(baseUrl, '', 'POST', '/auth/login', {
       email: input['email'] ?? '',
       password: input['password'] ?? '',
-    }, idempotencyKey);
+    }, idempotencyKey, io);
     return { output: { token: data.output['token'] ?? '' } };
   }
 
@@ -95,9 +95,12 @@ export class RecapAdapter implements ConnectorAdapter {
     path: string,
     body?: Record<string, unknown>,
     idempotencyKey?: string,
+    io?: Pick<ExecuteParams, 'egress' | 'signal'>,
   ): Promise<ExecuteResult> {
     try {
-      const response = await request(`${baseUrl}${path}`, {
+      const url = `${baseUrl}${path}`;
+      await io?.egress?.check(url);
+      const response = await request(url, {
         method,
         headers: {
           ...(body ? { 'content-type': 'application/json' } : {}),
@@ -106,8 +109,11 @@ export class RecapAdapter implements ConnectorAdapter {
           ...traceHeaders(),
         },
         body: body ? JSON.stringify(body) : undefined,
+        signal: io?.signal,
       });
       if (response.statusCode >= 400) {
+        // Consume the body so undici can release the socket back to the pool.
+        await response.body.text().catch(() => {});
         throw new UpstreamError('UPSTREAM_RECAP_UNAVAILABLE', `Recap returned ${response.statusCode}`);
       }
       const text = await response.body.text();

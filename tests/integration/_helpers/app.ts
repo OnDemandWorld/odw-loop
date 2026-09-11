@@ -22,6 +22,7 @@ import {
   TriggerDispatcher,
   WebhookTriggerHandler,
   ManualTriggerHandler,
+  CronTriggerHandler,
 } from '../../../packages/triggers/src/index.js';
 import { EgressEngine } from '../../../packages/egress/src/index.js';
 import { SecretsManager } from '../../../packages/secrets/src/index.js';
@@ -40,6 +41,7 @@ export interface TestApp {
   connectors: ConnectorRegistry;
   authoring: WorkflowAuthoringService;
   executor: ExecutionExecutor;
+  cronHandler: CronTriggerHandler;
   webhookHandler: WebhookTriggerHandler;
   manualHandler: ManualTriggerHandler;
   triggerDispatcher: TriggerDispatcher;
@@ -131,6 +133,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
 
   // ── Triggers ────────────────────────────────────────────────────────────
   const triggerDispatcher = new TriggerDispatcher(store);
+  const cronHandler = new CronTriggerHandler(store);
   const webhookHandler = new WebhookTriggerHandler(store);
   const manualHandler = new ManualTriggerHandler(store);
 
@@ -149,6 +152,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     authoring,
     executor,
     triggerDispatcher,
+    cronHandler,
     webhookHandler,
     manualHandler,
     egressEngine,
@@ -167,6 +171,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     connectors,
     authoring,
     executor,
+    cronHandler,
     webhookHandler,
     manualHandler,
     triggerDispatcher,

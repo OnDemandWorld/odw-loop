@@ -3,12 +3,12 @@
  */
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { SqliteStateStore } from '@loop/state';
+import type { StateStore } from '@loop/state';
 import type { ConnectorRegistry } from '@loop/connectors';
 import type { WorkflowAuthoringService } from '@loop/workflow-authoring';
 import type { ExecutionExecutor } from '@loop/engine';
 import { replayExecution, snapshotToJson } from '@loop/engine';
-import type { TriggerDispatcher, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
+import type { TriggerDispatcher, WebhookTriggerHandler, ManualTriggerHandler, CronTriggerHandler } from '@loop/triggers';
 import type { EgressEngine } from '@loop/egress';
 import type { SecretsManager } from '@loop/secrets';
 import { z } from 'zod';
@@ -36,11 +36,11 @@ function getRequestId(request: FastifyRequest): string {
 
 /**
  * The acting identity for a request (V1.3 F-RBAC-Loop): the principal plus its
- * RBAC role. `principal` prefers the authenticated identity attached by the auth
- * guard (JWT subject or API-key service account); falls back to the x-user-id
- * header (set by an upstream auth gateway), then to the 'system' service account.
- * `role` is the role resolved by the auth guard; when auth is disabled it
- * defaults to 'admin' so single-user/dev setups keep full access.
+ * RBAC role. `principal` prefers the authenticated identity attached by the
+ * auth guard (JWT subject or API-key service account) and otherwise falls back
+ * to the 'system' service account. The `x-user-id` header was removed as a
+ * fallback: with auth disabled any caller could forge audit attribution with a
+ * single header, and with auth enabled the guard already sets a principal.
  */
 interface Actor {
   principal: string;
@@ -48,9 +48,7 @@ interface Actor {
 }
 
 function getActor(request: FastifyRequest): Actor {
-  const userId = request.headers['x-user-id'] as string | undefined;
-  const principal = request.authPrincipal ?? userId ?? 'system';
-  return { principal, role: request.authRole ?? 'admin' };
+  return { principal: request.authPrincipal ?? 'system', role: request.authRole ?? 'admin' };
 }
 
 /** Parse a request body against a Zod schema, throwing a 400 LoopError on failure. */
@@ -60,6 +58,21 @@ function parseBody<T>(schema: { safeParse(data: unknown): { success: true; data:
     throw new LoopError('VALIDATION_ERROR', 'Invalid request body', 400, result.error.format());
   }
   return result.data;
+}
+
+/** Clamp a query-string integer into [min, max], falling back to `def`. */
+function clampInt(raw: string | undefined, min: number, max: number, def: number): number {
+  const n = Number.parseInt(raw ?? '', 10);
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, n));
+}
+
+/** Parse + validate pagination query params (previously `?page=abc` → 500). */
+function parsePagination(query: Record<string, string>, defaultPerPage = 20): { page: number; per_page: number } {
+  return {
+    page: clampInt(query['page'], 1, 1_000_000_000, 1),
+    per_page: clampInt(query['per_page'], 1, 200, defaultPerPage),
+  };
 }
 
 /** Build a standard response meta block. */
@@ -74,12 +87,20 @@ const InstantiateTemplateRequestSchema = z.object({
 });
 type InstantiateTemplateRequest = z.infer<typeof InstantiateTemplateRequestSchema>;
 
+/** POST /api/v1/workflows/:id/triggers body — validated (previously raw cast). */
+const CreateTriggerRequestSchema = z.object({
+  trigger_type: z.enum(['cron', 'webhook', 'event', 'manual']),
+  config: z.record(z.unknown()).default({}),
+});
+
 export interface RouteDeps {
-  store: SqliteStateStore;
+  store: StateStore;
   connectors: ConnectorRegistry;
   authoring: WorkflowAuthoringService;
   executor: ExecutionExecutor;
   triggerDispatcher: TriggerDispatcher;
+  /** Needed to schedule/unregister cron triggers created at runtime (M4). */
+  cronHandler: CronTriggerHandler;
   webhookHandler: WebhookTriggerHandler;
   manualHandler: ManualTriggerHandler;
   egressEngine: EgressEngine;
@@ -141,10 +162,11 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   app.get('/api/v1/workflows', async (request) => {
     const query = request.query as Record<string, string>;
+    const pagination = parsePagination(query);
     const result = await deps.authoring.list(
       { status: query['status'] as 'draft' | 'active' | 'archived' | undefined, search: query['search'], tag: query['tag'] },
-      parseInt(query['page'] ?? '1', 10),
-      parseInt(query['per_page'] ?? '20', 10),
+      pagination.page,
+      pagination.per_page,
     );
     return { success: true, data: result.data, meta: meta(request, { total: result.total, page: result.page, per_page: result.per_page, total_pages: result.total_pages }) };
   });
@@ -187,8 +209,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
         const workflow = await deps.authoring.getById(id);
         await deps.executor.execute(executionId, workflow.definition, payload);
       } catch (err) {
+        // Guarded transition — a user-cancelled execution is not overwritten.
         await deps.store.executions
-          .updateStatus(executionId, {
+          .completeIfActive(executionId, {
             status: 'failed',
             completed_at: new Date().toISOString(),
             error: String(err),
@@ -210,9 +233,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   app.get('/api/v1/executions', async (request) => {
     const query = request.query as Record<string, string>;
+    const pagination = parsePagination(query);
     const result = await deps.store.executions.list(
       { workflow_id: query['workflow_id'], status: query['status'] },
-      { page: parseInt(query['page'] ?? '1', 10), per_page: parseInt(query['per_page'] ?? '20', 10) },
+      { page: pagination.page, per_page: pagination.per_page },
     );
     return { success: true, data: result.data, meta: meta(request, { total: result.total, page: result.page, per_page: result.per_page, total_pages: result.total_pages }) };
   });
@@ -226,8 +250,21 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   app.post('/api/v1/executions/:id/cancel', async (request) => {
     const { id } = request.params as { id: string };
-    await deps.store.executions.updateStatus(id, { status: 'cancelled' });
-    return { success: true, data: { status: 'cancelled' }, meta: meta(request) };
+    // Guarded transition (M3): only a pending/running execution can be
+    // cancelled, and the executor's completion write observes the same guard —
+    // previously an unconditional update could flip succeeded → cancelled (and
+    // the executor would later flip it back), leaving the state machine lying.
+    const applied = await deps.store.executions.completeIfActive(id, {
+      status: 'cancelled',
+      completed_at: new Date().toISOString(),
+    });
+    const execution = await deps.store.executions.getById(id);
+    if (!execution) throw new NotFoundError('execution', id);
+    return {
+      success: applied,
+      data: { status: execution.status, ...(applied ? {} : { reason: 'Execution is not active (status: ' + execution.status + ')' }) },
+      meta: meta(request),
+    };
   });
 
   // ─── Replay (V1.3 M1, F-Loop-1) — event-sourced reconstruction + dry-run ──
@@ -235,6 +272,11 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   // execution_events log and returns per-node replay decisions WITHOUT invoking
   // any connector. POST honours ?dryRun= (default true); only ?dryRun=false
   // really re-executes via the V1.1 resume path (editor+, side effects).
+
+  // In-flight replay guard (L9): two concurrent replays of the same execution
+  // would both slip through the resume idempotency window and double-fire
+  // connector side effects.
+  const replaysInFlight = new Set<string>();
 
   app.get('/api/v1/executions/:id/replay', async (request) => {
     const { id } = request.params as { id: string };
@@ -246,30 +288,77 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     };
   });
 
-  app.post('/api/v1/executions/:id/replay', async (request) => {
+  app.post('/api/v1/executions/:id/replay', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const query = request.query as Record<string, string>;
-    const dryRun = query['dryRun'] !== 'false'; // default true (read-only)
-    const result = await replayExecution(deps.executor, deps.store, id, { dryRun });
-    return {
-      success: true,
-      data: { ...result, snapshot: snapshotToJson(result.snapshot) },
-      meta: meta(request),
-    };
+    if (replaysInFlight.has(id)) {
+      throw new LoopError('REPLAY_IN_PROGRESS', `A replay of execution '${id}' is already in progress`, 409);
+    }
+    replaysInFlight.add(id);
+    try {
+      const query = request.query as Record<string, string>;
+      const dryRun = query['dryRun'] !== 'false'; // default true (read-only)
+      const result = await replayExecution(deps.executor, deps.store, id, { dryRun });
+      return {
+        success: true,
+        data: { ...result, snapshot: snapshotToJson(result.snapshot) },
+        meta: meta(request),
+      };
+    } finally {
+      replaysInFlight.delete(id);
+    }
   });
 
   // ─── Triggers (§5.5) ────────────────────────────────────────────────────
 
   app.post('/api/v1/workflows/:id/triggers', async (request, reply) => {
     const { id: workflowId } = request.params as { id: string };
-    const body = request.body as { trigger_type: string; config: Record<string, unknown> };
+    // Validate before touching the DB — the previous raw cast turned a bad
+    // trigger_type / missing config into a 500 (FK/CHECK violations).
+    const body = parseBody(CreateTriggerRequestSchema, request.body);
+    const workflow = await deps.authoring.getById(workflowId);
+    if (!workflow) throw new NotFoundError('workflow', workflowId);
+
+    if (body.trigger_type === 'cron') {
+      const expression = body.config['expression'];
+      if (typeof expression !== 'string' || expression.length === 0) {
+        throw new LoopError('VALIDATION_REQUIRED', "cron triggers require config.expression (e.g. '*/5 * * * *')", 400);
+      }
+    }
+    if (body.trigger_type === 'event') {
+      if (typeof body.config['source'] !== 'string' || typeof body.config['event_type'] !== 'string') {
+        throw new LoopError('VALIDATION_REQUIRED', 'event triggers require config.source and config.event_type', 400);
+      }
+    }
+
     const trigger = await deps.store.triggers.create({
       id: crypto.randomUUID(),
       workflow_id: workflowId,
-      trigger_type: body.trigger_type as 'cron',
+      trigger_type: body.trigger_type,
       config: body.config,
     });
+
+    // Register cron triggers immediately — previously they only took effect
+    // after a server restart (M4). A rejected expression rolls the create back.
+    if (body.trigger_type === 'cron') {
+      try {
+        deps.cronHandler.register(trigger.id, workflowId, trigger.config as { expression: string; timezone?: string });
+      } catch (err) {
+        await deps.store.triggers.delete(trigger.id);
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new LoopError('VALIDATION_INVALID', `Invalid cron expression: ${detail}`, 400);
+      }
+    }
+
     return reply.status(201).send({ success: true, data: trigger, meta: meta(request) });
+  });
+
+  app.delete('/api/v1/triggers/:triggerId', async (request) => {
+    const { triggerId } = request.params as { triggerId: string };
+    const trigger = await deps.store.triggers.getById(triggerId);
+    if (!trigger) throw new NotFoundError('trigger', triggerId);
+    deps.cronHandler.unregister(triggerId);
+    await deps.store.triggers.delete(triggerId);
+    return { success: true, data: { id: triggerId, deleted: true }, meta: meta(request) };
   });
 
   app.get('/api/v1/workflows/:id/triggers', async (request) => {
@@ -300,8 +389,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
         const workflow = await deps.authoring.getById(result.workflow_id);
         await deps.executor.execute(result.execution_id, workflow.definition, payload);
       } catch (err) {
+        // Guarded transition — never overwrite a terminal/cancelled status.
         await deps.store.executions
-          .updateStatus(result.execution_id, {
+          .completeIfActive(result.execution_id, {
             status: 'failed',
             completed_at: new Date().toISOString(),
             error: String(err),
@@ -317,6 +407,50 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/v1/connectors', async (request) => {
     const connectors = await deps.store.connectors.list();
     return { success: true, data: connectors, meta: meta(request) };
+  });
+
+  // ─── Secrets (M11 — the encrypted store previously had no API surface) ──
+  // Admin-only. Values are encrypted at rest with LOOP_ENCRYPTION_KEY and are
+  // never listed — only metadata (name/scope) comes back on GET.
+
+  const CreateSecretRequestSchema = z.object({
+    name: z.string().trim().min(1).max(200),
+    value: z.string().min(1).max(65_536),
+    scope: z.enum(['global', 'workflow', 'connector']).default('global'),
+    scope_id: z.string().trim().max(200).optional(),
+  });
+
+  app.post('/api/v1/secrets', { preHandler: [requireRole('admin')] }, async (request, reply) => {
+    const body = parseBody(CreateSecretRequestSchema, request.body);
+    const actor = getActor(request);
+    try {
+      const result = await deps.secretsManager.set({
+        name: body.name,
+        value: body.value,
+        scope: body.scope,
+        ...(body.scope_id !== undefined ? { scope_id: body.scope_id } : {}),
+        created_by: actor.principal,
+      });
+      return reply.status(201).send({ success: true, data: result, meta: meta(request) });
+    } catch (err) {
+      // Names are globally unique (schema constraint): surface a 409, not a 500.
+      if (String(err).includes('UNIQUE')) {
+        throw new LoopError('SECRET_CONFLICT', `A secret named '${body.name}' already exists`, 409);
+      }
+      throw err;
+    }
+  });
+
+  app.get('/api/v1/secrets', { preHandler: [requireRole('admin')] }, async (request) => {
+    const query = request.query as Record<string, string>;
+    const secrets = await deps.secretsManager.list(query['scope'], query['scope_id']);
+    return { success: true, data: secrets, meta: meta(request) };
+  });
+
+  app.delete('/api/v1/secrets/:id', { preHandler: [requireRole('admin')] }, async (request) => {
+    const { id } = request.params as { id: string };
+    await deps.secretsManager.delete(id);
+    return { success: true, data: { id, deleted: true }, meta: meta(request) };
   });
 
   // ─── Templates / marketplace ────────────────────────────────────────────
@@ -375,9 +509,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   // maps /api/v1/audit → admin; requireRole makes the guard explicit per-route.
   app.get('/api/v1/audit', { preHandler: [requireRole('admin')] }, async (request) => {
     const query = request.query as Record<string, string>;
+    const pagination = parsePagination(query, 50);
     const result = await deps.store.audit.list(
       { actor: query['actor'], action: query['action'] },
-      { page: parseInt(query['page'] ?? '1', 10), per_page: parseInt(query['per_page'] ?? '50', 10) },
+      { page: pagination.page, per_page: pagination.per_page },
     );
     return { success: true, data: result.data, meta: meta(request, { total: result.total, page: result.page, per_page: result.per_page, total_pages: result.total_pages }) };
   });

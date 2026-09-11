@@ -19,8 +19,10 @@ services:
       - LOOP_DB_TYPE=sqlite
       - LOOP_DB_PATH=/var/lib/loop/loop.db
       - LOOP_DATA_DIR=/var/lib/loop
-      - LOOP_ENCRYPTION_KEY=${LOOP_ENCRYPTION_KEY:-dev-key-change-me-please-32chars!}
-      - LOOP_JWT_SECRET=${LOOP_JWT_SECRET:-dev-jwt-secret-change-me}
+      # No fallback: booting production with the publicly known dev keys is
+      # refused by the config loader (and rightly so) — set them explicitly.
+      - LOOP_ENCRYPTION_KEY=${LOOP_ENCRYPTION_KEY:?set LOOP_ENCRYPTION_KEY (32+ chars)}
+      - LOOP_JWT_SECRET=${LOOP_JWT_SECRET:?set LOOP_JWT_SECRET}
       - LOOP_LOG_LEVEL=info
     depends_on:
       loop-sandbox:

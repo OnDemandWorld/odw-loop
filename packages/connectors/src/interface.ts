@@ -14,6 +14,18 @@ export interface ExecuteParams {
    * outward request/response contract is unchanged.
    */
   idempotencyKey?: string;
+  /**
+   * Egress policy gate. When present, the adapter MUST await `check(url)` for
+   * every outbound URL before dispatching — this is the enforcement point that
+   * makes airgap mode and egress policies real (previously unwired: SSRF).
+   */
+  egress?: { check(url: string): Promise<void> };
+  /**
+   * Abort signal from the executor (node/workflow timeout). Adapters should
+   * forward it to their HTTP client so a timed-out node stops making network
+   * calls instead of continuing its side effects in the background.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ExecuteResult {

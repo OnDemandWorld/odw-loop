@@ -3,16 +3,25 @@
  */
 
 import { lookup } from 'node:dns';
+import { promisify } from 'node:util';
 
-/** Synchronous DNS resolution (best-effort, returns hostname if DNS fails). */
-export function resolveIP(hostname: string): string {
-  // Synchronous DNS lookup — in production this would use a cache
+const lookupAsync = promisify(lookup);
+
+/**
+ * Resolve a hostname to an IPv4 address (best-effort — returns the hostname
+ * itself when DNS fails). Async on purpose: the previous implementation
+ * invoked the callback-based `lookup` but returned before it fired, so the
+ * "resolved IP" was always the hostname and IP-range/region policies never
+ * matched.
+ */
+export async function resolveIP(hostname: string): Promise<string> {
   try {
-    let result = hostname;
-    lookup(hostname, { family: 4 }, (err, address) => {
-      if (!err) result = address;
-    });
-    return result;
+    // promisify(lookup) yields a plain address string under the default
+    // wrapper and `{ address, family }` under dns.lookup's custom promisify —
+    // accept both shapes.
+    const result = (await lookupAsync(hostname, { family: 4 })) as string | { address?: string };
+    const address = typeof result === 'string' ? result : result?.address;
+    return address ?? hostname;
   } catch {
     return hostname;
   }

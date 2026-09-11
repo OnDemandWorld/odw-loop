@@ -135,12 +135,19 @@ describe('PostgresStateStore — executions (PG2)', () => {
     expect(result.data[0]!.status).toBe('running');
   });
 
-  it('updateStatus writes all status fields with null fallbacks', async () => {
+  it('updateStatus preserves omitted fields (never NULLs over stored data)', async () => {
     mock.enqueueRows([]);
     await store.executions.updateStatus('exec-1', { status: 'failed', error: 'boom' });
     const call = lastCall(mock.calls);
-    expect(call.sql).toBe('UPDATE workflow_executions SET status = $2, started_at = $3, completed_at = $4, duration_ms = $5, error = $6 WHERE id = $1');
-    expect(call.params).toEqual(['exec-1', 'failed', null, null, null, 'boom']);
+    expect(call.sql).toBe('UPDATE workflow_executions SET status = $2, error = $3 WHERE id = $1');
+    expect(call.params).toEqual(['exec-1', 'failed', 'boom']);
+
+    // Passing error: null explicitly clears the column.
+    mock.enqueueRows([]);
+    await store.executions.updateStatus('exec-1', { status: 'running', started_at: '2026-08-01T00:00:00.000Z', error: null });
+    const clear = lastCall(mock.calls);
+    expect(clear.sql).toBe('UPDATE workflow_executions SET status = $2, started_at = $3, error = $4 WHERE id = $1');
+    expect(clear.params).toEqual(['exec-1', 'running', '2026-08-01T00:00:00.000Z', null]);
   });
 
   it('findInterrupted selects running and pending executions (bug 12)', async () => {
@@ -198,13 +205,13 @@ describe('PostgresStateStore — nodeExecutions (PG2)', () => {
     expect(call.params).toEqual(['exec-1']);
   });
 
-  it('updateStatus only overwrites output/retry_count/metadata when supplied', async () => {
-    // Without optional fields → only the four always-written columns.
+  it('updateStatus writes only the supplied columns (preserve-on-omit)', async () => {
+    // Without optional fields → only status + the fields explicitly given.
     mock.enqueueRows([]);
     await store.nodeExecutions.updateStatus('ne-1', { status: 'running', started_at: '2026-08-01T00:00:00.000Z' });
     const minimal = lastCall(mock.calls);
-    expect(minimal.sql).toBe('UPDATE node_executions SET status = $2, started_at = $3, completed_at = $4, error = $5 WHERE id = $1');
-    expect(minimal.params).toEqual(['ne-1', 'running', '2026-08-01T00:00:00.000Z', null, null]);
+    expect(minimal.sql).toBe('UPDATE node_executions SET status = $2, started_at = $3 WHERE id = $1');
+    expect(minimal.params).toEqual(['ne-1', 'running', '2026-08-01T00:00:00.000Z']);
 
     // With optional fields → dynamic SET clauses appended.
     mock.enqueueRows([]);
@@ -213,12 +220,9 @@ describe('PostgresStateStore — nodeExecutions (PG2)', () => {
       output: { ok: true }, retry_count: 2, metadata: { attempt: 2 },
     });
     const full = lastCall(mock.calls);
-    expect(full.sql).toContain('output = $6');
-    expect(full.sql).toContain('retry_count = $7');
-    expect(full.sql).toContain('metadata = $8');
+    expect(full.sql).toBe('UPDATE node_executions SET status = $2, completed_at = $3, output = $4, retry_count = $5, metadata = $6 WHERE id = $1');
     expect(full.params).toEqual([
-      'ne-1', 'succeeded', null, '2026-08-01T00:00:01.000Z', null,
-      '{"ok":true}', 2, '{"attempt":2}',
+      'ne-1', 'succeeded', '2026-08-01T00:00:01.000Z', '{"ok":true}', 2, '{"attempt":2}',
     ]);
   });
 });

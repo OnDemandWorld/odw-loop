@@ -7,14 +7,15 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { createLogger } from '@loop/observability';
 import { collectMetrics } from '@loop/observability';
-import { createSqliteConnection } from '@loop/state';
-import { SqliteStateStore } from '@loop/state';
+import { createSqliteConnection, createPostgresConnection } from '@loop/state';
+import { SqliteStateStore, PostgresStateStore } from '@loop/state';
+import type { StateStore } from '@loop/state';
 import { ConnectorRegistry, VaultAdapter, DeskAdapter, RecapAdapter, GenericAdapter } from '@loop/connectors';
 import { WorkflowAuthoringService } from '@loop/workflow-authoring';
 import { GitBackend, VersioningService } from '@loop/versioning';
 import { ExecutionExecutor, ExecutionRecovery, executionEventBus } from '@loop/engine';
 import { TriggerDispatcher, CronTriggerHandler, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
-import { EgressEngine } from '@loop/egress';
+import { EgressEngine, EgressGate } from '@loop/egress';
 import { SecretsManager } from '@loop/secrets';
 import { TemplateRegistry } from '@loop/templates';
 import { loadConfig, type LoopConfig } from './config.js';
@@ -41,10 +42,12 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   // the request lifecycle inside a correlation context carrying trace_id.
   app.addHook('onRequest', traceIdHook);
 
-  // CORS
+  // CORS. Bearer-header auth (no cookies) means credentials are not needed;
+  // reflecting any origin with credentials:true would become an exploit the
+  // moment cookie auth is introduced.
   await app.register(import('@fastify/cors'), {
     origin: true,
-    credentials: true,
+    credentials: false,
   });
 
   // Capture the raw request body on the raw IncomingMessage so byte-exact
@@ -86,8 +89,22 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
 
   // ─── State store ─────────────────────────────────────────────────────────
 
-  const conn = createSqliteConnection({ path: cfg.LOOP_DB_PATH });
-  const store = new SqliteStateStore(conn);
+  // Honour LOOP_DB_TYPE — the Postgres Scale layer existed but was never
+  // reachable, so configured deployments silently ran on SQLite (M8).
+  let store: StateStore;
+  if (cfg.LOOP_DB_TYPE === 'postgres') {
+    const pgConn = createPostgresConnection({
+      host: cfg.LOOP_DB_HOST ?? 'localhost',
+      port: cfg.LOOP_DB_PORT ?? 5432,
+      database: cfg.LOOP_DB_NAME ?? 'loop',
+      user: cfg.LOOP_DB_USER ?? 'loop',
+      password: cfg.LOOP_DB_PASSWORD ?? '',
+      ssl: cfg.LOOP_DB_SSL,
+    });
+    store = new PostgresStateStore(pgConn);
+  } else {
+    store = new SqliteStateStore(createSqliteConnection({ path: cfg.LOOP_DB_PATH }));
+  }
   await store.initialise();
 
   // Seed a default system user (required for FK constraints on created_by)
@@ -110,6 +127,13 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   connectors.registerAdapter(new DeskAdapter());
   connectors.registerAdapter(new RecapAdapter());
   connectors.registerAdapter(new GenericAdapter());
+
+  // Egress gate first — the executor below hands it to every connector call.
+  const egressEngine = new EgressEngine(() => store.egressPolicies.listEnabled());
+  const egressGate = new EgressGate(egressEngine, {
+    airgap: cfg.LOOP_AIRGAP_MODE,
+    unconfiguredPolicy: cfg.LOOP_EGRESS_UNCONFIGURED_POLICY,
+  });
 
   // Register configured connector instances so the executor resolves a real
   // base_url + credentials at dispatch time (INTEGRATION_CONTRACT.md §4.2).
@@ -149,6 +173,8 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     undefined,
     // V1.4 M2 (F-2): size cap for the node output persisted into event payloads.
     cfg.LOOP_EVENT_OUTPUT_MAX_BYTES,
+    // Egress gate — enforced before every outbound connector call.
+    egressGate,
   );
   const triggerDispatcher = new TriggerDispatcher(store);
   const cronHandler = new CronTriggerHandler(store, async ({ executionId, workflowId, payload }) => {
@@ -156,7 +182,9 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   });
   const webhookHandler = new WebhookTriggerHandler(store);
   const manualHandler = new ManualTriggerHandler(store);
-  const egressEngine = new EgressEngine(() => store.egressPolicies.listEnabled());
+  // The gate is what makes airgap mode and egress policies real: the executor
+  // hands it to every connector call, which must clear it before dispatching
+  // (previously the whole egress stack was dead code — SSRF).
   const secretsManager = new SecretsManager(store, cfg.LOOP_ENCRYPTION_KEY);
 
   // Template marketplace registry — loads templates/*.json once at startup.
@@ -179,8 +207,9 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   ): Promise<void> {
     const workflow = await authoring.getById(workflowId);
     void executor.execute(executionId, workflow.definition, payload).catch((err) => {
+      // Guarded transition — never overwrite an API-initiated 'cancelled'.
       store.executions
-        .updateStatus(executionId, {
+        .completeIfActive(executionId, {
           status: 'failed',
           completed_at: new Date().toISOString(),
           error: String(err),
@@ -210,6 +239,7 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     authoring,
     executor,
     triggerDispatcher,
+    cronHandler,
     webhookHandler,
     manualHandler,
     egressEngine,
@@ -239,7 +269,7 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
 
   app.addHook('onClose', async () => {
     cronHandler.shutdown();
-    conn.close();
+    await store.close();
     logger.info('Server closed');
   });
 
