@@ -25,6 +25,9 @@ export class BedrockProvider implements LLMProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    return !!this.region;
+    // Stub: reports unavailable until the AWS SDK integration lands —
+    // claiming availability made the router select it and silently return
+    // empty completions.
+    return false;
   }
 }

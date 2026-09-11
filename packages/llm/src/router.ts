@@ -4,7 +4,7 @@
  */
 
 import { createLogger } from '@loop/observability';
-import type { LLMProvider, CompletionRequest, CompletionResponse } from './interface.js';
+import type { LLMProvider, CompletionRequest, CompletionResponse, EmbeddingRequest, EmbeddingResponse, ProviderIO } from './interface.js';
 
 const logger = createLogger({ name: 'loop:llm:router', component: 'llm' });
 
@@ -12,6 +12,14 @@ interface CircuitState {
   failures: number;
   state: 'closed' | 'open' | 'half_open';
   lastFailure: number;
+}
+
+/** Public per-provider status for the providers API endpoint. */
+export interface ProviderStatus {
+  name: string;
+  defaultModel?: string;
+  circuit: CircuitState['state'];
+  failures: number;
 }
 
 export class LLMRouter {
@@ -26,9 +34,8 @@ export class LLMRouter {
   }
 
   /** Try each provider in order, skipping those whose circuit breaker is open. */
-  async complete(req: CompletionRequest, fallbackChain?: string[]): Promise<CompletionResponse> {
-    const chain = fallbackChain?.map((name) => this.providers.find((p) => p.name === name)).filter(Boolean) as LLMProvider[] | undefined;
-    const providers = chain ?? this.providers;
+  async complete(req: CompletionRequest, fallbackChain?: string[], io?: ProviderIO): Promise<CompletionResponse> {
+    const providers = this.resolveChain(fallbackChain);
 
     let lastError: Error | undefined;
     for (const provider of providers) {
@@ -46,7 +53,11 @@ export class LLMRouter {
       }
 
       try {
-        const result = await provider.complete(req);
+        // Per-vendor default model: a request without a model name uses the
+        // provider's own default (e.g. deepseek → deepseek-chat).
+        const effectiveReq: CompletionRequest =
+          req.model ? req : { ...req, model: provider.defaultModel ?? 'default' };
+        const result = await provider.complete(effectiveReq, io);
         // Success — close circuit
         circuit.failures = 0;
         circuit.state = 'closed';
@@ -63,5 +74,49 @@ export class LLMRouter {
     }
 
     throw lastError ?? new Error('No LLM providers available');
+  }
+
+  /** Embed via the first provider in the (resolved) chain that supports it. */
+  async embed(req: EmbeddingRequest, fallbackChain?: string[], io?: ProviderIO): Promise<EmbeddingResponse> {
+    const providers = this.resolveChain(fallbackChain);
+    let lastError: Error | undefined;
+    for (const provider of providers) {
+      if (!provider.embed) continue;
+      try {
+        return await provider.embed(req, io);
+      } catch (err) {
+        lastError = err as Error;
+      }
+    }
+    throw lastError ?? new Error('No LLM provider supports embeddings');
+  }
+
+  /** Registered provider names, in configured order. */
+  listProviders(): ProviderStatus[] {
+    return this.providers.map((p) => {
+      const circuit = this.circuits.get(p.name);
+      return {
+        name: p.name,
+        ...(p.defaultModel !== undefined ? { defaultModel: p.defaultModel } : {}),
+        circuit: circuit?.state ?? 'closed',
+        failures: circuit?.failures ?? 0,
+      };
+    });
+  }
+
+  /**
+   * Resolve an explicit chain to registered providers. An unknown name is an
+   * immediate, explicit error — silently ignoring it used to mean the request
+   * hit an unintended fallback vendor.
+   */
+  private resolveChain(fallbackChain?: string[]): LLMProvider[] {
+    if (!fallbackChain || fallbackChain.length === 0) return this.providers;
+    const unknown = fallbackChain.filter((name) => !this.providers.some((p) => p.name === name));
+    if (unknown.length > 0) {
+      throw new Error(`Unknown LLM provider(s): ${unknown.join(', ')}. Configured: ${this.providers.map((p) => p.name).join(', ')}`);
+    }
+    return fallbackChain
+      .map((name) => this.providers.find((p) => p.name === name))
+      .filter(Boolean) as LLMProvider[];
   }
 }

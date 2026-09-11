@@ -29,6 +29,7 @@ import { SecretsManager } from '../../../packages/secrets/src/index.js';
 import { TemplateRegistry } from '../../../packages/templates/src/index.js';
 import { registerRoutes } from '../../../apps/api/src/routes/index.js';
 import { errorHandler } from '../../../apps/api/src/middleware/errorHandler.js';
+import { createLLMRouter } from '../../../packages/llm/src/index.js';
 import type { LoopConfig } from '../../../apps/api/src/config.js';
 import type { WorkflowDefinition } from '../../../packages/types/src/index.js';
 
@@ -47,6 +48,7 @@ export interface TestApp {
   triggerDispatcher: TriggerDispatcher;
   egressEngine: EgressEngine;
   secretsManager: SecretsManager;
+  llmRouter: ReturnType<typeof createLLMRouter>;
   templates: TemplateRegistry;
   config: LoopConfig;
 }
@@ -84,6 +86,9 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     LOOP_LLM_PRIMARY: 'ollama',
     LOOP_LLM_OLLAMA_URL: 'http://localhost:11434',
     LOOP_LLM_FALLBACK_CHAIN: 'ollama',
+    LOOP_LLM_TIMEOUT_MS: 2_000,
+    LOOP_WORKFLOW_TIMEOUT_MS: 5_000,
+    LOOP_EGRESS_UNCONFIGURED_POLICY: 'allow',
     LOOP_JWT_SECRET: 'test-jwt-secret-for-tests-only-32ch',
     LOOP_JWT_ACCESS_TTL: '15m',
     LOOP_JWT_REFRESH_TTL: '7d',
@@ -137,9 +142,10 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
   const webhookHandler = new WebhookTriggerHandler(store);
   const manualHandler = new ManualTriggerHandler(store);
 
-  // ── Egress + secrets ────────────────────────────────────────────────────
+  // ── Egress + secrets + LLM ─────────────────────────────────────────────
   const egressEngine = new EgressEngine(() => store.egressPolicies.listEnabled());
   const secretsManager = new SecretsManager(store, config.LOOP_ENCRYPTION_KEY);
+  const llmRouter = createLLMRouter(config);
 
   // ── Templates ──────────────────────────────────────────────────────
   // Loads the real repo templates/ directory (resolved module-relative).
@@ -158,6 +164,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     egressEngine,
     secretsManager,
     templates,
+    llmRouter,
     config,
   });
 
@@ -178,6 +185,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     egressEngine,
     secretsManager,
     templates,
+    llmRouter,
     config,
   };
 }

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### AI integration wired end-to-end + mainstream vendor support
+- **The LLM layer is now reachable.** `@loop/llm` (7 providers, circuit-broken
+  fallback router) existed but nothing used it — no endpoint, no node type,
+  and the `LOOP_LLM_*` env vars were inert. Now:
+  - New workflow node type **`llm.complete`** (`@loop/connectors`
+    `LlmConnectorAdapter`): nodes take `prompt`/`system`/`messages` plus
+    optional `provider`/`model`/`temperature`/`max_tokens`, resolve
+    `{{trigger.payload.*}}` / `{{node_X.output.*}}` upstream data, and emit
+    `{ content, model, usage, finish_reason }`. Vendor keys stay server-side —
+    workflow definitions never contain credentials.
+  - New API endpoints: `POST /api/v1/llm/complete` (single completion with
+    provider/model override) and `GET /api/v1/llm/providers` (configured
+    vendors, default models, circuit state).
+- **Mainstream vendor coverage** via a universal OpenAI-compatible client +
+  a vendor preset table: OpenAI, DeepSeek, Qwen/DashScope (compatible mode),
+  Moonshot Kimi, Zhipu GLM, SiliconFlow, Groq, Mistral, Together, xAI — plus
+  native clients for **Google Gemini** (`generateContent`) and **Anthropic
+  Messages**, Azure OpenAI (deployments), and local servers **Ollama** (native
+  chat/embed), **vLLM** and **LM Studio** (URL-gated). Any other
+  OpenAI-compatible endpoint can be added via the
+  `LOOP_LLM_EXTRA_PROVIDERS` JSON env. New guide: `docs/AI接入指南.md`.
+- **Router upgrades**: per-vendor default models (requests without a model
+  resolve automatically), explicit errors for unknown provider names (no
+  silent vendor switching), embed passthrough, and a status listing endpoint.
+- **Provider hardening**: every provider now checks HTTP status (a 401 used
+  to silently produce an empty completion), drains error bodies, threads the
+  egress gate and timeout signal (airgap mode also constrains AI calls), and
+  applies a configurable HTTP timeout. Bedrock/Vertex stubs report
+  unavailable (they used to claim availability and return empty text).
+
 ### Security & reliability hardening (full-project review)
 
 **Critical**

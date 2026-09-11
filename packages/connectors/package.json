@@ -21,7 +21,8 @@
     "@loop/types": "workspace:*",
     "@loop/observability": "workspace:*",
     "@loop/secrets": "workspace:*",
-    "undici": "^6.0.0"
+    "undici": "^6.0.0",
+    "@loop/llm": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.3.0",

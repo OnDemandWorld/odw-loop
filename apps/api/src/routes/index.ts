@@ -11,6 +11,7 @@ import { replayExecution, snapshotToJson } from '@loop/engine';
 import type { TriggerDispatcher, WebhookTriggerHandler, ManualTriggerHandler, CronTriggerHandler } from '@loop/triggers';
 import type { EgressEngine } from '@loop/egress';
 import type { SecretsManager } from '@loop/secrets';
+import type { LLMRouter, ChatMessage } from '@loop/llm';
 import { z } from 'zod';
 import {
   CreateWorkflowRequestSchema,
@@ -105,6 +106,8 @@ export interface RouteDeps {
   manualHandler: ManualTriggerHandler;
   egressEngine: EgressEngine;
   secretsManager: SecretsManager;
+  /** Multi-vendor LLM router — backs the llm.complete node and the LLM API. */
+  llmRouter: LLMRouter;
   /** Template marketplace registry (loads templates/*.json once at startup). */
   templates: TemplateRegistry;
   config: LoopConfig;
@@ -409,8 +412,68 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     return { success: true, data: connectors, meta: meta(request) };
   });
 
-  // ─── Secrets (M11 — the encrypted store previously had no API surface) ──
-  // Admin-only. Values are encrypted at rest with LOOP_ENCRYPTION_KEY and are
+  // ─── LLM (AI 能力：多厂商路由 + llm.complete 节点共用同一路由) ──────────
+  // GET providers → 哪些厂商已配置、各自默认模型、熔断状态（给前端/运维看）。
+  // POST complete → 单次对话补全；也等价于工作流里 llm.complete 节点的效果。
+
+  const LlmMessageSchema = z.object({
+    role: z.enum(['system', 'user', 'assistant']),
+    content: z.string().min(1).max(200_000),
+  });
+  const LlmCompleteRequestSchema = z
+    .object({
+      prompt: z.string().min(1).max(200_000).optional(),
+      system: z.string().max(200_000).optional(),
+      messages: z.array(LlmMessageSchema).min(1).max(100).optional(),
+      provider: z.string().trim().min(1).max(50).optional(),
+      model: z.string().trim().min(1).max(200).optional(),
+      temperature: z.number().min(0).max(2).optional(),
+      max_tokens: z.number().int().min(1).max(200_000).optional(),
+    })
+    .refine((v) => v.prompt !== undefined || v.messages !== undefined, {
+      message: "either 'prompt' or 'messages' is required",
+    });
+
+  app.get('/api/v1/llm/providers', async (request) => {
+    return {
+      success: true,
+      data: deps.llmRouter.listProviders(),
+      meta: meta(request),
+    };
+  });
+
+  app.post('/api/v1/llm/complete', async (request) => {
+    const body = parseBody<z.infer<typeof LlmCompleteRequestSchema>>(LlmCompleteRequestSchema, request.body);
+    const messages: ChatMessage[] = body.messages ?? [
+      ...(body.system ? [{ role: 'system' as const, content: body.system }] : []),
+      { role: 'user' as const, content: body.prompt! },
+    ];
+    // Forced provider first, then every other configured vendor as fallback.
+    const chain = body.provider
+      ? [body.provider, ...deps.llmRouter.listProviders().map((p) => p.name).filter((n) => n !== body.provider)]
+      : undefined;
+    const result = await deps.llmRouter.complete(
+      {
+        model: body.model ?? '',
+        messages,
+        ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
+        ...(body.max_tokens !== undefined ? { max_tokens: body.max_tokens } : {}),
+      },
+      chain,
+    );
+    return {
+      success: true,
+      data: {
+        content: result.content,
+        model: result.model,
+        usage: result.usage,
+        finish_reason: result.finish_reason,
+      },
+      meta: meta(request),
+    };
+  });
+
+  // ─── Secrets (M11 — the encrypted store previously had no API surface) ──  // Admin-only. Values are encrypted at rest with LOOP_ENCRYPTION_KEY and are
   // never listed — only metadata (name/scope) comes back on GET.
 
   const CreateSecretRequestSchema = z.object({

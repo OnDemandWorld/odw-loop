@@ -6,3 +6,4 @@ export { DeskAdapter } from './desk/adapter.js';
 export { RecapAdapter } from './recap/adapter.js';
 export { GenericAdapter } from './generic/adapter.js';
 export { SlackNotifier, EmailNotifier, WebhookNotifier, NotificationQueue } from './notification/index.js';
+export { LlmConnectorAdapter } from './llm/adapter.js';

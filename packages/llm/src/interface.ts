@@ -1,6 +1,11 @@
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
 export interface CompletionRequest {
   model: string;
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  messages: ChatMessage[];
   temperature?: number;
   max_tokens?: number;
   stream?: boolean;
@@ -24,10 +29,21 @@ export interface EmbeddingResponse {
   usage: { total_tokens: number };
 }
 
+/**
+ * IO handles threaded from the executor so provider HTTP calls honour the
+ * same egress gate and timeout signal as every other outbound connector.
+ */
+export interface ProviderIO {
+  egress?: { check(url: string): Promise<void> };
+  signal?: AbortSignal;
+}
+
 /** LLM provider interface — every provider implements this. */
 export interface LLMProvider {
   readonly name: string;
-  complete(req: CompletionRequest): Promise<CompletionResponse>;
-  embed?(req: EmbeddingRequest): Promise<EmbeddingResponse>;
+  /** Model used when a request does not name one (per-vendor default). */
+  readonly defaultModel?: string;
+  complete(req: CompletionRequest, io?: ProviderIO): Promise<CompletionResponse>;
+  embed?(req: EmbeddingRequest, io?: ProviderIO): Promise<EmbeddingResponse>;
   isAvailable(): Promise<boolean>;
 }

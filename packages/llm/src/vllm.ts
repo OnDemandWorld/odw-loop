@@ -1,23 +1,25 @@
 /**
- * vLLM local provider — OpenAI-compatible API.
+ * vLLM local provider — an OpenAI-compatible server preset.
  */
 
-import { OpenAIProvider } from './openai.js';
-import type { LLMProvider, CompletionRequest, CompletionResponse } from './interface.js';
+import { OpenAICompatibleProvider } from './openai.js';
+import type { LLMProvider, CompletionRequest, CompletionResponse, ProviderIO } from './interface.js';
 
 export class VLLMProvider implements LLMProvider {
   readonly name = 'vllm';
-  private inner: OpenAIProvider;
+  readonly defaultModel?: string;
+  private inner: OpenAICompatibleProvider;
 
-  constructor(baseUrl: string = 'http://localhost:8000/v1') {
-    this.inner = new OpenAIProvider('not-needed', baseUrl);
+  constructor(baseUrl: string = 'http://localhost:8000/v1', defaultModel?: string, timeoutMs?: number) {
+    this.inner = new OpenAICompatibleProvider('vllm', undefined, baseUrl, defaultModel ?? 'local-model', timeoutMs);
+    this.defaultModel = this.inner.defaultModel;
   }
 
-  async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    return this.inner.complete(req);
+  async complete(req: CompletionRequest, io?: ProviderIO): Promise<CompletionResponse> {
+    return this.inner.complete(req, io);
   }
 
   async isAvailable(): Promise<boolean> {
-    return true; // vLLM is local, assumed available if URL is set
+    return this.inner.isAvailable();
   }
 }

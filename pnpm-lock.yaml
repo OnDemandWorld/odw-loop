@@ -270,6 +270,9 @@ importers:
 
   packages/connectors:
     dependencies:
+      '@loop/llm':
+        specifier: workspace:*
+        version: link:../llm
       '@loop/observability':
         specifier: workspace:*
         version: link:../observability

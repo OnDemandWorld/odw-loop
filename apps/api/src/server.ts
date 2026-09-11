@@ -10,7 +10,7 @@ import { collectMetrics } from '@loop/observability';
 import { createSqliteConnection, createPostgresConnection } from '@loop/state';
 import { SqliteStateStore, PostgresStateStore } from '@loop/state';
 import type { StateStore } from '@loop/state';
-import { ConnectorRegistry, VaultAdapter, DeskAdapter, RecapAdapter, GenericAdapter } from '@loop/connectors';
+import { ConnectorRegistry, VaultAdapter, DeskAdapter, RecapAdapter, GenericAdapter, LlmConnectorAdapter } from '@loop/connectors';
 import { WorkflowAuthoringService } from '@loop/workflow-authoring';
 import { GitBackend, VersioningService } from '@loop/versioning';
 import { ExecutionExecutor, ExecutionRecovery, executionEventBus } from '@loop/engine';
@@ -18,6 +18,7 @@ import { TriggerDispatcher, CronTriggerHandler, WebhookTriggerHandler, ManualTri
 import { EgressEngine, EgressGate } from '@loop/egress';
 import { SecretsManager } from '@loop/secrets';
 import { TemplateRegistry } from '@loop/templates';
+import { createLLMRouter } from '@loop/llm';
 import { loadConfig, type LoopConfig } from './config.js';
 import { registerRoutes } from './routes/index.js';
 import { registerExecutionWebSocket } from './routes/ws.js';
@@ -135,6 +136,13 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     unconfiguredPolicy: cfg.LOOP_EGRESS_UNCONFIGURED_POLICY,
   });
 
+  // LLM router — builds the vendor chain from LOOP_LLM_* env (keyed cloud
+  // vendors, native Gemini/Anthropic, local Ollama/vLLM/LM Studio). Registered
+  // as a connector so workflows get the `llm.complete` node type; the same
+  // egress gate and timeout signal guard model calls as any other HTTP call.
+  const llmRouter = createLLMRouter(cfg);
+  connectors.registerAdapter(new LlmConnectorAdapter(llmRouter));
+
   // Register configured connector instances so the executor resolves a real
   // base_url + credentials at dispatch time (INTEGRATION_CONTRACT.md §4.2).
   if (cfg.LOOP_VAULT_URL) {
@@ -245,6 +253,7 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     egressEngine,
     secretsManager,
     templates,
+    llmRouter,
     config: cfg,
   });
 

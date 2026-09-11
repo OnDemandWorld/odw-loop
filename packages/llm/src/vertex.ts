@@ -24,6 +24,9 @@ export class VertexProvider implements LLMProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    return !!this.project;
+    // Stub: reports unavailable until the Google Cloud SDK integration lands —
+    // claiming availability made the router select it and silently return
+    // empty completions. (Gemini is available natively — see gemini.ts.)
+    return false;
   }
 }

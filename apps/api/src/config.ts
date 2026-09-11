@@ -72,11 +72,64 @@ const configSchema = z.object({
   LOOP_SANDBOX_POOL_SIZE: z.coerce.number().default(3),
 
   // §10.6 LLM providers
+  // The router tries vendors in LOOP_LLM_FALLBACK_CHAIN order (circuit-broken
+  // per vendor). Cloud vendors activate when their key is set; Ollama is
+  // always registered (local loopback, no key). Full matrix in docs/AI接入指南.md.
   LOOP_LLM_PRIMARY: z.string().default('ollama'),
-  LOOP_LLM_OLLAMA_URL: z.string().default('http://localhost:11434'),
-  LOOP_LLM_OPENAI_KEY: z.string().optional(),
-  LOOP_LLM_ANTHROPIC_KEY: z.string().optional(),
   LOOP_LLM_FALLBACK_CHAIN: z.string().default('ollama,openai,anthropic'),
+  LOOP_LLM_TIMEOUT_MS: z.coerce.number().default(120_000),
+  // Ollama (local, always registered)
+  LOOP_LLM_OLLAMA_URL: z.string().default('http://localhost:11434'),
+  LOOP_LLM_OLLAMA_MODEL: z.string().optional(),
+  // OpenAI
+  LOOP_LLM_OPENAI_KEY: z.string().optional(),
+  LOOP_LLM_OPENAI_BASE_URL: z.string().optional(),
+  LOOP_LLM_OPENAI_MODEL: z.string().optional(),
+  // Anthropic (native Messages API)
+  LOOP_LLM_ANTHROPIC_KEY: z.string().optional(),
+  LOOP_LLM_ANTHROPIC_BASE_URL: z.string().optional(),
+  LOOP_LLM_ANTHROPIC_MODEL: z.string().optional(),
+  // Google Gemini (native generateContent API)
+  LOOP_LLM_GEMINI_KEY: z.string().optional(),
+  LOOP_LLM_GEMINI_BASE_URL: z.string().optional(),
+  LOOP_LLM_GEMINI_MODEL: z.string().optional(),
+  // Azure OpenAI (deployment-based)
+  LOOP_LLM_AZURE_ENDPOINT: z.string().optional(),
+  LOOP_LLM_AZURE_KEY: z.string().optional(),
+  LOOP_LLM_AZURE_MODEL: z.string().optional(),
+  LOOP_LLM_AZURE_API_VERSION: z.string().optional(),
+  // OpenAI-compatible cloud vendors (DeepSeek / Qwen / Kimi / GLM / Groq / …)
+  LOOP_LLM_DEEPSEEK_KEY: z.string().optional(),
+  LOOP_LLM_DEEPSEEK_MODEL: z.string().optional(),
+  LOOP_LLM_DEEPSEEK_BASE_URL: z.string().optional(),
+  LOOP_LLM_QWEN_KEY: z.string().optional(),
+  LOOP_LLM_QWEN_MODEL: z.string().optional(),
+  LOOP_LLM_QWEN_BASE_URL: z.string().optional(),
+  LOOP_LLM_MOONSHOT_KEY: z.string().optional(),
+  LOOP_LLM_MOONSHOT_MODEL: z.string().optional(),
+  LOOP_LLM_MOONSHOT_BASE_URL: z.string().optional(),
+  LOOP_LLM_ZHIPU_KEY: z.string().optional(),
+  LOOP_LLM_ZHIPU_MODEL: z.string().optional(),
+  LOOP_LLM_ZHIPU_BASE_URL: z.string().optional(),
+  LOOP_LLM_SILICONFLOW_KEY: z.string().optional(),
+  LOOP_LLM_SILICONFLOW_MODEL: z.string().optional(),
+  LOOP_LLM_SILICONFLOW_BASE_URL: z.string().optional(),
+  LOOP_LLM_GROQ_KEY: z.string().optional(),
+  LOOP_LLM_GROQ_MODEL: z.string().optional(),
+  LOOP_LLM_MISTRAL_KEY: z.string().optional(),
+  LOOP_LLM_MISTRAL_MODEL: z.string().optional(),
+  LOOP_LLM_TOGETHER_KEY: z.string().optional(),
+  LOOP_LLM_TOGETHER_MODEL: z.string().optional(),
+  LOOP_LLM_XAI_KEY: z.string().optional(),
+  LOOP_LLM_XAI_MODEL: z.string().optional(),
+  // Local OpenAI-compatible inference servers (enabled when the URL is set)
+  LOOP_LLM_VLLM_URL: z.string().optional(),
+  LOOP_LLM_VLLM_MODEL: z.string().optional(),
+  LOOP_LLM_LMSTUDIO_URL: z.string().optional(),
+  LOOP_LLM_LMSTUDIO_MODEL: z.string().optional(),
+  // Custom OpenAI-compatible endpoints as a JSON array:
+  // [{"name":"myai","base_url":"https://…/v1","api_key":"…","model":"…"}]
+  LOOP_LLM_EXTRA_PROVIDERS: z.string().optional(),
 
   // §10.7 ODW agents
   LOOP_VAULT_URL: z.string().optional(),
