@@ -18,8 +18,10 @@ import {
   UpdateWorkflowRequestSchema,
   LoopError,
   NotFoundError,
+  ValidationError,
   type CreateWorkflowRequest,
   type UpdateWorkflowRequest,
+  type WorkflowDefinition,
 } from '@loop/types';
 import {
   TemplateRegistry,
@@ -150,9 +152,28 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   // ─── Workflows (§5.3) ───────────────────────────────────────────────────
 
+  // Fail-fast node-type validation: every node's connector prefix must be a
+  // registered adapter or a deliberate pass-through prefix (stub/control).
+  // The executor passes unknown connectors through as silent no-ops, so without
+  // this a typo'd node type (e.g. `vaultt.search`) produced a green execution
+  // that did nothing (found by QA round 1, case L-F07).
+  const assertKnownNodeTypes = (definition: WorkflowDefinition): void => {
+    const passThrough = new Set(['stub', 'control']);
+    for (const node of definition?.nodes ?? []) {
+      const connectorType = String(node.type).split('.')[0] ?? node.type;
+      if (passThrough.has(connectorType)) continue;
+      if (!deps.connectors.getAdapter(connectorType)) {
+        throw new ValidationError(
+          `Unknown node type '${node.type}' — no connector '${connectorType}' registered`,
+        );
+      }
+    }
+  };
+
   app.post('/api/v1/workflows', async (request, reply) => {
     const body = parseBody<CreateWorkflowRequest>(CreateWorkflowRequestSchema, request.body);
     const actor = getActor(request);
+    assertKnownNodeTypes(body.definition);
     const workflow = await deps.authoring.create({
       name: body.name,
       description: body.description,
@@ -556,6 +577,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const actor = getActor(request);
     const template = deps.templates.instantiate(id, body);
     if (!template) throw new NotFoundError('template', id);
+    assertKnownNodeTypes(template.definition);
     const workflow = await deps.authoring.create({
       name: template.name,
       description: template.description,

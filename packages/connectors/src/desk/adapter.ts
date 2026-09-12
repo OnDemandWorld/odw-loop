@@ -25,6 +25,10 @@ const logger = createLogger({ name: 'loop:connectors:desk', component: 'connecto
 const DEFAULT_BASE_URL = 'http://localhost:8000';
 const PREFIX = '/api/v1/agents/conversations';
 
+function query_set(q: URLSearchParams, key: string, value: unknown): void {
+  q.set(key, String(value));
+}
+
 export class DeskAdapter implements ConnectorAdapter {
   readonly type = 'desk';
 
@@ -47,25 +51,16 @@ export class DeskAdapter implements ConnectorAdapter {
         return this.callDesk(baseUrl, apiKey, 'POST', `${PREFIX}/${id}/respond?${query.toString()}`, undefined, idemKey, params);
       }
       case 'takeover':
-        return this.callDesk(
-          baseUrl,
-          apiKey,
-          'POST',
-          `${PREFIX}/${String(params.input['id'])}/takeover`,
-          params.input['agent_id'] !== undefined ? { agent_id: params.input['agent_id'] } : {},
-          idemKey,
-          params,
-        );
-      case 'resolve':
-        return this.callDesk(
-          baseUrl,
-          apiKey,
-          'POST',
-          `${PREFIX}/${String(params.input['id'])}/resolve`,
-          params.input['agent_id'] !== undefined ? { agent_id: params.input['agent_id'] } : {},
-          idemKey,
-          params,
-        );
+      case 'resolve': {
+        // Desk API takes agent_id as a QUERY parameter (FastAPI Query(...)) —
+        // sending it in a JSON body yields 422 and broke the Loop→Desk chain
+        // (found by combo testing, case C-B07).
+        const convId = String(params.input['id'] ?? params.input['conversation_id'] ?? '');
+        const q = new URLSearchParams();
+        if (params.input['agent_id'] !== undefined) query_set(q, 'agent_id', params.input['agent_id']);
+        const action = params.operation === 'takeover' ? 'takeover' : 'resolve';
+        return this.callDesk(baseUrl, apiKey, 'POST', `${PREFIX}/${convId}/${action}?${q.toString()}`, undefined, idemKey, params);
+      }
       default:
         throw new Error(`Unknown Desk operation: ${params.operation}`);
     }

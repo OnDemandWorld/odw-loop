@@ -66,24 +66,30 @@ describe('Desk connector integration', () => {
     expect(url.searchParams.get('content')).toBe('Hello there');
   });
 
-  it('takeover → POST .../takeover', async () => {
+  it('takeover → POST .../takeover?agent_id=… (query param, Desk API contract)', async () => {
+    // Regression (combo C-B07): Desk reads agent_id from the QUERY string
+    // (FastAPI Query(...)); the old body-based call was always 422.
     server.setHandler(() => ({ body: { taken_over: true } }));
 
     await adapter.execute({ operation: 'takeover', input: { id: 'c5', agent_id: 'agent-1' }, config });
 
     const req = server.requests[0];
     expect(req?.method).toBe('POST');
-    expect(req?.url).toBe('/api/v1/agents/conversations/c5/takeover');
-    expect(JSON.parse(req?.body ?? '{}')).toMatchObject({ agent_id: 'agent-1' });
+    expect(req?.url).toContain('/api/v1/agents/conversations/c5/takeover?');
+    const url = new URL(req?.url ?? '', server.baseUrl);
+    expect(url.searchParams.get('agent_id')).toBe('agent-1');
+    expect(req?.body ?? '').toBe('');
   });
 
-  it('resolve → POST .../resolve', async () => {
+  it('resolve → POST .../resolve?agent_id=… (query param, Desk API contract)', async () => {
     server.setHandler(() => ({ body: { resolved: true } }));
 
-    await adapter.execute({ operation: 'resolve', input: { id: 'c5' }, config });
+    await adapter.execute({ operation: 'resolve', input: { id: 'c5', agent_id: 'agent-1' }, config });
 
     expect(server.requests[0]?.method).toBe('POST');
-    expect(server.requests[0]?.url).toBe('/api/v1/agents/conversations/c5/resolve');
+    expect(server.requests[0]?.url).toContain('/api/v1/agents/conversations/c5/resolve?');
+    const url = new URL(server.requests[0]?.url ?? '', server.baseUrl);
+    expect(url.searchParams.get('agent_id')).toBe('agent-1');
   });
 
   it('throws UpstreamError on non-2xx responses', async () => {

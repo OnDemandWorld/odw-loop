@@ -91,6 +91,32 @@ describe('Workflow CRUD API (/api/v1/workflows)', () => {
     expect(body.error).toBeDefined();
   });
 
+  it('POST /api/v1/workflows rejects unknown node types with 400 (fail-fast, no silent no-op)', async () => {
+    // Regression (QA round 1, L-F07): the executor passes unknown connector
+    // types through as silent no-ops, so a typo'd node type used to create
+    // fine and then "succeed" doing nothing. Creation must reject it instead.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workflows',
+      payload: {
+        name: 'Typo Node Type',
+        definition: {
+          version: '1.0',
+          nodes: [
+            { id: 'a', type: 'vaultt.search', position: { x: 0, y: 0 }, config: {} },
+          ],
+          edges: [],
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe('VALIDATION_TOPOLOGY');
+    expect(body.error.message).toContain('vaultt.search');
+  });
+
   it('POST /api/v1/workflows rejects a malformed body with 400 (Zod)', async () => {
     // Missing required `name`, and `definition.nodes` is the wrong type.
     const res = await app.inject({

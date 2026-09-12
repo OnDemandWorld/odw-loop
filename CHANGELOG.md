@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — 组合测试发现（2026-09-12 第二批）
+- **Desk 适配器 takeover/resolve 参数通道错位**：`agent_id` 放 JSON body 而 Desk API 读
+  Query 参数 → Loop→Desk 人工接管编排恒 422。改为 query 传递（与 send_response 一致），
+  接受 `id`/`conversation_id` 双字段名；+2 适配器契约单测、旧集成测试改为断言正确契约。
+- **未知节点类型静默空跑**：执行器对未注册适配器"passing input as output"，拼写错误的节点
+  （如 `vaultt.search`）创建成功且执行"绿色成功"但什么都没做。创建/模板实例化路由新增
+  fail-fast 校验（400 VALIDATION_TOPOLOGY；`stub.*`/`control.*` 显式直通）。
+- 测试 app（buildTestApp）适配器集与生产对齐（recap/generic/llm）。
+
 ### Fixed — cross-product observability & robustness (review round 3)
 - **`/ready` 真实探测**（F-06）：此前 `checks.connectors` 硬编码 `'ok'`，跨产品断链被绿灯
   掩盖。现在 `GET /ready` 并行探测已注册 connector 实例（2.5s 预算），按实例上报

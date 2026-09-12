@@ -130,6 +130,16 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
   const connectors = new ConnectorRegistry();
   connectors.registerAdapter(new VaultAdapter());
   connectors.registerAdapter(new DeskAdapter());
+  // Production parity (apps/api/src/server.ts): the fail-fast node-type
+  // validation rejects templates whose adapter is unregistered, so the test
+  // app must register the same adapter set as production.
+  const { RecapAdapter, GenericAdapter, LlmConnectorAdapter } = await import(
+    '../../../packages/connectors/src/index.js'
+  );
+  connectors.registerAdapter(new RecapAdapter());
+  connectors.registerAdapter(new GenericAdapter());
+  const llmRouterEarly = createLLMRouter(config);
+  connectors.registerAdapter(new LlmConnectorAdapter(llmRouterEarly));
 
   // ── Versioning + authoring ──────────────────────────────────────────────
   const gitBackend = new GitBackend({ repoPath: path.join(tmpDataDir, 'git') });
