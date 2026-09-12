@@ -121,7 +121,13 @@ export class RecapAdapter implements ConnectorAdapter {
       try {
         return { output: JSON.parse(text) as Record<string, unknown> };
       } catch {
-        return { output: { text } };
+        // Non-JSON from the sibling service almost always means the URL points
+        // at the wrong host/port — fail loudly instead of smuggling garbage
+        // into workflow outputs as `{ text }`.
+        throw new UpstreamError(
+          'UPSTREAM_RECAP_BAD_RESPONSE',
+          `Recap at ${baseUrl} returned non-JSON content (check LOOP_RECAP_URL)`,
+        );
       }
     } catch (err) {
       if (err instanceof UpstreamError) throw err;

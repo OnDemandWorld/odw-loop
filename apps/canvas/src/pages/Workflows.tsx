@@ -320,7 +320,7 @@ export function Workflows() {
           <div className="text-[11px] font-mono uppercase tracking-widest text-volt mb-1.5">
             Authoring
           </div>
-          <h1 className="font-display font-bold text-3xl tracking-tight text-ink-100">Workflows</h1>
+          <h1 className="font-brand text-3xl tracking-tight text-ink-100">Workflows</h1>
           <p className="text-sm text-ink-400 mt-1">
             DAG-based automations chaining Vault, Desk and Recap agents.
           </p>

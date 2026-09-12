@@ -59,21 +59,30 @@ export class ConnectorRegistry {
     return caps;
   }
 
-  /** Run health check on all instances. */
-  async healthCheckAll(): Promise<Map<string, boolean>> {
-    const results = new Map<string, boolean>();
-    for (const [id, inst] of this.instances) {
+  /**
+   * Probe all registered instances in parallel and report per-instance health.
+   * Uses each instance's configured base_url (falling back to the adapter
+   * default), bounded by `timeoutMs` so /ready never hangs on a dead sibling.
+   */
+  async healthCheckAll(timeoutMs = 2500): Promise<Map<string, boolean>> {
+    const entries = [...this.instances.entries()];
+    const probes = entries.map(async ([id, inst]) => {
       const adapter = this.adapters.get(inst.adapterType);
-      if (!adapter) {
-        results.set(id, false);
-        continue;
-      }
+      if (!adapter) return [id, false] as const;
+      const configured = inst.config?.['base_url'];
+      const baseUrl = typeof configured === 'string' ? configured : undefined;
+      const timeout = new Promise<boolean>((resolve) => {
+        const t = setTimeout(() => resolve(false), timeoutMs);
+        if (typeof t.unref === 'function') t.unref();
+      });
       try {
-        results.set(id, await adapter.healthCheck());
+        const ok = await Promise.race([Promise.resolve(adapter.healthCheck(baseUrl)), timeout]);
+        return [id, Boolean(ok)] as const;
       } catch {
-        results.set(id, false);
+        return [id, false] as const;
       }
-    }
-    return results;
+    });
+    const results = await Promise.all(probes);
+    return new Map(results);
   }
 }

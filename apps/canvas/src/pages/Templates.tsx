@@ -313,7 +313,7 @@ export function Templates() {
       <div className="flex items-end justify-between mb-8">
         <div>
           <div className="text-[11px] font-mono uppercase tracking-widest text-volt mb-1.5">Marketplace</div>
-          <h1 className="font-display font-bold text-3xl tracking-tight text-ink-100">Templates</h1>
+          <h1 className="font-brand text-3xl tracking-tight text-ink-100">Templates</h1>
           <p className="text-sm text-ink-400 mt-1">
             Industry-proven starting points — pick one, tweak the variables, ship.
           </p>

@@ -1,8 +1,8 @@
 {
   "name": "odw-loop",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Loop — Orchestration layer for the ODW.ai sovereign agent suite",
+  "description": "Loop \u2014 Orchestration layer for the ODW.ai sovereign agent suite",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=20.0.0",

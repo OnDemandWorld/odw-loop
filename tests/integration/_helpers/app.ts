@@ -104,6 +104,10 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
   const Fastify = (await import('fastify')).default;
   const app = Fastify({ logger: false });
   app.setErrorHandler(errorHandler);
+  // Register the production raw-body parser so webhook signature tests
+  // exercise the same byte-exact path as the real server (apps/api/src/raw-body.ts).
+  const { attachRawBodyParser } = await import('../../../apps/api/src/raw-body.js');
+  attachRawBodyParser(app);
 
   // ── State store ─────────────────────────────────────────────────────────
   const conn = createSqliteConnection({ path: dbPath, wal: false });

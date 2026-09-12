@@ -34,9 +34,13 @@ function useDashboardData(refreshKey: number) {
 
   useEffect(() => {
     let alive = true;
+    // Child-request failures must surface, not masquerade as an empty state.
+    const failure = (label: string) => (e: unknown) => {
+      throw new Error(`${label}: ${String(e)}`);
+    };
     Promise.all([
-      api.listWorkflows({ per_page: 100 }).catch(() => ({ data: [] as Workflow[] })),
-      api.listExecutions({ per_page: 100 }).catch(() => ({ data: [] as Execution[] })),
+      api.listWorkflows({ per_page: 100 }).catch(failure('workflows')),
+      api.listExecutions({ per_page: 100 }).catch(failure('executions')),
       api.ready().catch(() => null),
     ]).then(([wf, ex, ready]) => {
       if (!alive) return;
@@ -191,7 +195,7 @@ export function Dashboard() {
           <div className="text-[11px] font-mono uppercase tracking-widest text-volt mb-1.5">
             Control Plane
           </div>
-          <h1 className="font-display font-bold text-3xl tracking-tight text-ink-100">
+          <h1 className="font-brand text-3xl tracking-tight text-ink-100">
             Operations Dashboard
           </h1>
           <p className="text-sm text-ink-400 mt-1">

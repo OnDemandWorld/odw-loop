@@ -16,6 +16,7 @@ import { GitBackend, VersioningService } from '@loop/versioning';
 import { ExecutionExecutor, ExecutionRecovery, executionEventBus } from '@loop/engine';
 import { TriggerDispatcher, CronTriggerHandler, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
 import { EgressEngine, EgressGate } from '@loop/egress';
+import { attachRawBodyParser } from './raw-body.js';
 import { SecretsManager } from '@loop/secrets';
 import { TemplateRegistry } from '@loop/templates';
 import { createLLMRouter } from '@loop/llm';
@@ -52,23 +53,9 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   });
 
   // Capture the raw request body on the raw IncomingMessage so byte-exact
-  // HMAC verification is possible on /webhooks/:triggerId (tsd §11.6: the
-  // signature is computed over the raw body; re-serialising the parsed body
-  // is not guaranteed to reproduce the sender's bytes).
-  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
-    (req as { rawBody?: Buffer }).rawBody = body as Buffer;
-    const text = (body as Buffer).toString('utf8');
-    if (text.length === 0) {
-      done(null, undefined);
-      return;
-    }
-    try {
-      done(null, JSON.parse(text));
-    } catch (err) {
-      (err as { statusCode?: number }).statusCode = 400;
-      done(err as Error, undefined);
-    }
-  });
+  // HMAC verification is possible on /webhooks/:triggerId (tsd §11.6).
+  // Shared with the integration test helper so tests exercise the same path.
+  attachRawBodyParser(app);
 
   // Rate limiting (configurable; LOOP_RATE_LIMIT_MAX=0 disables). Health/ready/
   // metrics are exempt so monitoring is never throttled. The previous hardcoded
@@ -162,6 +149,21 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
       base_url: cfg.LOOP_RECAP_URL,
       ...(cfg.LOOP_RECAP_API_KEY ? { api_key: cfg.LOOP_RECAP_API_KEY } : {}),
     });
+  }
+  // Surface silent cross-product fallback: when a sibling URL is unset the
+  // connector silently uses its hardcoded adapter default, which hides
+  // misconfiguration (e.g. a port conflict on the default). Warn loudly.
+  for (const [product, url] of [
+    ['VAULT', cfg.LOOP_VAULT_URL],
+    ['DESK', cfg.LOOP_DESK_URL],
+    ['RECAP', cfg.LOOP_RECAP_URL],
+  ] as const) {
+    if (!url) {
+      logger.warn(
+        { product: product.toLowerCase() },
+        `LOOP_${product}_URL not set — vault/desk/recap connector nodes will use the adapter's default localhost URL`,
+      );
+    }
   }
 
   const gitBackend = new GitBackend({ repoPath: `${cfg.LOOP_DATA_DIR}/git` });
@@ -265,10 +267,24 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   // ─── Health / readiness / metrics (§5.9) ─────────────────────────────────
 
   app.get('/health', async () => ({ status: 'ok' }));
-  app.get('/ready', async () => ({
-    status: 'ready',
-    checks: { database: 'ok', connectors: 'ok' },
-  }));
+  app.get('/ready', async () => {
+    // Probe registered cross-product connector instances for real (bounded so a
+    // dead sibling can never wedge the readiness probe). Instances fall back to
+    // their adapter default base URLs when LOOP_*_URL is unset.
+    const connectorResults = await connectors.healthCheckAll();
+    const connectorDetail: Record<string, string> = {};
+    for (const [id, ok] of connectorResults) connectorDetail[id] = ok ? 'ok' : 'unreachable';
+    const connectorsOk =
+      connectorResults.size === 0 || [...connectorResults.values()].every(Boolean);
+    return {
+      status: 'ready',
+      checks: {
+        database: 'ok',
+        connectors: connectorsOk ? 'ok' : 'degraded',
+        ...connectorDetail,
+      },
+    };
+  });
   app.get('/metrics', async (_req, reply) => {
     const metrics = await collectMetrics();
     reply.type('text/plain').send(metrics);

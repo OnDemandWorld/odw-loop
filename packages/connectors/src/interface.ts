@@ -40,8 +40,8 @@ export interface ConnectorAdapter {
   /** Execute an operation on this connector. */
   execute(params: ExecuteParams): Promise<ExecuteResult>;
 
-  /** Check if the connector is reachable and healthy. */
-  healthCheck(): Promise<boolean>;
+  /** Check if the connector is reachable and healthy. Base URL defaults to the adapter's default when omitted. */
+  healthCheck(baseUrl?: string): Promise<boolean>;
 
   /** Discover what node types this connector provides. */
   getCapabilities(): ConnectorCapabilities;

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — cross-product observability & robustness (review round 3)
+- **`/ready` 真实探测**（F-06）：此前 `checks.connectors` 硬编码 `'ok'`，跨产品断链被绿灯
+  掩盖。现在 `GET /ready` 并行探测已注册 connector 实例（2.5s 预算），按实例上报
+  `vault-default/desk-default/recap-default: ok|unreachable`，汇总 degraded。
+- **探测使用实例 base_url**（registry）：`healthCheckAll()` 现把实例配置的 `base_url`
+  传给 adapter（此前恒用 adapter 默认值，实例配置被忽略），并带超时预算防挂死。
+- **Recap 非 JSON 响应不再静默污染**（F-04）：Recap adapter 收到 HTML 等 非 JSON 体
+  （典型场景：`LOOP_RECAP_URL` 指向被占用的 8080 端口上的无关应用）现抛
+  `UPSTREAM_RECAP_BAD_RESPONSE`，此前会包装成 `{ text }` 当作成功数据进入工作流输出。
+- **默认 URL 静默回退可见**：`LOOP_*_URL` 未设置时启动打 WARN（连接器回退 adapter 默认
+  localhost URL）。
+- 新增单测：registry base_url 透传/超时熔断、recap 非 JSON 抛错（unit 623）。
+- **webhook 签名按原始字节校验真正生效**（bug 11 修复的残留缺口，浏览器级 UAT 发现）：
+  Fastify v4 的 content-type parser 第一参数是请求包装对象而非 `request.raw`，rawBody
+  挂载点错误导致路由静默回退到重序列化 JSON——所有非规范 JSON（多余空格/键序差异）的
+  合法签名被 401 拒绝。现抽为共享 `apps/api/src/raw-body.ts`（server 与集成测试同源），
+  挂载到 `req.raw`；新增带空格 JSON 体的原始字节回归测试（unit 623 / integration 157）。
+
+
 ### AI integration wired end-to-end + mainstream vendor support
 - **The LLM layer is now reachable.** `@loop/llm` (7 providers, circuit-broken
   fallback router) existed but nothing used it — no endpoint, no node type,
@@ -625,10 +644,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known Limitations
 - Code sandbox is a stub (requires gVisor/Firecracker setup)
-- RBAC middleware not fully wired into HTTP layer
+- ~~RBAC middleware not fully wired into HTTP layer~~ **已过时**：RBAC 已在 HTTP 层生效（V1.3 起，role_uat 运行时验证 admin/editor/viewer 403/401 正确）
 - Air-gap mode enforcement not fully implemented
 - Egress interceptor not integrated into connector execution path
-- Execution recovery counts but doesn't re-queue
+- ~~Execution recovery counts but doesn't re-queue~~ **已修复**（bugs 12-14，见 DEEP_REVIEW_REPORT.md：恢复的执行真正重新分发）
 
 ### Migration Guide
 This is the initial release. No migration needed.

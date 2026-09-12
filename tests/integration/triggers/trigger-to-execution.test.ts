@@ -119,6 +119,35 @@ describe('Trigger → Execution flow', () => {
     expect(body.error.code).toBe('AUTH_INVALID_TOKEN');
   });
 
+  it('POST /webhooks/:triggerId verifies the signature over the RAW bytes, not re-serialized JSON', async () => {
+    // Regression (2026-09-12): the rawBody parser attached the buffer to the
+    // wrong object, so the route silently fell back to JSON.stringify(request.body)
+    // and any non-canonical JSON (extra whitespace / key order) failed HMAC.
+    // Send a spaced body signed over its exact bytes — re-serialization would
+    // strip the space and reject a legitimate sender.
+    const wf = await seedWorkflow(ctx.store);
+    const webhookSecret = 'raw-bytes-secret';
+    const triggerRes = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workflows/${wf.id}/triggers`,
+      payload: { trigger_type: 'webhook', config: { secret: webhookSecret } },
+    });
+    const triggerId = triggerRes.json().data.id;
+
+    const spacedBody = '{"event": "user.signup",  "user_id": "u-123"}';
+    const signature = hmacSignature(webhookSecret, spacedBody);
+
+    const webhookRes = await app.inject({
+      method: 'POST',
+      url: `/webhooks/${triggerId}`,
+      headers: { 'x-loop-signature': signature, 'content-type': 'application/json' },
+      payload: spacedBody, // string payload → sent byte-exact
+    });
+
+    expect(webhookRes.statusCode).toBe(200);
+    expect(webhookRes.json().accepted).toBe(true);
+  });
+
   it('POST /webhooks/:triggerId for unknown trigger returns 404', async () => {
     const res = await app.inject({
       method: 'POST',

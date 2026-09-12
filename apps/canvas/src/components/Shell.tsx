@@ -58,7 +58,7 @@ export function Shell() {
           </a>
           <div className="flex items-center justify-between mt-3">
             <div>
-              <span className="font-display font-bold text-base leading-none tracking-tight text-ink-100">
+              <span className="font-brand text-xl leading-none tracking-tight text-ink-100">
                 Loop
               </span>
               <span className="ml-2 text-[10px] font-mono uppercase tracking-widest text-ink-400">
@@ -128,8 +128,7 @@ export function Shell() {
             <span className="text-xs text-ink-300">
               {status === 'online' ? 'API connected' : status === 'offline' ? 'API unreachable' : 'Connecting…'}
             </span>
-            <span className="ml-auto font-mono text-[10px] text-ink-500">:3000</span>
-          </div>
+                      </div>
         </div>
       </aside>
 

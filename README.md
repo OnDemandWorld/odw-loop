@@ -125,7 +125,7 @@ loop/
 ```bash
 # Clone repository
 git clone git@github.com:OnDemandWorld/odw-loop.git
-cd loop
+cd odw-loop
 
 # Install dependencies
 pnpm install
@@ -172,13 +172,13 @@ LOOP_DB_PATH=./data/loop.db
 ## 🧪 Testing
 
 ```bash
-# Run all tests (244 tests)
+# Run all tests
 pnpm test
 
 # Run specific test suites
-pnpm test:unit        # 162 unit tests
-pnpm test:integration # 55 integration tests
-pnpm test:e2e         # 27 E2E tests
+pnpm test:unit        # 620+ unit tests
+pnpm test:integration # 150+ integration tests
+pnpm test:e2e         # 29 E2E tests
 
 # Run with coverage
 pnpm test:coverage
@@ -193,17 +193,19 @@ pnpm test:coverage
 
 ### Authentication
 
-All API endpoints require authentication via JWT or API key:
+`LOOP_REQUIRE_AUTH=true`（默认 false）时，`/api/v1/*` 需要 JWT 或静态 API key；
+`/health`、`/ready`、`/metrics`、`/webhooks/*` 恒为公开。**没有用户名/密码登录端点**：
+JWT 由签发方（SSO/网关/测试工具）用 `LOOP_JWT_SECRET`（HS256）签发，claim 含
+`sub` 与 `role`（`admin`/`editor`/`viewer`）：
 
 ```bash
-# Login
-curl -X POST http://localhost:3000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "password"}'
-
-# Use token
+# 使用静态 API key（LOOP_REQUIRE_AUTH=true 时配置）
 curl http://localhost:3000/api/v1/workflows \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+  -H "Authorization: Bearer <LOOP_API_KEY>"
+
+# 或使用外部签发的 JWT（HS256, secret = LOOP_JWT_SECRET）
+curl http://localhost:3000/api/v1/workflows \
+  -H "Authorization: Bearer <JWT>"
 ```
 
 ### Workflows

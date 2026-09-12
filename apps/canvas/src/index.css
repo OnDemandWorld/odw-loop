@@ -26,13 +26,13 @@
   --ink-200: 42 38 34; /* ink-2 */
   --ink-100: 20 17 15; /* ink */
 
-  --accent: 224 75 16; /* #E04B10 — deepened for contrast on paper */
+  --accent: 255 90 31; /* #FF5A1F — ODW brand accent (matches Vault baseline) */
   --accent-dim: 178 58 14; /* #B23A0E accent-ink */
   --brand: 205 32 40; /* #CD2028 logo red */
 
   --good: 31 122 77; /* #1F7A4D */
-  --bad: 185 40 40;
-  --warn: 158 116 0;
+  --bad: 220 75 92; /* #DC4B5C — Vault error red */
+  --warn: 181 137 0; /* #B58900 — Vault warning */
   --paused: 109 40 217;
 
   --shadow-panel: 0 1px 2px rgba(20, 17, 15, 0.05), 0 8px 24px -16px rgba(20, 17, 15, 0.25);
@@ -82,7 +82,8 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei',
+    system-ui, sans-serif;
   background: rgb(var(--ink-900));
   color: rgb(var(--ink-200));
   -webkit-font-smoothing: antialiased;
@@ -119,9 +120,17 @@ body {
     @apply font-display font-bold text-3xl tracking-tight text-ink-100;
   }
 
+  /* Brand display serif — mirrors Vault's #hero h1 (Instrument Serif), used
+     only for the wordmark and top-level page titles. */
+  .font-brand {
+    font-family: 'Instrument Serif', 'Times New Roman', serif;
+    letter-spacing: -0.02em;
+    font-weight: 400;
+  }
+
   .btn-primary {
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-md font-display font-semibold text-sm
-      bg-volt text-white transition-all duration-150
+      bg-volt text-ink-100 transition-all duration-150
       hover:shadow-glow hover:brightness-110 active:scale-[0.98]
       disabled:opacity-40 disabled:pointer-events-none;
   }
@@ -221,4 +230,15 @@ body {
   width: 9px;
   height: 9px;
   border: 2px solid rgb(var(--ink-900));
+}
+
+/* Reduced motion — mirror Vault's a11y baseline */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

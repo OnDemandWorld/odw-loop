@@ -96,4 +96,44 @@ describe('ConnectorRegistry', () => {
     expect(results.get('instance-2')).toBe(true);
     expect(healthCheckMock).toHaveBeenCalledTimes(2);
   });
+
+  it('passes the instance base_url to the health probe (falls back to adapter default when unset)', async () => {
+    const registry = new ConnectorRegistry();
+    const healthCheckMock = vi.fn().mockResolvedValue(true);
+    const mockAdapter: ConnectorAdapter = {
+      type: 'test-adapter',
+      execute: vi.fn(),
+      healthCheck: healthCheckMock,
+      getCapabilities: vi.fn().mockReturnValue({ nodes: [] }),
+    };
+
+    registry.registerAdapter(mockAdapter);
+    registry.registerInstance('pinned', 'test-adapter', { base_url: 'http://127.0.0.1:9999' });
+    registry.registerInstance('unpinned', 'test-adapter', {});
+
+    const results = await registry.healthCheckAll();
+
+    expect(results.get('pinned')).toBe(true);
+    expect(results.get('unpinned')).toBe(true);
+    expect(healthCheckMock).toHaveBeenCalledWith('http://127.0.0.1:9999');
+    expect(healthCheckMock).toHaveBeenCalledWith(undefined);
+  });
+
+  it('bounds the health probe with a timeout and reports unreachable instances', async () => {
+    const registry = new ConnectorRegistry();
+    const mockAdapter: ConnectorAdapter = {
+      type: 'test-adapter',
+      execute: vi.fn(),
+      // Never resolves — the probe must be cut off by the timeout budget.
+      healthCheck: () => new Promise<boolean>(() => {}),
+      getCapabilities: vi.fn().mockReturnValue({ nodes: [] }),
+    };
+
+    registry.registerAdapter(mockAdapter);
+    registry.registerInstance('hung', 'test-adapter', {});
+
+    const results = await registry.healthCheckAll(20);
+
+    expect(results.get('hung')).toBe(false);
+  });
 });
