@@ -44,14 +44,34 @@ describe('LLM API (/api/v1/llm/*)', () => {
     expect(res.json().error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('POST /complete rejects unknown providers with an explicit error', async () => {
+  it('POST /complete rejects unknown providers with a 400 (B5)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/llm/complete',
       payload: { prompt: 'hi', provider: 'no-such-vendor' },
     });
-    expect(res.statusCode).toBe(500);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_REQUIRED');
     expect(JSON.stringify(res.json())).toContain('Unknown LLM provider');
+  });
+
+  it('POST /complete is blocked by the egress gate in airgap mode (B1)', async () => {
+    // The API-side LLM path must pass the same gate as workflow nodes —
+    // otherwise airgap mode leaks through /api/v1/llm/complete.
+    const ctxAir = await buildTestApp({ LOOP_AIRGAP_MODE: true });
+    try {
+      await ctxAir.app.ready();
+      const res = await ctxAir.app.inject({
+        method: 'POST',
+        url: '/api/v1/llm/complete',
+        payload: { prompt: 'hello' },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe('NODE_EGRESS_BLOCKED');
+    } finally {
+      await ctxAir.app.close();
+      ctxAir.conn.close();
+    }
   });
 
   it('POST /complete surfaces provider failures as an error envelope (no silent empty reply)', async () => {

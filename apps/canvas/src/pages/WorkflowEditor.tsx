@@ -39,6 +39,7 @@ const PALETTE: PaletteItem[] = [
   { type: 'desk.send_notification', category: 'Desk', label: 'Send Notification', icon: '🔔' },
   { type: 'recap.extract_action_items', category: 'Recap', label: 'Extract Actions', icon: '📋' },
   { type: 'recap.summarize', category: 'Recap', label: 'Summarize', icon: '📝' },
+  { type: 'llm.complete', category: 'AI', label: 'LLM Complete', icon: '🤖' },
   { type: 'generic.rest_call', category: 'Generic', label: 'REST Call', icon: '🌐' },
   { type: 'control.branch', category: 'Control', label: 'Branch', icon: '⑂' },
   { type: 'control.loop', category: 'Control', label: 'Loop', icon: '↻' },
@@ -136,6 +137,14 @@ const FIELD_SPECS: Record<string, FieldSpec[]> = {
     { key: 'question', label: 'Question', type: 'textarea' },
     { key: 'context', label: 'Context', type: 'textarea' },
     { key: 'output_format', label: 'Output format', type: 'select', options: ['json', 'text', 'markdown'] },
+  ],
+  'llm.complete': [
+    { key: 'prompt', label: 'Prompt', type: 'textarea', placeholder: '{{trigger.payload.text}}', hint: 'single-turn; supports {{…}} variable references' },
+    { key: 'system', label: 'System instruction', type: 'textarea', placeholder: 'You are a helpful assistant.' },
+    { key: 'provider', label: 'Provider', type: 'text', placeholder: 'deepseek', hint: 'optional — falls back to the configured chain' },
+    { key: 'model', label: 'Model', type: 'text', placeholder: 'deepseek-chat', hint: 'optional — provider default when blank' },
+    { key: 'temperature', label: 'Temperature', type: 'number', placeholder: '0.7' },
+    { key: 'max_tokens', label: 'Max tokens', type: 'number', placeholder: '1024' },
   ],
   'desk.create_task': [
     { key: 'title', label: 'Title', type: 'text' },

@@ -8,6 +8,7 @@
   "references": [
     { "path": "../types" },
     { "path": "../observability" },
-    { "path": "../secrets" }
+    { "path": "../secrets" },
+    { "path": "../llm" }
   ]
 }

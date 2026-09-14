@@ -128,6 +128,11 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   // as a connector so workflows get the `llm.complete` node type; the same
   // egress gate and timeout signal guard model calls as any other HTTP call.
   const llmRouter = createLLMRouter(cfg);
+  // B3: Ollama is always registered, so an unconfigured deployment silently
+  // targets localhost — make that visible in the logs.
+  if (llmRouter.listProviders().every((p) => p.name === 'ollama')) {
+    logger.warn('No LOOP_LLM_* cloud keys configured — llm.complete nodes will only reach the local Ollama endpoint');
+  }
   connectors.registerAdapter(new LlmConnectorAdapter(llmRouter));
 
   // Register configured connector instances so the executor resolves a real
@@ -149,6 +154,18 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
       base_url: cfg.LOOP_RECAP_URL,
       ...(cfg.LOOP_RECAP_API_KEY ? { api_key: cfg.LOOP_RECAP_API_KEY } : {}),
     });
+  }
+
+  // Load persisted connector instances (rows created via POST /api/v1/connectors)
+  // into the same registry the executor reads — previously the DB table and the
+  // runtime registry were fully disconnected, so GET /connectors listed rows
+  // that no execution ever used (and env instances never showed up).
+  for (const row of await store.connectors.list()) {
+    if (!connectors.getAdapter(row.connector_type)) {
+      logger.warn({ connectorId: row.id, type: row.connector_type }, 'Skipping stored connector instance — adapter type not registered');
+      continue;
+    }
+    connectors.registerInstance(row.id, row.connector_type, row.config);
   }
   // Surface silent cross-product fallback: when a sibling URL is unset the
   // connector silently uses its hardcoded adapter default, which hides
@@ -253,6 +270,7 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     webhookHandler,
     manualHandler,
     egressEngine,
+    egressGate,
     secretsManager,
     templates,
     llmRouter,

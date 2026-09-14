@@ -44,6 +44,12 @@ export class GitBackend {
     author: string;
     message: string;
   }): Promise<string> {
+    // Defense-in-depth (A4): the filename is derived from workflow_id and is
+    // only ever a server-generated UUID today, but this is a public method —
+    // reject anything that could escape the repo path.
+    if (!/^[0-9a-fA-F-]{1,64}$/.test(params.workflow_id)) {
+      throw new Error(`Invalid workflow_id for git commit: ${params.workflow_id}`);
+    }
     const filePath = path.join(this.repoPath, `${params.workflow_id}.json`);
     fs.writeFileSync(filePath, params.definition, 'utf8');
 

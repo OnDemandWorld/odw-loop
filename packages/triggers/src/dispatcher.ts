@@ -42,10 +42,20 @@ export class TriggerDispatcher {
 
       if (matches) {
         const executionId = randomUUID();
+        // Snapshot the workflow's current version at trigger time (M5 parity
+        // with the cron/webhook paths) — a hardcoded 1 resolved stale
+        // definitions during replay.
+        let workflowVersion = 1;
+        try {
+          const workflow = await this.store.workflows.getById(trigger.workflow_id);
+          if (workflow) workflowVersion = workflow.version;
+        } catch {
+          logger.warn({ workflowId: trigger.workflow_id }, 'Failed to read workflow version, defaulting to 1');
+        }
         await this.store.executions.create({
           id: executionId,
           workflow_id: trigger.workflow_id,
-          workflow_version: 1, // Will be resolved from current workflow version
+          workflow_version: workflowVersion,
           trigger_type: 'event',
           trigger_payload: event.payload,
         });

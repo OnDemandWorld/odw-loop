@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — 全局复审第四轮（LLM 接入后回归核查，2026-09-13）
+- **`POST /api/v1/llm/complete` 绕过 egress 闸门（B1，安全回归）**：直连 API 的 LLM
+  调用未把 `{ egress }` IO 传给 router，上一轮刚为工作流节点接好的 airgap/出口策略对
+  该端点形同虚设。现与执行器共用同一 gate，新增 airgap 集成测试断言 403。
+- **未知 `provider` 返回 400 而非 500（B5）**：此前用户可用一个不存在的厂商名稳定触发
+  500，且非生产环境会回显已配置厂商清单。路由改为先校验厂商 ∈ 已注册集合。
+- **event 触发器是死路径（A1）**：`TriggerDispatcher.dispatch` 全仓无调用方、且
+  `workflow_version` 仍硬编码 1（回放解析到过期定义）。新增 `POST /api/v1/events`
+  （Zod 校验 → dispatch → 与 cron/webhook 一致地异步执行），dispatcher 触发时快照当前版本。
+- **触发器无法启停/重排（A3）**：新增 `PUT /api/v1/triggers/:id`——翻转 enabled/config 并
+  即时 resync cron 调度（新表达式非法则回滚到原值并返回 400，不产生 DB/调度器漂移）。
+- **egress 策略与 connector 实例此前无 API 可管理（A3/B4）**：新增 admin egress CRUD
+  (`/api/v1/egress/policies`，每次变更 `invalidateCache()`)；`POST/DELETE
+  /api/v1/connectors` 落库的同时把实例注册进运行时 registry（此前 GET 列出的 DB 行执行器
+  根本看不见，env 配置的实例又不在 GET 里）。
+- **`PUT /api/v1/workflows/:id` 漏掉节点类型校验（A5）**：与 create 不一致，update 可用
+  错拼节点类型（如 `vaultt.search`）绕过校验、执行时"绿色空跑"。补 `assertKnownNodeTypes`。
+- **唯一约束冲突统一映射 409（A2）**：并发工作流版本写、重名 secret/触发器等此前散落为
+  500；errorHandler 集中识别 SQLite UNIQUE / Postgres `23505` → `CONFLICT_DUPLICATE`。
+- **`GitBackend.commit` 路径消毒（A4）**：校验 `workflow_id` 为 UUID 形，纵深防御目录穿越
+  （当前调用方只传服务端 UUID，非活跃漏洞）。
+- **`@loop/connectors` 补 `../llm` TypeScript 项目引用（B2）**：它 import 了 `@loop/llm`
+  类型，缺引用会让干净构建树因构建顺序失败（现在 dist 已存在所以侥幸通过）。
+- 无云厂商 Key 时启动打印 Ollama-only WARN（B3）；`llm.complete` 现已进入 Canvas 节点库
+  （含 prompt/system/provider/model/temperature/max_tokens 表单 + `{{…}}` 提示）；新增
+  admin-routes 集成测试 10 项覆盖 events/trigger toggle/egress CRUD/connector create。
+- 回归：unit 625 / integration 169 / e2e 29 全通过，typecheck + build 16/16。
+
 ### Fixed — 组合测试发现（2026-09-12 第二批）
 - **Desk 适配器 takeover/resolve 参数通道错位**：`agent_id` 放 JSON body 而 Desk API 读
   Query 参数 → Loop→Desk 人工接管编排恒 422。改为 query 传递（与 send_response 一致），

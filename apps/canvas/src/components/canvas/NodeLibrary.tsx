@@ -17,6 +17,8 @@ const NODE_CATALOG: NodeType[] = [
   { type: 'desk.send_notification', category: 'Desk', label: 'Send Notification', icon: '🔔' },
   { type: 'recap.extract_action_items', category: 'Recap', label: 'Extract Action Items', icon: '📋' },
   { type: 'recap.summarize', category: 'Recap', label: 'Summarize', icon: '📝' },
+  // AI nodes — call a configured LLM vendor (Ollama/OpenAI/DeepSeek/…) from a workflow.
+  { type: 'llm.complete', category: 'AI', label: 'LLM Complete', icon: '🤖' },
   // Control nodes
   { type: 'control.branch', category: 'Control', label: 'Branch', icon: '⑂' },
   { type: 'control.loop', category: 'Control', label: 'Loop', icon: '↻' },

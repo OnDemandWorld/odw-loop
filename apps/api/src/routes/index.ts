@@ -12,6 +12,7 @@ import type { TriggerDispatcher, WebhookTriggerHandler, ManualTriggerHandler, Cr
 import type { EgressEngine } from '@loop/egress';
 import type { SecretsManager } from '@loop/secrets';
 import type { LLMRouter, ChatMessage } from '@loop/llm';
+import { createLogger } from '@loop/observability';
 import { z } from 'zod';
 import {
   CreateWorkflowRequestSchema,
@@ -36,6 +37,8 @@ import { createAuthGuard, isProtectedPath, requireRole, type Role } from '../mid
 function getRequestId(request: FastifyRequest): string {
   return (request as unknown as Record<string, unknown>)['requestId'] as string ?? 'unknown';
 }
+
+const logger = createLogger({ name: 'loop:api:routes', component: 'api' });
 
 /**
  * The acting identity for a request (V1.3 F-RBAC-Loop): the principal plus its
@@ -107,6 +110,8 @@ export interface RouteDeps {
   webhookHandler: WebhookTriggerHandler;
   manualHandler: ManualTriggerHandler;
   egressEngine: EgressEngine;
+  /** The live gate the executor uses — API-side LLM calls must pass the same check. */
+  egressGate: { check(url: string): Promise<void> };
   secretsManager: SecretsManager;
   /** Multi-vendor LLM router — backs the llm.complete node and the LLM API. */
   llmRouter: LLMRouter;
@@ -162,9 +167,22 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     for (const node of definition?.nodes ?? []) {
       const connectorType = String(node.type).split('.')[0] ?? node.type;
       if (passThrough.has(connectorType)) continue;
-      if (!deps.connectors.getAdapter(connectorType)) {
+      const adapter = deps.connectors.getAdapter(connectorType);
+      if (!adapter) {
         throw new ValidationError(
           `Unknown node type '${node.type}' — no connector '${connectorType}' registered`,
+        );
+      }
+      // Capability-level check (advisory, non-fatal): the connector exists but
+      // doesn't declare this operation. Today several marketplace templates
+      // reference operations the real adapters haven't implemented yet
+      // (e.g. `desk.create_task`); hard-failing would break instantiation, so
+      // we warn and let it surface at execution time. See NEXT_STEPS.md §1.
+      const declared = adapter.getCapabilities().node_types ?? [];
+      if (declared.length > 0 && !declared.includes(node.type)) {
+        logger.warn(
+          { nodeType: node.type, declared },
+          `Node type '${node.type}' is not declared by connector '${connectorType}' — it will fail at execution`,
         );
       }
     }
@@ -205,6 +223,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const { id } = request.params as { id: string };
     const body = parseBody<UpdateWorkflowRequest>(UpdateWorkflowRequestSchema, request.body);
     const actor = getActor(request);
+    // Same node-type guard as create (A5) — without it, PUT could introduce a
+    // typo'd node type that then "green no-ops" at execution time.
+    if (body.definition) assertKnownNodeTypes(body.definition);
     const workflow = await deps.authoring.update(id, { ...body, updated_by: actor.principal } as never);
     return { success: true, data: workflow, meta: meta(request) };
   });
@@ -312,7 +333,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     };
   });
 
-  app.post('/api/v1/executions/:id/replay', async (request, reply) => {
+  app.post('/api/v1/executions/:id/replay', async (request) => {
     const { id } = request.params as { id: string };
     if (replaysInFlight.has(id)) {
       throw new LoopError('REPLAY_IN_PROGRESS', `A replay of execution '${id}' is already in progress`, 409);
@@ -385,10 +406,102 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     return { success: true, data: { id: triggerId, deleted: true }, meta: meta(request) };
   });
 
+  const UpdateTriggerRequestSchema = z.object({
+    config: z.record(z.unknown()).optional(),
+    enabled: z.boolean().optional(),
+  });
+
+  // Update config / enable-disable a trigger. For cron triggers the schedule
+  // is resynchronized so the change takes effect without a restart (A3).
+  app.put('/api/v1/triggers/:triggerId', async (request) => {
+    const { triggerId } = request.params as { triggerId: string };
+    const body = parseBody(UpdateTriggerRequestSchema, request.body);
+    const existing = await deps.store.triggers.getById(triggerId);
+    if (!existing) throw new NotFoundError('trigger', triggerId);
+    if (body.config === undefined && body.enabled === undefined) {
+      throw new LoopError('VALIDATION_REQUIRED', 'Provide config and/or enabled', 400);
+    }
+
+    await deps.store.triggers.update(triggerId, {
+      ...(body.config !== undefined ? { config: body.config } : {}),
+      ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
+    });
+
+    if (existing.trigger_type === 'cron') {
+      const updated = await deps.store.triggers.getById(triggerId);
+      deps.cronHandler.unregister(triggerId);
+      if (updated?.enabled) {
+        try {
+          deps.cronHandler.register(triggerId, updated.workflow_id, (updated.config ?? {}) as { expression: string; timezone?: string });
+        } catch (err) {
+          // New config has an invalid expression — roll it back so the DB and
+          // scheduler stay consistent, and report a 400 instead of 500.
+          await deps.store.triggers.update(triggerId, {
+            ...(body.config !== undefined ? { config: existing.config } : {}),
+            ...(body.enabled !== undefined ? { enabled: existing.enabled } : {}),
+          });
+          const detail = err instanceof Error ? err.message : String(err);
+          throw new LoopError('VALIDATION_INVALID', `Invalid cron expression: ${detail}`, 400);
+        }
+      }
+    }
+
+    const trigger = await deps.store.triggers.getById(triggerId);
+    return { success: true, data: trigger, meta: meta(request) };
+  });
+
   app.get('/api/v1/workflows/:id/triggers', async (request) => {
     const { id: workflowId } = request.params as { id: string };
     const triggers = await deps.store.triggers.listByWorkflow(workflowId);
     return { success: true, data: triggers, meta: meta(request) };
+  });
+
+  // ─── Events (§5.5 event triggers) — the dispatcher creates *pending*
+  // executions; run them like the cron/webhook/manual paths do, otherwise
+  // event triggers create records that never execute (A1: previously the
+  // dispatcher had no caller at all, so event triggers were unusable).
+
+  const EventRequestSchema = z.object({
+    source: z.string().min(1).max(200),
+    event_type: z.string().min(1).max(200),
+    payload: z.record(z.unknown()).default({}),
+  });
+
+  /** Fire-and-forget an execution for a workflow id (mirrors /execute). */
+  function runExecution(executionId: string, workflowId: string, payload: Record<string, unknown>): void {
+    void (async () => {
+      try {
+        const workflow = await deps.authoring.getById(workflowId);
+        await deps.executor.execute(executionId, workflow.definition, payload);
+      } catch (err) {
+        await deps.store.executions
+          .completeIfActive(executionId, {
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+            error: String(err),
+          })
+          .catch(() => {});
+      }
+    })();
+  }
+
+  app.post('/api/v1/events', async (request, reply) => {
+    const body = parseBody(EventRequestSchema, request.body);
+    const executionIds = await deps.triggerDispatcher.dispatch({
+      source: body.source,
+      event_type: body.event_type,
+      payload: body.payload,
+    });
+    // Dispatch matched → schedule each created execution.
+    for (const executionId of executionIds) {
+      const execution = await deps.store.executions.getById(executionId);
+      if (execution) runExecution(executionId, execution.workflow_id, execution.trigger_payload ?? {});
+    }
+    return reply.status(executionIds.length > 0 ? 202 : 200).send({
+      success: true,
+      data: { matched_triggers: executionIds.length, execution_ids: executionIds },
+      meta: meta(request),
+    });
   });
 
   // ─── Webhooks (§5.7) ────────────────────────────────────────────────────
@@ -433,6 +546,86 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     return { success: true, data: connectors, meta: meta(request) };
   });
 
+  const CreateConnectorRequestSchema = z.object({
+    connector_type: z.enum(['vault', 'desk', 'recap', 'generic']),
+    name: z.string().trim().min(1).max(200),
+    config: z.record(z.unknown()).default({}),
+  });
+
+  // Create a connector instance: persist the row AND register it live so the
+  // very next execution can use it (B4 — previously GET /connectors listed DB
+  // rows the executor never knew about, and there was no create path).
+  app.post('/api/v1/connectors', async (request, reply) => {
+    const body = parseBody(CreateConnectorRequestSchema, request.body);
+    if (!deps.connectors.getAdapter(body.connector_type)) {
+      throw new LoopError('VALIDATION_REQUIRED', `No adapter registered for connector type '${body.connector_type}'`, 400);
+    }
+    const connector = await deps.store.connectors.create({
+      id: crypto.randomUUID(),
+      connector_type: body.connector_type,
+      name: body.name,
+      config: body.config,
+    });
+    deps.connectors.registerInstance(connector.id, body.connector_type, body.config);
+    return reply.status(201).send({ success: true, data: connector, meta: meta(request) });
+  });
+
+  app.delete('/api/v1/connectors/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    const connector = await deps.store.connectors.getById(id);
+    if (!connector) throw new NotFoundError('connector', id);
+    deps.connectors.unregisterInstance(id);
+    await deps.store.connectors.delete(id);
+    return { success: true, data: { id, deleted: true }, meta: meta(request) };
+  });
+
+  // ─── Egress policy management (admin) — without these routes the gate was
+  // only configurable by writing rows directly to the database.
+
+  const EgressPolicyRequestSchema = z.object({
+    name: z.string().trim().min(1).max(200),
+    rule_type: z.enum(['allow', 'deny']),
+    target_type: z.enum(['domain', 'ip_range', 'region']),
+    target_value: z.string().trim().min(1).max(500),
+    priority: z.number().int().min(-10000).max(10000).default(0),
+  });
+
+  app.get('/api/v1/egress/policies', { preHandler: [requireRole('admin')] }, async (request) => {
+    const policies = await deps.store.egressPolicies.list();
+    return { success: true, data: policies, meta: meta(request) };
+  });
+
+  app.post('/api/v1/egress/policies', { preHandler: [requireRole('admin')] }, async (request, reply) => {
+    const body = parseBody(EgressPolicyRequestSchema, request.body);
+    await deps.store.egressPolicies.create({ id: crypto.randomUUID(), ...body });
+    deps.egressEngine.invalidateCache();
+    return reply.status(201).send({ success: true, data: body, meta: meta(request) });
+  });
+
+  const UpdateEgressPolicySchema = z.object({
+    name: z.string().trim().min(1).max(200).optional(),
+    rule_type: z.enum(['allow', 'deny']).optional(),
+    target_type: z.enum(['domain', 'ip_range', 'region']).optional(),
+    target_value: z.string().trim().min(1).max(500).optional(),
+    priority: z.number().int().min(-10000).max(10000).optional(),
+    enabled: z.boolean().optional(),
+  });
+
+  app.put('/api/v1/egress/policies/:id', { preHandler: [requireRole('admin')] }, async (request) => {
+    const { id } = request.params as { id: string };
+    const body = parseBody(UpdateEgressPolicySchema, request.body);
+    await deps.store.egressPolicies.update(id, body);
+    deps.egressEngine.invalidateCache();
+    return { success: true, data: { id, updated: true }, meta: meta(request) };
+  });
+
+  app.delete('/api/v1/egress/policies/:id', { preHandler: [requireRole('admin')] }, async (request) => {
+    const { id } = request.params as { id: string };
+    await deps.store.egressPolicies.delete(id);
+    deps.egressEngine.invalidateCache();
+    return { success: true, data: { id, deleted: true }, meta: meta(request) };
+  });
+
   // ─── LLM (AI 能力：多厂商路由 + llm.complete 节点共用同一路由) ──────────
   // GET providers → 哪些厂商已配置、各自默认模型、熔断状态（给前端/运维看）。
   // POST complete → 单次对话补全；也等价于工作流里 llm.complete 节点的效果。
@@ -465,14 +658,22 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   app.post('/api/v1/llm/complete', async (request) => {
     const body = parseBody<z.infer<typeof LlmCompleteRequestSchema>>(LlmCompleteRequestSchema, request.body);
+    const known = deps.llmRouter.listProviders().map((p) => p.name);
+    // An unknown provider is a 400 client error — never a 500, and never a
+    // silent vendor switch (the router throws for unknown chain entries).
+    if (body.provider !== undefined && !known.includes(body.provider)) {
+      throw new LoopError('VALIDATION_REQUIRED', `Unknown LLM provider '${body.provider}'. Configured: ${known.join(', ') || 'none'}`, 400);
+    }
     const messages: ChatMessage[] = body.messages ?? [
       ...(body.system ? [{ role: 'system' as const, content: body.system }] : []),
       { role: 'user' as const, content: body.prompt! },
     ];
     // Forced provider first, then every other configured vendor as fallback.
     const chain = body.provider
-      ? [body.provider, ...deps.llmRouter.listProviders().map((p) => p.name).filter((n) => n !== body.provider)]
+      ? [body.provider, ...known.filter((n) => n !== body.provider)]
       : undefined;
+    // API-side calls must pass the SAME egress gate as workflow nodes —
+    // otherwise airgap mode only covered the executor path (B1).
     const result = await deps.llmRouter.complete(
       {
         model: body.model ?? '',
@@ -481,6 +682,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
         ...(body.max_tokens !== undefined ? { max_tokens: body.max_tokens } : {}),
       },
       chain,
+      { egress: deps.egressGate },
     );
     return {
       success: true,

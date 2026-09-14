@@ -26,6 +26,11 @@ export class ConnectorRegistry {
     this.instances.set(instanceId, { adapterType, config });
   }
 
+  /** Remove a connector instance (used when a DB row is deleted). */
+  unregisterInstance(instanceId: string): boolean {
+    return this.instances.delete(instanceId);
+  }
+
   /** Get an adapter by type. */
   getAdapter(type: string): ConnectorAdapter | undefined {
     return this.adapters.get(type);

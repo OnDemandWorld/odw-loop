@@ -61,6 +61,21 @@ export function errorHandler(error: FastifyError | LoopError | Error, request: F
     return;
   }
 
+  // Unique-constraint violations surface as 409, not 500 (A2). Concurrent
+  // workflow updates, duplicate secret names and duplicate trigger ids all
+  // previously landed in the generic 500 branch.
+  const errCode = (error as FastifyError).code ?? '';
+  const constraintLike = typeof error.message === 'string'
+    && (/UNIQUE constraint failed/i.test(error.message) || errCode === 'SQLITE_CONSTRAINT_UNIQUE' || errCode === '23505');
+  if (constraintLike) {
+    reply.status(409).send({
+      success: false,
+      error: { code: 'CONFLICT_DUPLICATE', message: 'Resource conflicts with an existing record (duplicate name or concurrent version update)' },
+      meta: { request_id, timestamp: new Date().toISOString() },
+    });
+    return;
+  }
+
   // Unexpected errors
   logger.error({ error: String(error), stack: error.stack }, 'Unhandled error');
   reply.status((error as FastifyError).statusCode ?? 500).send({

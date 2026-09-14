@@ -169,7 +169,7 @@ const { embeddings } = await router.embed({ model: 'nomic-embed-text', input: ['
 ## 五、运维注意事项
 
 1. **密钥安全**：`LOOP_LLM_*_KEY` 与其他密钥同等管理；生产环境不要提交到仓库。可配合 Secrets 管理体系注入。
-2. **出口管控**：开启 `LOOP_AIRGAP_MODE=true` 后所有 AI 调用一并被拦截（本地 Ollama 也会被拦，如需放行请为 Ollama 地址配置 allow 策略——按 `target_type: domain` 填 `localhost`）。
+2. **出口管控**：开启 `LOOP_AIRGAP_MODE=true` 后所有 AI 调用一并被拦截——无论来自工作流 `llm.complete` 节点还是 `POST /api/v1/llm/complete` 直连 API（两者共用同一个 `EgressGate`）。本地 Ollama 也会被拦，如需放行请为 Ollama 地址配置 allow 策略（`target_type: domain` 填 `localhost`，通过 `POST /api/v1/egress/policies` 管理，见下）。
 3. **超时**：`LOOP_LLM_TIMEOUT_MS`（默认 120 秒）约束单次 HTTP 调用；工作流层面的 `workflow_timeout_ms` 仍生效并可通过 signal 中断进行中的 AI 请求。
 4. **可观测**：`GET /api/v1/llm/providers` 返回每家厂商的熔断状态与失败次数，可直接接监控面板。
 5. **成本控制**：建议便宜/快的厂商做主力，昂贵/强模型通过节点级 `provider`/`model` 按需指定；失败自动回退避免单点。

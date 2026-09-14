@@ -24,7 +24,7 @@ import {
   ManualTriggerHandler,
   CronTriggerHandler,
 } from '../../../packages/triggers/src/index.js';
-import { EgressEngine } from '../../../packages/egress/src/index.js';
+import { EgressEngine, EgressGate } from '../../../packages/egress/src/index.js';
 import { SecretsManager } from '../../../packages/secrets/src/index.js';
 import { TemplateRegistry } from '../../../packages/templates/src/index.js';
 import { registerRoutes } from '../../../apps/api/src/routes/index.js';
@@ -47,6 +47,7 @@ export interface TestApp {
   manualHandler: ManualTriggerHandler;
   triggerDispatcher: TriggerDispatcher;
   egressEngine: EgressEngine;
+  egressGate: EgressGate;
   secretsManager: SecretsManager;
   llmRouter: ReturnType<typeof createLLMRouter>;
   templates: TemplateRegistry;
@@ -158,6 +159,10 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
 
   // ── Egress + secrets + LLM ─────────────────────────────────────────────
   const egressEngine = new EgressEngine(() => store.egressPolicies.listEnabled());
+  const egressGate = new EgressGate(egressEngine, {
+    airgap: config.LOOP_AIRGAP_MODE,
+    unconfiguredPolicy: config.LOOP_EGRESS_UNCONFIGURED_POLICY ?? 'allow',
+  });
   const secretsManager = new SecretsManager(store, config.LOOP_ENCRYPTION_KEY);
   const llmRouter = createLLMRouter(config);
 
@@ -176,6 +181,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     webhookHandler,
     manualHandler,
     egressEngine,
+    egressGate,
     secretsManager,
     templates,
     llmRouter,
@@ -197,6 +203,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     manualHandler,
     triggerDispatcher,
     egressEngine,
+    egressGate,
     secretsManager,
     templates,
     llmRouter,
