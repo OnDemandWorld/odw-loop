@@ -86,6 +86,27 @@ function meta(request: FastifyRequest, extra?: Record<string, unknown>) {
   return { request_id: getRequestId(request), timestamp: new Date().toISOString(), ...extra };
 }
 
+/**
+ * Redact credential material from a connector row before it goes into a
+ * response. config.api_key is a live upstream secret (Vault/Desk/Recap) —
+ * it must never be readable back through the API.
+ */
+export function redactConnectorSecrets<T extends { config?: Record<string, unknown> }>(connector: T): T {
+  const config = connector.config;
+  if (!config || typeof config !== 'object' || !('api_key' in config)) return connector;
+  return { ...connector, config: { ...config, api_key: '***redacted***' } };
+}
+
+/**
+ * Redact the webhook signing secret from a trigger row (GET responses only —
+ * the creating POST still returns the secret once, like GitHub webhooks).
+ */
+export function redactTriggerSecrets<T extends { config?: Record<string, unknown> }>(trigger: T): T {
+  const config = trigger.config;
+  if (!config || typeof config !== 'object' || !('secret' in config)) return trigger;
+  return { ...trigger, config: { ...config, secret: '***redacted***' } };
+}
+
 /** POST /api/v1/templates/:id/instantiate body — both fields optional overrides. */
 const InstantiateTemplateRequestSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
@@ -233,6 +254,22 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.delete('/api/v1/workflows/:id', async (request) => {
     const { id } = request.params as { id: string };
     await deps.authoring.archive(id);
+    // Disarm the workflow's triggers: without this, an already-registered
+    // cron schedule kept firing (executing the archived definition) and
+    // webhooks kept triggering — real side effects for a "deleted" flow.
+    try {
+      const triggers = await deps.store.triggers.listByWorkflow(id);
+      for (const trigger of triggers) {
+        if (trigger.enabled) {
+          await deps.store.triggers.update(trigger.id, { enabled: false });
+        }
+        if (trigger.trigger_type === 'cron') {
+          deps.cronHandler.unregister(trigger.id);
+        }
+      }
+    } catch (err) {
+      request.log.warn({ workflowId: id, error: String(err) }, 'Failed to disarm triggers of archived workflow');
+    }
     return { success: true, data: { status: 'archived' }, meta: meta(request) };
   });
 
@@ -342,6 +379,16 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     try {
       const query = request.query as Record<string, string>;
       const dryRun = query['dryRun'] !== 'false'; // default true (read-only)
+      if (!dryRun) {
+        // Only terminal executions may be re-executed: replaying a
+        // running/pending one starts a SECOND executor on the same id —
+        // connector side effects fire twice (duplicate emails, double
+        // writes to Vault/Desk).
+        const execution = await deps.store.executions.getById(id);
+        if (execution && (execution.status === 'running' || execution.status === 'pending' || execution.status === 'paused')) {
+          throw new LoopError('REPLAY_NOT_TERMINAL', `Execution '${id}' is ${execution.status}; only terminal executions can be replayed (dryRun=false)`, 409);
+        }
+      }
       const result = await replayExecution(deps.executor, deps.store, id, { dryRun });
       return {
         success: true,
@@ -453,7 +500,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/v1/workflows/:id/triggers', async (request) => {
     const { id: workflowId } = request.params as { id: string };
     const triggers = await deps.store.triggers.listByWorkflow(workflowId);
-    return { success: true, data: triggers, meta: meta(request) };
+    // Webhook signing secrets never leave the API, even for editors — the
+    // response is cached/logged in too many places to treat as secret-safe.
+    return { success: true, data: triggers.map(redactTriggerSecrets), meta: meta(request) };
   });
 
   // ─── Events (§5.5 event triggers) — the dispatcher creates *pending*
@@ -543,7 +592,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   app.get('/api/v1/connectors', async (request) => {
     const connectors = await deps.store.connectors.list();
-    return { success: true, data: connectors, meta: meta(request) };
+    // Redact credential material: config.api_key is a live secret for the
+    // upstream product (Vault/Desk/Recap). Any viewer+ could previously read
+    // it straight out of the list endpoint.
+    return { success: true, data: connectors.map(redactConnectorSecrets), meta: meta(request) };
   });
 
   const CreateConnectorRequestSchema = z.object({

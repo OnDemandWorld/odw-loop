@@ -60,8 +60,17 @@ export class WebhookTriggerHandler {
     let workflowVersion = 1;
     try {
       const workflow = await this.store.workflows.getById(trigger.workflow_id);
-      if (workflow) workflowVersion = workflow.version;
-    } catch {
+      if (workflow) {
+        // Archived workflows must not be triggerable — report the same 404
+        // as a disabled trigger so callers cannot probe workflow state.
+        if (workflow.status === 'archived') {
+          logger.warn({ triggerId: params.triggerId, workflowId: trigger.workflow_id }, 'Webhook trigger skipped: workflow is archived');
+          throw new NotFoundError('trigger', params.triggerId);
+        }
+        workflowVersion = workflow.version;
+      }
+    } catch (err) {
+      if (err instanceof NotFoundError) throw err;
       logger.warn({ workflowId: trigger.workflow_id }, 'Failed to read workflow version, defaulting to 1');
     }
     await this.store.executions.create({

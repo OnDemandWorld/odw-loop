@@ -34,9 +34,23 @@ export function calculateBackoff(strategy: string, baseDelay: number, attempt: n
   return Math.max(0, Math.round(delay));
 }
 
-/** Sleep for a given number of milliseconds. */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** Sleep for a given number of milliseconds, abortable via `signal`. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('aborted'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    function onAbort(): void {
+      clearTimeout(timer);
+      reject(new Error('aborted'));
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 /** Execute a function with retry logic. Stops retrying once `signal` aborts. */
@@ -59,7 +73,15 @@ export async function executeWithRetry<T>(
       if (attempt < config.max_attempts) {
         const delay = calculateBackoff(config.backoff, config.initial_delay_ms, attempt, config.jitter);
         onRetry?.(attempt + 1, lastError);
-        await sleep(delay);
+        // The sleep itself must honour the deadline: after the node timeout
+        // fires, the outer promise is already rejected and the node marked
+        // failed — an orphaned backoff timer would keep re-invoking `fn`
+        // (and its side effects) in the background.
+        try {
+          await sleep(delay, signal);
+        } catch {
+          throw lastError;
+        }
       }
     }
   }

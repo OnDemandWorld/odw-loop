@@ -42,11 +42,11 @@ export class VaultAdapter implements ConnectorAdapter {
       case 'create_document':
         return this.uploadDocument(baseUrl, apiKey, params.input, idemKey, params);
       case 'get_document':
-        return { output: await this.callVault(baseUrl, apiKey, 'GET', `/files/${String(params.input['id'])}`, undefined, idemKey, params) };
+        return { output: await this.callVault(baseUrl, apiKey, 'GET', `/files/${encodeURIComponent(String(params.input['id']))}`, undefined, idemKey, params) };
       case 'get_text':
-        return { output: await this.callVault(baseUrl, apiKey, 'GET', `/files/${String(params.input['id'])}/text`, undefined, idemKey, params) };
+        return { output: await this.callVault(baseUrl, apiKey, 'GET', `/files/${encodeURIComponent(String(params.input['id']))}/text`, undefined, idemKey, params) };
       case 'delete_document':
-        return { output: await this.callVault(baseUrl, apiKey, 'DELETE', `/files/${String(params.input['id'])}`, undefined, idemKey, params) };
+        return { output: await this.callVault(baseUrl, apiKey, 'DELETE', `/files/${encodeURIComponent(String(params.input['id']))}`, undefined, idemKey, params) };
       default:
         throw new Error(`Unknown Vault operation: ${params.operation}`);
     }

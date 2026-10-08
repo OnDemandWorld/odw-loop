@@ -34,7 +34,12 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
 
   const app = Fastify({
     logger: false, // We use our own Pino logger
-    requestTimeout: cfg.LOOP_EXECUTION_TIMEOUT_MS,
+    // Fastify's requestTimeout is the idle/request-socket deadline, not a
+    // workflow budget: wiring LOOP_EXECUTION_TIMEOUT_MS here made any HTTP
+    // request older than the (default 300s) execution budget fail with a
+    // generic timeout, while executions actually run detached from the
+    // request. Give sockets a generous fixed ceiling instead.
+    requestTimeout: 600_000,
   });
 
   // ─── Middleware & hooks ──────────────────────────────────────────────────
@@ -332,6 +337,33 @@ async function main() {
     logger.fatal({ error: String(err) }, 'Failed to start server');
     process.exit(1);
   }
+
+  // Graceful shutdown: docker stop / pod eviction sends SIGTERM. Without a
+  // handler Node terminates immediately — in-flight executions are severed
+  // (recovery then marks never-progressed runs as failed), cron jobs never
+  // stop, and the SQLite store skips its clean close (the 'exit' hook does
+  // not run on default signal termination). app.close() drains connections
+  // and runs the onClose hook; the timer guarantees we still exit if a
+  // handler hangs.
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info({ signal }, 'Shutting down gracefully');
+    const forceExit = setTimeout(() => {
+      logger.error('Graceful shutdown timed out; forcing exit');
+      process.exit(1);
+    }, 20_000);
+    forceExit.unref();
+    try {
+      await app.close();
+    } catch (err) {
+      logger.error({ error: String(err) }, 'Error during graceful shutdown');
+    }
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
 main().catch((err) => {

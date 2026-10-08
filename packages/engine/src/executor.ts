@@ -10,7 +10,7 @@ import { startSpan, runInSpan } from '@loop/observability';
 import { LoopError, type WorkflowDefinition, type WorkflowNode, type ExecutionStatus } from '@loop/types';
 import type { StateStore } from '@loop/state';
 import type { ConnectorRegistry } from '@loop/connectors';
-import { computeLevels } from './scheduler.js';
+import { computeLevels, topologicalSort } from './scheduler.js';
 import { executeWithRetry } from './retry.js';
 import { recordEvent } from './eventLog.js';
 import { EventBus, executionEventBus, type ExecutionBusEvent } from './eventBus.js';
@@ -925,5 +925,13 @@ function validateInlineDefinition(definition: WorkflowDefinition, nodeId: string
     if (!e || !ids.has(e.source) || !ids.has(e.target)) {
       throw new LoopError('VALIDATION_INVALID', `workflow.invoke node '${nodeId}': inline definition edge references an unknown node`, 400);
     }
+  }
+  // Cycles: this is the only definition entry point that bypasses authoring's
+  // detectCycle. computeLevels silently truncates cyclic graphs — the nodes on
+  // the cycle vanish and the sub-workflow reports success with missing output.
+  try {
+    topologicalSort(definition.nodes, definition.edges ?? []);
+  } catch {
+    throw new LoopError('VALIDATION_INVALID', `workflow.invoke node '${nodeId}': inline definition contains a dependency cycle`, 400);
   }
 }

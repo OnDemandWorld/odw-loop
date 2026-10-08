@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — 上线前深度审查轮（2026-10-08）
+- **[P1] Postgres `workflows.delete` 事务完全失效**：BEGIN/COMMIT 落在连接池上——每条语句
+  随机取不同连接，删除无原子性，且池中残留打开事务的连接殃及后续查询。改为
+  `pool.connect()` 专用客户端 + finally release。
+- **[P1] 归档（DELETE）工作流的触发器继续生效**：已注册 cron 按表达式持续执行归档定义、
+  webhook 照常触发（对已下线流程继续产生真实副作用）。三层修复：DELETE 路由禁用触发器
+  并注销 cron；cron fire 时校验 workflow 状态；webhook 对归档工作流返回 404（与禁用同
+  语义，防枚举）。
+- **[P1] 非终态执行可被非 dry-run replay（双发副作用）**：`POST /executions/:id/replay?
+  dryRun=false` 现拒绝 running/pending/paused（409 `REPLAY_NOT_TERMINAL`）。
+- **[P1] 无优雅关闭**：SIGTERM 直接硬杀（在途执行腰斩、cron 不停、store 不关）。main
+  注册 SIGTERM/SIGINT → `app.close()`（20s 强制退出兜底）；修正
+  `LOOP_EXECUTION_TIMEOUT_MS` 被误用作 Fastify `requestTimeout` 的语义错位。
+- **[P1] 凭据明文回显**：`GET /connectors` 的 `config.api_key`、触发器列表的
+  `config.secret` 改为 `***redacted***`（创建响应仍一次性返回 secret）。
+- **[P2] 内联子工作流无环检测**：带环 inline definition 曾"绿色成功"且环节点被静默丢弃。
+  `validateInlineDefinition` 接入拓扑排序，环 → `VALIDATION_INVALID` 节点失败。
+- **[P2] 连接器加固**：Desk `send_response` 正文移入 JSON body（query 传长回复 431/进
+  访问日志；Desk 2026-09 起支持 body）；Vault/Desk 路径参数 `encodeURIComponent`；
+  Generic adapter 非 JSON 上游改 `{text}` 透传（不再裸 SyntaxError）、≥400 抛
+  `UPSTREAM_GENERIC_HTTP_ERROR`、路径 `..` 段按 URL 语义解析（穿越被钳制在 base 内）。
+- **[P2] 重试无上界 + 退避不可中止**：schema 限 `max_attempts ≤ 20`、
+  `initial_delay_ms ≤ 60_000`；退避 sleep 感知 abort——节点超时后不再有孤儿重试循环
+  继续发请求。
+
+### Changed — tests
+- 625 → 637 unit（新增 `tests/unit/review-round4.test.ts` 12 条：PG 事务 ×2、归档触发器
+  ×2、内联环检测 ×1、可中止退避 ×1、连接器契约 ×4、脱敏 ×2）；desk 集成测试随
+  send_response 契约演进更新（agent_id 仍 query、content 移 body）。
+
 ### Fixed — 全局复审第四轮（LLM 接入后回归核查，2026-09-13）
 - **`POST /api/v1/llm/complete` 绕过 egress 闸门（B1，安全回归）**：直连 API 的 LLM
   调用未把 `{ egress }` IO 传给 router，上一轮刚为工作流节点接好的 airgap/出口策略对

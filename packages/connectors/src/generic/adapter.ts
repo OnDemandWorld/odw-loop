@@ -5,6 +5,7 @@
 import { request } from 'undici';
 import type { ConnectorAdapter, ExecuteParams, ExecuteResult } from '../interface.js';
 import type { ConnectorCapabilities } from '@loop/types';
+import { UpstreamError } from '@loop/types';
 
 export class GenericAdapter implements ConnectorAdapter {
   readonly type = 'generic';
@@ -12,22 +13,57 @@ export class GenericAdapter implements ConnectorAdapter {
   async execute(params: ExecuteParams): Promise<ExecuteResult> {
     const baseUrl = (params.config?.['base_url'] as string) ?? '';
     const method = (params.config?.['method'] as string) ?? (params.input['method'] as string) ?? 'POST';
-    const path = (params.input['path'] as string) ?? '/';
+    // Path segments from workflow input are sanitized before use: ".."/"."
+    // segments are resolved per URL semantics (clamped at the base path —
+    // traversal cannot escape), and every remaining segment is percent-encoded.
+    const rawPath = (params.input['path'] as string) ?? '/';
+    const qIndex = rawPath.indexOf('?');
+    const pathOnly = qIndex === -1 ? rawPath : rawPath.slice(0, qIndex);
+    const segments: string[] = [];
+    for (const segment of pathOnly.split('/')) {
+      if (segment === '..') {
+        segments.pop();
+        continue;
+      }
+      if (segment === '.') continue;
+      segments.push(encodeURIComponent(segment));
+    }
+    const path = segments.join('/');
+    const query = qIndex === -1 ? '' : `?${rawPath.slice(qIndex + 1)}`;
     const headers = (params.config?.['headers'] as Record<string, string>) ?? {};
     const body = params.input['body'] as Record<string, unknown> | undefined;
 
     // The generic connector takes arbitrary targets from workflow input —
     // exactly the shape an SSRF needs. Enforce the egress gate when wired.
-    await params.egress?.check(`${baseUrl}${path}`);
+    const target = `${baseUrl}${path}${query}`;
+    await params.egress?.check(target);
 
-    const response = await request(`${baseUrl}${path}`, {
+    const response = await request(target, {
       method: method as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
       headers: { 'content-type': 'application/json', ...headers },
       body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body ?? {}),
       signal: params.signal,
     });
 
-    const data = await response.body.json() as Record<string, unknown>;
+    // Read as text first: html/plain upstreams (proxy error pages, portals)
+    // made body.json() throw a bare SyntaxError — not an UpstreamError, so
+    // retry/error classification and reporting lost the failure context.
+    // >=400 is an UpstreamError, never "data".
+    const text = await response.body.text();
+    if (response.statusCode >= 400) {
+      throw new UpstreamError(
+        'UPSTREAM_GENERIC_HTTP_ERROR',
+        `Upstream returned ${response.statusCode}: ${text.slice(0, 200)}`,
+      );
+    }
+    let data: Record<string, unknown> = { text };
+    if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
+      try {
+        data = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        // keep { text } representation
+      }
+    }
     return { output: { status: response.statusCode, data } };
   }
 

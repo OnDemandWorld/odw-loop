@@ -210,23 +210,33 @@ export class PostgresStateStore implements StateStore {
       // Mirror the SQLite adapter: cascade through execution_events too, and
       // match node_executions by the workflow's actual execution ids (a
       // workflow id is never an execution id).
-      const client = this.conn.pool;
-      const execResult = await client.query('SELECT id FROM workflow_executions WHERE workflow_id = $1', [id]);
-      const execIds = (execResult.rows as Array<{ id: string }>).map((r) => r.id);
-      await client.query('BEGIN');
+      //
+      // A dedicated client is checked out for the whole transaction:
+      // pool.query() borrows a DIFFERENT connection per statement, so BEGIN
+      // would commit on one connection while the DELETEs run on others — no
+      // atomicity, and a connection stuck in an open transaction goes back
+      // into the pool (follow-up queries join a phantom transaction).
+      const client = await this.conn.pool.connect();
       try {
-        if (execIds.length > 0) {
-          await client.query('DELETE FROM execution_events WHERE execution_id = ANY($1::uuid[])', [execIds]);
-          await client.query('DELETE FROM node_executions WHERE execution_id = ANY($1::uuid[])', [execIds]);
+        const execResult = await client.query('SELECT id FROM workflow_executions WHERE workflow_id = $1', [id]);
+        const execIds = (execResult.rows as Array<{ id: string }>).map((r) => r.id);
+        await client.query('BEGIN');
+        try {
+          if (execIds.length > 0) {
+            await client.query('DELETE FROM execution_events WHERE execution_id = ANY($1::uuid[])', [execIds]);
+            await client.query('DELETE FROM node_executions WHERE execution_id = ANY($1::uuid[])', [execIds]);
+          }
+          await client.query('DELETE FROM workflow_executions WHERE workflow_id = $1', [id]);
+          await client.query('DELETE FROM workflow_definitions WHERE workflow_id = $1', [id]);
+          await client.query('DELETE FROM workflow_triggers WHERE workflow_id = $1', [id]);
+          await client.query('DELETE FROM workflows WHERE id = $1', [id]);
+          await client.query('COMMIT');
+        } catch (err) {
+          await client.query('ROLLBACK');
+          throw err;
         }
-        await client.query('DELETE FROM workflow_executions WHERE workflow_id = $1', [id]);
-        await client.query('DELETE FROM workflow_definitions WHERE workflow_id = $1', [id]);
-        await client.query('DELETE FROM workflow_triggers WHERE workflow_id = $1', [id]);
-        await client.query('DELETE FROM workflows WHERE id = $1', [id]);
-        await client.query('COMMIT');
-      } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
+      } finally {
+        client.release();
       }
     },
   };

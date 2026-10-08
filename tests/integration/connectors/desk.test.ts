@@ -49,7 +49,10 @@ describe('Desk connector integration', () => {
     expect(result.output['id']).toBe('c9');
   });
 
-  it('send_response → POST .../respond with agent_id & content query params', async () => {
+  it('send_response → POST .../respond with agent_id query & content JSON body', async () => {
+    // Contract evolution (2026-10): the reply text moves from the query string
+    // to the JSON body — long replies exceeded URL limits and leaked into
+    // access logs. agent_id stays a query parameter (FastAPI Query(...)).
     server.setHandler(() => ({ body: { sent: true } }));
 
     await adapter.execute({
@@ -63,7 +66,8 @@ describe('Desk connector integration', () => {
     expect(req?.url).toContain('/api/v1/agents/conversations/c5/respond?');
     const url = new URL(req?.url ?? '', server.baseUrl);
     expect(url.searchParams.get('agent_id')).toBe('agent-1');
-    expect(url.searchParams.get('content')).toBe('Hello there');
+    expect(url.searchParams.get('content')).toBeNull();
+    expect(JSON.parse(req?.body ?? '{}')).toEqual({ content: 'Hello there' });
   });
 
   it('takeover → POST .../takeover?agent_id=… (query param, Desk API contract)', async () => {

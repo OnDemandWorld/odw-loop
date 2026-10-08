@@ -42,13 +42,19 @@ export class DeskAdapter implements ConnectorAdapter {
       case 'list_conversations':
         return this.callDesk(baseUrl, apiKey, 'GET', PREFIX, undefined, idemKey, params);
       case 'get_conversation':
-        return this.callDesk(baseUrl, apiKey, 'GET', `${PREFIX}/${String(params.input['id'])}`, undefined, idemKey, params);
+        return this.callDesk(baseUrl, apiKey, 'GET', `${PREFIX}/${encodeURIComponent(String(params.input['id']))}`, undefined, idemKey, params);
       case 'send_response': {
         const id = String(params.input['id'] ?? params.input['conversation_id'] ?? '');
         const query = new URLSearchParams();
         if (params.input['agent_id'] !== undefined) query.set('agent_id', String(params.input['agent_id']));
-        if (params.input['content'] !== undefined) query.set('content', String(params.input['content']));
-        return this.callDesk(baseUrl, apiKey, 'POST', `${PREFIX}/${id}/respond?${query.toString()}`, undefined, idemKey, params);
+        // agent_id stays a query parameter (FastAPI Query(...)), but the reply
+        // body moves to the JSON payload: long replies exceed URL/header
+        // limits (~16KB) with a 431/400, and query strings leak into every
+        // access log. Desk accepts {"content": "…"} since 2026-09 (kept the
+        // legacy ?content= for compatibility — not sent anymore).
+        const body: Record<string, unknown> = {};
+        if (params.input['content'] !== undefined) body['content'] = String(params.input['content']);
+        return this.callDesk(baseUrl, apiKey, 'POST', `${PREFIX}/${encodeURIComponent(id)}/respond?${query.toString()}`, body, idemKey, params);
       }
       case 'takeover':
       case 'resolve': {
@@ -59,7 +65,7 @@ export class DeskAdapter implements ConnectorAdapter {
         const q = new URLSearchParams();
         if (params.input['agent_id'] !== undefined) query_set(q, 'agent_id', params.input['agent_id']);
         const action = params.operation === 'takeover' ? 'takeover' : 'resolve';
-        return this.callDesk(baseUrl, apiKey, 'POST', `${PREFIX}/${convId}/${action}?${q.toString()}`, undefined, idemKey, params);
+        return this.callDesk(baseUrl, apiKey, 'POST', `${PREFIX}/${encodeURIComponent(convId)}/${action}?${q.toString()}`, undefined, idemKey, params);
       }
       default:
         throw new Error(`Unknown Desk operation: ${params.operation}`);

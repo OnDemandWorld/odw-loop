@@ -7,11 +7,13 @@ export const PositionSchema = z.object({
 });
 export type Position = z.infer<typeof PositionSchema>;
 
-/** Retry configuration per node. */
+/** Retry configuration per node. Bounds keep a hostile/typo'd definition from
+ *  producing a practically infinite retry loop (e.g. max_attempts: 1e9 with a
+ *  1e9 ms base delay passed validation and wedged the node). */
 export const RetryConfigSchema = z.object({
-  max_attempts: z.number().int().min(0).default(3),
+  max_attempts: z.number().int().min(0).max(20).default(3),
   backoff: z.enum(['exponential', 'linear', 'fixed']).default('exponential'),
-  initial_delay_ms: z.number().int().min(0).default(1000),
+  initial_delay_ms: z.number().int().min(0).max(60_000).default(1000),
 });
 export type RetryConfig = z.infer<typeof RetryConfigSchema>;
 

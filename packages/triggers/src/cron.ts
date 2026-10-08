@@ -57,16 +57,25 @@ export class CronTriggerHandler {
     }
 
     const task = cron.schedule(config.expression, async () => {
-      const executionId = randomUUID();
       // Read the current workflow version at fire time (not registration time)
       // so that updated workflows execute their latest definition.
       let workflowVersion = 1;
       try {
         const workflow = await this.store.workflows.getById(workflowId);
-        if (workflow) workflowVersion = workflow.version;
+        if (workflow) {
+          // An archived workflow must not keep producing executions —
+          // deletion only flips status, so the guard has to live at fire
+          // time (registered schedules outlive the DELETE call).
+          if (workflow.status === 'archived') {
+            logger.warn({ triggerId, workflowId }, 'Cron trigger skipped: workflow is archived');
+            return;
+          }
+          workflowVersion = workflow.version;
+        }
       } catch {
         logger.warn({ workflowId }, 'Failed to read workflow version, defaulting to 1');
       }
+      const executionId = randomUUID();
       const payload = { scheduled_at: new Date().toISOString() };
       await this.store.executions.create({
         id: executionId,
