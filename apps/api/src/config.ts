@@ -63,6 +63,7 @@ const configSchema = z.object({
   LOOP_EVENT_OUTPUT_MAX_BYTES: z.coerce.number().default(65_536),
   LOOP_DEFAULT_RETRY_COUNT: z.coerce.number().default(3),
   LOOP_DEFAULT_BACKOFF: z.enum(['exponential', 'linear', 'fixed']).default('exponential'),
+  LOOP_DEFAULT_BACKOFF_INITIAL_MS: z.coerce.number().default(1000),
 
   // §10.5 Sandbox
   LOOP_SANDBOX_TYPE: z.enum(['gvisor', 'firecracker']).default('gvisor'),
@@ -163,6 +164,17 @@ const configSchema = z.object({
   // 'deny' (or add policies) to lock a deployment down. Once any policy
   // exists, evaluation is default-deny for non-matching targets.
   LOOP_EGRESS_UNCONFIGURED_POLICY: z.enum(['allow', 'deny']).default('allow'),
+  // V1.7 (SSRF hardening): private/reserved targets (loopback/RFC1918/
+  // link-local/CGNAT) are ALWAYS rejected when false — including via the
+  // unconfigured `allow` short-circuit and via matching allow policies. The
+  // ODW suite itself runs its sibling connectors on a private network, so the
+  // suite compose files set this to true explicitly.
+  LOOP_EGRESS_ALLOW_PRIVATE: booleanEnv(false),
+  // V1.7 (L-8): first-admin bootstrap — when set, the login route has a real
+  // user to authenticate BEFORE any user management UI exists.
+  LOOP_BOOTSTRAP_ADMIN_USERNAME: z.string().optional(),
+  LOOP_BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
+  LOOP_BOOTSTRAP_ADMIN_EMAIL: z.string().optional(),
 
   // §10.10 Observability
   LOOP_METRICS_ENABLED: booleanEnv(true),

@@ -45,7 +45,7 @@
         "type": "control.branch",
         "position": { "x": 700, "y": 200 },
         "config": {
-          "condition": "{{node_2.output.category}} == critical-mismatch"
+          "condition": "{{node_2.output.category}} == 'critical-mismatch'"
         },
         "timeout_ms": 5000
       },

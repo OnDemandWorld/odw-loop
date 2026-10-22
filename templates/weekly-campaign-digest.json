@@ -56,7 +56,7 @@
         "type": "control.branch",
         "position": { "x": 700, "y": 380 },
         "config": {
-          "condition": "{{node_3.output.category}} == trending-down"
+          "condition": "{{node_3.output.category}} == 'trending-down'"
         },
         "timeout_ms": 5000
       },

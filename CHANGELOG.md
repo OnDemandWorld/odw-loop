@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 2026-10-22 — 第六轮深度审查
+
+### Added
+- **`POST /api/v1/auth/login`（L-8）**：RBAC 闭环——此前 API 能验证 JWT 却没有任何
+  签发入口，唯一可用凭据是共享静态 API key，editor/viewer 角色形同虚设。scrypt 口令
+  校验（users 表）+ HS256 签发（角色映射 read/write/admin → viewer/editor/admin）+
+  按用户名指数锁定（5 次失败起 30s 翻倍封顶 15 分钟）。配套
+  `LOOP_BOOTSTRAP_ADMIN_USERNAME/PASSWORD/EMAIL` 首管理员引导（幂等）。
+- **`LOOP_EGRESS_ALLOW_PRIVATE`**：私网逃生阀（默认 false）。套件编排显式置 true
+  （兄弟产品私网互调是产品本意）。
+
+### Fixed
+- **[P0] `control.branch` 透传桩（L-1）**：条件分支两条路径都会执行——BranchNode 受限
+  求值器早已实现但从未接线，7 个官方模板受影响（审批拒绝也发"已批准"）。现：
+  执行器在**原始条件文本**上求值（通用插值会剥引号导致比较反转），决策写入
+  branchDecisions；调度期按 source_port 剪枝（级联传播，merge 节点单活入边即活，
+  剪枝节点落 `skipped` 行 + node_skipped 事件）；resume 从持久化输出重建决策。
+  模板条件右值字面量全部加引号（裸词按 unknown→falsy 处理，接线后会语义反转）。
+- **[P0] secrets 子系统接线（L-2）**：`POST /api/v1/connectors` 的 api_key 原样明文
+  落库（GET 只做展示层 redact）。现抽取进加密 secrets 库、行内只存非敏感字段、
+  执行器经 secretResolver 解析（env 实例内联回退）、启动时存量明文一次性迁移、
+  redact 补 config.headers 的 authorization/x-api-key/cookie。
+- **[P0] egress 私网黑名单（L-3）**：默认策略放行下 generic 连接器可 SSRF 直达
+  169.254.169.254 / 127.0.0.1 / RFC1918。现在黑名单**无条件**先于 unconfigured-allow
+  短路与任何 allow 策略执行（IPv4 全保留段 + IPv6 loopback/ULA/link-local/
+  v4-mapped，域名经 DNS `all:true` 逐地址检查），`LOOP_EGRESS_ALLOW_PRIVATE=true`
+  为受信私网自托管显式豁免。
+- **[P1] `control.delay` 零等待（L-4）**：透传桩 → 真实延迟（受节点超时约束），非法
+  duration 显式 400。approval/loop/parallel 保持透传但加显式 WARN + 画布
+  experimental 标注（V1.7 实装暂停/恢复）。
+- **[P1] 画布能力漂移（L-5）**：节点库/字段表单展示 desk.create_task、recap.summarize、
+  code.* 等 10+ 种运行必炸（Unknown operation）或存盘即 400 的节点类型。目录收敛到
+  适配器真实能力集（desk 5 会话操作、recap 5 会议操作、vault 6 操作、generic、llm）。
+- **[P1] 插值缺陷（L-6）**：resolveVariables 不递归（嵌套对象/数组里的 {{…}} 原样
+  发给上游）、`{{variables.*}}` 恒空串。深度递归 + definition.variables 默认值解析；
+  workflow.invoke 的内联子定义排除在插值外（其 {{trigger.payload.*}} 在子执行解析）。
+- **[P1] generic 适配器忽略表单字段（L-7）**：`url`（绝对 URL 覆盖 base_url，过 egress
+  检查）与 `params`（对象 → URLSearchParams 合并）现被尊重。
+- **[P2] 默认重试死配置（L-9）**：LOOP_DEFAULT_RETRY_COUNT/BACKOFF 从未生效（节点无
+  retry 块时恒 0 次重试）；执行器注入默认值，新增 LOOP_DEFAULT_BACKOFF_INITIAL_MS。
+- **[P2] 优雅关闭不等待在途执行（L-10）**：onClose 先 drain（10s 上限）再关停，
+  副作用不再被腰斩（recovery 仍兜底）。
+
+
 ### Fixed — 上线前深度审查轮（2026-10-08）
 - **[P1] Postgres `workflows.delete` 事务完全失效**：BEGIN/COMMIT 落在连接池上——每条语句
   随机取不同连接，删除无原子性，且池中残留打开事务的连接殃及后续查询。改为

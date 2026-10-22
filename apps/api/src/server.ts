@@ -22,6 +22,7 @@ import { TemplateRegistry } from '@loop/templates';
 import { createLLMRouter } from '@loop/llm';
 import { loadConfig, type LoopConfig } from './config.js';
 import { registerRoutes } from './routes/index.js';
+import { registerAuthRoutes, bootstrapAdminUser } from './routes/auth.js';
 import { registerExecutionWebSocket } from './routes/ws.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestIdHook } from './middleware/requestId.js';
@@ -126,7 +127,11 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   const egressGate = new EgressGate(egressEngine, {
     airgap: cfg.LOOP_AIRGAP_MODE,
     unconfiguredPolicy: cfg.LOOP_EGRESS_UNCONFIGURED_POLICY,
+    allowPrivate: cfg.LOOP_EGRESS_ALLOW_PRIVATE,
   });
+  // V1.7 (L-2): encrypted secrets store — created early so the legacy
+  // credential migration below and the executor's secretResolver share it.
+  const secretsManager = new SecretsManager(store, cfg.LOOP_ENCRYPTION_KEY);
 
   // LLM router — builds the vendor chain from LOOP_LLM_* env (keyed cloud
   // vendors, native Gemini/Anthropic, local Ollama/vLLM/LM Studio). Registered
@@ -165,12 +170,35 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   // into the same registry the executor reads — previously the DB table and the
   // runtime registry were fully disconnected, so GET /connectors listed rows
   // that no execution ever used (and env instances never showed up).
+  // V1.7 (L-2): one-time migration — legacy rows carry `api_key` (and
+  // `headers.authorization`) as PLAINTEXT inside the config JSON column. Move
+  // them into the encrypted secrets store and rewrite the row without the
+  // sensitive fields; the executor resolves credentials via secretResolver.
   for (const row of await store.connectors.list()) {
     if (!connectors.getAdapter(row.connector_type)) {
       logger.warn({ connectorId: row.id, type: row.connector_type }, 'Skipping stored connector instance — adapter type not registered');
       continue;
     }
-    connectors.registerInstance(row.id, row.connector_type, row.config);
+    let config = row.config;
+    const apiKey = config?.['api_key'];
+    if (typeof apiKey === 'string' && apiKey.length > 0) {
+      try {
+        await secretsManager.set({
+          name: 'api_key',
+          value: apiKey,
+          scope: 'connector',
+          scope_id: row.id,
+          created_by: 'system-migration',
+        });
+        const { api_key: _drop, ...rest } = config as Record<string, unknown>;
+        config = rest;
+        await store.connectors.update(row.id, { config });
+        logger.info({ connectorId: row.id }, 'Migrated legacy plaintext api_key into encrypted secrets store');
+      } catch (err) {
+        logger.warn({ connectorId: row.id, error: String(err) }, 'Failed to migrate legacy api_key — keeping inline config');
+      }
+    }
+    connectors.registerInstance(row.id, row.connector_type, config);
   }
   // Surface silent cross-product fallback: when a sibling URL is unset the
   // connector silently uses its hardcoded adapter default, which hides
@@ -207,6 +235,17 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     cfg.LOOP_EVENT_OUTPUT_MAX_BYTES,
     // Egress gate — enforced before every outbound connector call.
     egressGate,
+    // V1.7 (L-2): resolve `api_key` for a connector instance from the
+    // encrypted secrets store (set via POST /api/v1/connectors) before
+    // falling back to the instance's inline config (env-registered instances).
+    async (name, scope, scopeId) => secretsManager.get(name, scope, scopeId),
+    // V1.7 (L-9): executor-wide default retry from config — previously
+    // LOOP_DEFAULT_RETRY_* was dead config and every node ran zero retries.
+    {
+      max_attempts: cfg.LOOP_DEFAULT_RETRY_COUNT,
+      backoff: cfg.LOOP_DEFAULT_BACKOFF,
+      initial_delay_ms: cfg.LOOP_DEFAULT_BACKOFF_INITIAL_MS,
+    },
   );
   const triggerDispatcher = new TriggerDispatcher(store);
   const cronHandler = new CronTriggerHandler(store, async ({ executionId, workflowId, payload }) => {
@@ -214,11 +253,6 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   });
   const webhookHandler = new WebhookTriggerHandler(store);
   const manualHandler = new ManualTriggerHandler(store);
-  // The gate is what makes airgap mode and egress policies real: the executor
-  // hands it to every connector call, which must clear it before dispatching
-  // (previously the whole egress stack was dead code — SSRF).
-  const secretsManager = new SecretsManager(store, cfg.LOOP_ENCRYPTION_KEY);
-
   // Template marketplace registry — loads templates/*.json once at startup.
   // Files failing schema validation are skipped (recorded in loadErrors)
   // rather than blocking the server; warn so operators notice drift.
@@ -265,6 +299,12 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
 
   // ─── Routes ──────────────────────────────────────────────────────────────
 
+  // V1.7 (L-8): JWT issuance so RBAC roles are reachable without the shared
+  // static API key. Login is exempt from the auth guard (public prefix).
+  await bootstrapAdminUser(store, cfg).catch((err) => {
+    logger.warn({ error: String(err) }, 'Bootstrap admin seeding failed');
+  });
+  registerAuthRoutes(app, { store, config: cfg });
   registerRoutes(app, {
     store,
     connectors,
@@ -316,6 +356,12 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   // ─── Shutdown ────────────────────────────────────────────────────────────
 
   app.addHook('onClose', async () => {
+    // V1.7 (L-10): wait (bounded) for in-flight executions so side effects are
+    // not severed mid-flight; recovery remains the safety net for the rest.
+    const drained = await executor.drain(10_000);
+    if (!drained) {
+      logger.warn('Executor drain timed out — in-flight executions will be recovered on next startup');
+    }
     cronHandler.shutdown();
     await store.close();
     logger.info('Server closed');

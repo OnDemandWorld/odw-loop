@@ -11,7 +11,8 @@ import { LoopError, type WorkflowDefinition, type WorkflowNode, type ExecutionSt
 import type { StateStore } from '@loop/state';
 import type { ConnectorRegistry } from '@loop/connectors';
 import { computeLevels, topologicalSort } from './scheduler.js';
-import { executeWithRetry } from './retry.js';
+import { executeWithRetry, type RetryConfig } from './retry.js';
+import { BranchNode, DelayNode } from './nodes/index.js';
 import { recordEvent } from './eventLog.js';
 import { EventBus, executionEventBus, type ExecutionBusEvent } from './eventBus.js';
 
@@ -100,6 +101,23 @@ export interface ExecutorContext {
    * the depth ceiling.
    */
   visited: Set<string>;
+  /**
+   * V1.7 (branch wiring): runtime decision of each executed `control.branch`
+   * node — which outgoing port ('true'/'false') fired. Scheduler-level pruning
+   * reads this to drop nodes reachable only via the non-taken port.
+   */
+  branchDecisions: Map<string, 'true' | 'false'>;
+  /**
+   * V1.7 (branch wiring): nodes pruned this run because every incoming edge
+   * comes from a non-taken branch port (directly or transitively). Edges out
+   * of a skipped node are dead, so pruning cascades level by level.
+   */
+  skippedNodes: Set<string>;
+  /**
+   * V1.7 (L-6): `definition.variables` defaults resolved once per execution —
+   * backs `{{variables.*}}` interpolation in both configs and branch conditions.
+   */
+  variables: Record<string, unknown>;
 }
 
 /**
@@ -135,7 +153,31 @@ export class ExecutionExecutor {
     // Egress policy gate enforced before every outbound connector call.
     // Structural type — the engine does not depend on @loop/egress.
     private egressGate?: { check(url: string): Promise<void> },
+    // V1.7 (L-2 secrets wiring): resolves a named secret for a connector
+    // instance from the encrypted secrets store, before falling back to the
+    // instance's inline config. Supplied by the API server; absent in tests.
+    private secretResolver?: (name: string, scope: 'connector', scopeId: string) => Promise<string | null>,
+    // V1.7 (L-9): executor-wide default retry applied when a node carries no
+    // explicit `retry` block. Backward compatible — omitted keeps the historic
+    // zero-retry behaviour (the API server passes LOOP_DEFAULT_RETRY_*).
+    private defaultRetry?: RetryConfig,
   ) {}
+
+  /** V1.7 (L-10): in-flight executions on this executor (see drain()). */
+  private activeRuns = 0;
+
+  /**
+   * V1.7 (L-10): wait for in-flight executions to settle (bounded). The API
+   * server's SIGTERM path drains before app.close() so side effects are not
+   * severed mid-flight; recovery remains the safety net for the remainder.
+   */
+  async drain(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.activeRuns > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return this.activeRuns === 0;
+  }
 
   /**
    * Publish a real-time node/execution status event (V1.1 M2, F5). Best-effort:
@@ -200,6 +242,12 @@ export class ExecutionExecutor {
     options?: ExecuteOptions,
   ): Promise<Map<string, Record<string, unknown>>> {
     const startTime = Date.now();
+    // V1.7 (L-6): resolve `definition.variables` defaults once so both config
+    // interpolation and branch conditions can reference `{{variables.*}}`.
+    const variables: Record<string, unknown> = {};
+    for (const [name, def] of Object.entries(definition.variables ?? {})) {
+      variables[name] = (def as { default?: unknown } | undefined)?.default;
+    }
     const ctx: ExecutorContext = {
       executionId,
       workflowId: definition.metadata?.name ?? '',
@@ -209,7 +257,11 @@ export class ExecutionExecutor {
       depth: options?.depth ?? 0,
       ...(options?.parentExecutionId !== undefined ? { parentExecutionId: options.parentExecutionId } : {}),
       visited: options?.visited ?? new Set<string>(),
+      branchDecisions: new Map(),
+      skippedNodes: new Set(),
+      variables,
     };
+    this.activeRuns++;
 
     // V1.1 M1 (F1 resume / F2 idempotency): seed the context with outputs of
     // nodes that already succeeded for this execution so a resumed run skips
@@ -263,7 +315,11 @@ export class ExecutionExecutor {
         if (current?.status === 'cancelled') {
           throw new LoopError('EXECUTION_CANCELLED', `Execution '${executionId}' was cancelled`, 400);
         }
-        const settled = await this.executeLevel(level, ctx, definition, controller.signal);
+        // V1.7 (branch wiring): prune nodes whose every incoming edge is off a
+        // non-taken branch port (or descends from a pruned node) BEFORE the
+        // level runs — a decided branch must not execute both arms.
+        const activeLevel = await this.pruneInactiveNodes(level, ctx, definition);
+        const settled = await this.executeLevel(activeLevel, ctx, definition, controller.signal);
         // Abort the execution on the first node failure in this level; later
         // levels must not run (mirrors the previous fail-fast semantics).
         const failure = settled.find((r) => r.status === 'rejected');
@@ -294,7 +350,68 @@ export class ExecutionExecutor {
     } finally {
       clearTimeout(timer);
       metrics.activeExecutions.dec();
+      this.activeRuns--;
     }
+  }
+
+  /**
+   * V1.7 (branch wiring): drop level nodes that are unreachable under the
+   * branch decisions taken so far. A node is inactive when it HAS incoming
+   * edges and every one of them is dead: an edge is dead when its source was
+   * pruned, or when its source is a decided branch node and the edge's
+   * `source_port` is not the taken port. Roots (no incoming edges) always run;
+   * merge nodes survive on any single live incoming edge. Pruned nodes get a
+   * `skipped` node_executions row + event so replay shows why they never ran,
+   * and are recorded in `ctx.skippedNodes` so their own outgoing edges die
+   * (pruning cascades through subsequent levels).
+   */
+  private async pruneInactiveNodes(
+    level: WorkflowNode[],
+    ctx: ExecutorContext,
+    definition: WorkflowDefinition,
+  ): Promise<WorkflowNode[]> {
+    const active: WorkflowNode[] = [];
+    for (const node of level) {
+      const incoming = (definition.edges ?? []).filter((e) => e.target === node.id);
+      const live = incoming.some((e) => {
+        if (ctx.skippedNodes.has(e.source)) return false;
+        const decision = ctx.branchDecisions.get(e.source);
+        if (decision === undefined) return true;
+        return e.source_port === decision;
+      });
+      if (live || incoming.length === 0) {
+        active.push(node);
+        continue;
+      }
+      ctx.skippedNodes.add(node.id);
+      const nodeExecId = randomUUID();
+      await this.store.nodeExecutions.create({
+        id: nodeExecId,
+        execution_id: ctx.executionId,
+        node_id: node.id,
+        node_type: node.type,
+        input: node.config,
+        idempotency_key: `${ctx.executionId}:${node.id}`,
+      });
+      await this.store.nodeExecutions.updateStatus(nodeExecId, {
+        status: 'skipped',
+        completed_at: new Date().toISOString(),
+      });
+      await recordEvent(this.store, ctx.executionId, 'node_skipped', node.id, {
+        reason: 'branch_not_taken',
+      });
+      this.emit({
+        type: 'node_skipped',
+        executionId: ctx.executionId,
+        nodeId: node.id,
+        nodeType: node.type,
+        status: 'skipped',
+        timestamp: new Date().toISOString(),
+        ...this.parentMarker(ctx),
+      });
+      logger.info({ executionId: ctx.executionId, nodeId: node.id }, 'Node skipped — branch not taken');
+    }
+    return active;
   }
 
   /**
@@ -448,6 +565,7 @@ export class ExecutionExecutor {
     const completed = ctx.completedOutputs.get(node.id);
     if (completed !== undefined) {
       ctx.nodeOutputs.set(node.id, completed);
+      this.restoreBranchDecision(node, completed, ctx);
       logger.info({ executionId: ctx.executionId, nodeId: node.id }, 'Skipping already-succeeded node (resume/idempotent)');
       await recordEvent(this.store, ctx.executionId, 'node_skipped', node.id, { reason: 'already_succeeded' });
       this.emit({
@@ -477,6 +595,7 @@ export class ExecutionExecutor {
       if (existingByKey.status === 'succeeded') {
         ctx.nodeOutputs.set(node.id, existingByKey.output);
         ctx.completedOutputs.set(node.id, existingByKey.output);
+        this.restoreBranchDecision(node, existingByKey.output, ctx);
         await recordEvent(this.store, ctx.executionId, 'node_skipped', node.id, { reason: 'idempotent_hit' });
         this.emit({
           type: 'node_skipped',
@@ -523,8 +642,31 @@ export class ExecutionExecutor {
     });
 
     try {
-      // Resolve variable interpolation
-      const resolvedInput = this.resolveVariables(node.config, ctx);
+      // V1.7 (branch wiring): `control.branch` is evaluated on the RAW
+      // condition, before resolveVariables — generic interpolation strips the
+      // {{…}} quotes and would turn string comparisons into bare-word (falsy)
+      // references, inverting the branch semantics.
+      let resolvedInput: Record<string, unknown>;
+      if (node.type === 'workflow.invoke') {
+        // Deep interpolation must NOT descend into the inline child
+        // `definition` — its own {{trigger.payload.*}} references resolve
+        // against the CHILD's payload at execution, not the parent's here
+        // (pre-interpolating them with the parent context blanked the child's
+        // references). `inputs` IS interpolated: parent values flow in.
+        resolvedInput = {};
+        for (const [key, value] of Object.entries(node.config)) {
+          resolvedInput[key] = key === 'definition' ? value : this.resolveValue(value, ctx);
+        }
+      } else if (node.type === 'control.branch') {
+        const condition = typeof node.config['condition'] === 'string' ? (node.config['condition'] as string) : '';
+        const met = BranchNode.evaluateBranch(condition, this.branchContext(ctx));
+        const decision: 'true' | 'false' = met ? 'true' : 'false';
+        ctx.branchDecisions.set(node.id, decision);
+        resolvedInput = { condition, condition_met: met, branch: decision };
+      } else {
+        // Resolve variable interpolation
+        resolvedInput = this.resolveVariables(node.config, ctx);
+      }
 
       // A per-node controller fuses the workflow-level signal with the node
       // timeout: both abort THIS controller, and the fused signal is what the
@@ -538,7 +680,7 @@ export class ExecutionExecutor {
       // Execute with retry, bounded by the node timeout (per-node override or
       // the executor-wide default). Retries stop once the controller aborts.
       try {
-        const retryConfig = node.retry ?? { max_attempts: 0, backoff: 'fixed' as const, initial_delay_ms: 0 };
+        const retryConfig = node.retry ?? this.defaultRetry ?? { max_attempts: 0, backoff: 'fixed' as const, initial_delay_ms: 0 };
         const timeoutMs = node.timeout_ms ?? this.nodeTimeoutMs;
         const result = await this.withTimeout(
           controller,
@@ -623,6 +765,27 @@ export class ExecutionExecutor {
       return this.invokeSubWorkflow(node, input, ctx);
     }
 
+    // V1.7 (L-4): `control.delay` is an engine built-in — actually wait (bounded
+    // by the node timeout wrapping this dispatch).
+    if (node.type === 'control.delay') {
+      const raw = input['duration_ms'] ?? input['duration'];
+      const ms = Number(raw);
+      if (!Number.isFinite(ms) || ms < 0) {
+        throw new LoopError('VALIDATION_INVALID', `control.delay node '${node.id}' requires a non-negative numeric duration_ms`, 400);
+      }
+      await DelayNode.delay(Math.floor(ms));
+      return { delayed_ms: Math.floor(ms) };
+    }
+
+    // V1.7 (L-4): approval/loop/parallel are NOT executed yet — make the
+    // pass-through observable instead of silently pretending the node worked.
+    if (node.type === 'control.approval' || node.type === 'control.loop' || node.type === 'control.parallel') {
+      logger.warn(
+        { nodeId: node.id, nodeType: node.type, executionId: ctx.executionId },
+        'Control node type is not implemented yet — passing through without pausing (see NEXT_STEPS)',
+      );
+    }
+
     // Determine connector type from node type (e.g. "vault.search" → "vault")
     const connectorType = node.type.split('.')[0] ?? node.type;
     const operation = node.type.split('.').slice(1).join('.') ?? 'execute';
@@ -646,9 +809,19 @@ export class ExecutionExecutor {
 
     const config = instanceId ? this.connectors.getInstanceConfig(instanceId) : {};
     // Surface the instance's api_key (when present) as a secret so adapters can
-    // authenticate upstream calls (INTEGRATION_CONTRACT.md §4.2).
-    const apiKey = config?.['api_key'];
-    const secrets = typeof apiKey === 'string' && apiKey.length > 0 ? { api_key: apiKey } : undefined;
+    // authenticate upstream calls (INTEGRATION_CONTRACT.md §4.2). V1.7 (L-2):
+    // the encrypted secrets store is consulted first (set via
+    // POST /api/v1/connectors), with the instance's inline config as fallback
+    // (env-registered instances legitimately carry their key inline).
+    let apiKey: string | undefined;
+    if (instanceId && this.secretResolver) {
+      const resolved = await this.secretResolver('api_key', 'connector', instanceId);
+      if (resolved !== null) apiKey = resolved;
+    }
+    if (apiKey === undefined && typeof config?.['api_key'] === 'string' && (config['api_key'] as string).length > 0) {
+      apiKey = config['api_key'] as string;
+    }
+    const secrets = apiKey !== undefined ? { api_key: apiKey } : undefined;
     // V1.1 M1 (F2): forward the idempotency key so connectors can best-effort
     // propagate it upstream (e.g. an `Idempotency-Key` header). Optional — the
     // request/response contract is unchanged (INTEGRATION_CONTRACT.md §4).
@@ -666,17 +839,64 @@ export class ExecutionExecutor {
     return result.output;
   }
 
+  /**
+   * V1.7 (branch wiring): context handed to the restricted condition
+   * evaluator. Supports `{{trigger.payload.*}}`, `{{variables.*}}` and
+   * `{{<nodeId>.output.*}}` references against this execution's state.
+   */
+  private branchContext(ctx: ExecutorContext): Record<string, unknown> {
+    const context: Record<string, unknown> = {
+      trigger: { payload: ctx.triggerPayload },
+      variables: ctx.variables,
+    };
+    for (const [id, output] of ctx.nodeOutputs) {
+      context[id] = { output };
+    }
+    return context;
+  }
+
+  /**
+   * V1.7 (branch wiring): on resume/idempotent skip of a completed branch
+   * node, rebuild its decision from the persisted output so downstream pruning
+   * still sees which port fired.
+   */
+  private restoreBranchDecision(node: WorkflowNode, output: Record<string, unknown> | undefined, ctx: ExecutorContext): void {
+    if (node.type !== 'control.branch' || !output) return;
+    const branch = output['branch'];
+    if (branch === 'true' || branch === 'false') {
+      ctx.branchDecisions.set(node.id, branch);
+    }
+  }
+
   /** Resolve {{variable}} references in config values. */
   private resolveVariables(config: Record<string, unknown>, ctx: ExecutorContext): Record<string, unknown> {
     const resolved: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(config)) {
-      if (typeof value === 'string') {
-        resolved[key] = this.interpolateString(value, ctx);
-      } else {
-        resolved[key] = value;
-      }
+      resolved[key] = this.resolveValue(value, ctx);
     }
     return resolved;
+  }
+
+  /**
+   * V1.7 (L-6): interpolate DEEP — nested objects and arrays inside node
+   * configs (e.g. a generic REST `body` object) previously kept their literal
+   * `{{…}}` text and were sent upstream verbatim.
+   */
+  private resolveValue(value: unknown, ctx: ExecutorContext): unknown {
+    if (typeof value === 'string') {
+      return this.interpolateString(value, ctx);
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => this.resolveValue(item, ctx));
+    }
+    if (value !== null && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        out[k] = this.resolveValue(v, ctx);
+      }
+      return out;
+    }
+    return value;
   }
 
   private interpolateString(template: string, ctx: ExecutorContext): string {
@@ -694,6 +914,18 @@ export class ExecutionExecutor {
               obj !== null && typeof obj === 'object' ? (obj as Record<string, unknown>)[segment] : undefined,
             ctx.triggerPayload,
           );
+        return value === undefined || value === null ? '' : String(value);
+      }
+      // V1.7 (L-6): workflow-level variables (`{{variables.name}}`) resolve to
+      // the definition's declared default — previously they interpolated to an
+      // empty string, silently corrupting downstream URLs/recipients.
+      if (path.startsWith('variables.')) {
+        const segments = path.slice('variables.'.length).split('.');
+        const value = segments.reduce<unknown>(
+          (obj, segment) =>
+            obj !== null && typeof obj === 'object' ? (obj as Record<string, unknown>)[segment] : undefined,
+          ctx.variables,
+        );
         return value === undefined || value === null ? '' : String(value);
       }
       // Node outputs: look the reference up against the raw node id first

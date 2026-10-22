@@ -124,14 +124,11 @@ const FIELD_SPECS: Record<string, FieldSpec[]> = {
     { key: 'tags', label: 'Tags', type: 'list', hint: 'comma separated' },
     { key: 'folder', label: 'Folder', type: 'text' },
   ],
-  'vault.update_document': [
-    { key: 'id', label: 'Document ID', type: 'text' },
-    { key: 'metadata', label: 'Metadata (JSON)', type: 'json' },
+  'vault.get_document': [
+    { key: 'id', label: 'File ID', type: 'text', placeholder: '{{node_1.output.file_id}}' },
   ],
-  'vault.manage_tags': [
-    { key: 'document_id', label: 'Document ID', type: 'text' },
-    { key: 'add_tags', label: 'Add tags', type: 'list' },
-    { key: 'remove_tags', label: 'Remove tags', type: 'list' },
+  'vault.delete_document': [
+    { key: 'id', label: 'File ID', type: 'text', placeholder: '{{node_1.output.file_id}}' },
   ],
   'vault.rag_query': [
     { key: 'question', label: 'Question', type: 'textarea' },
@@ -146,56 +143,38 @@ const FIELD_SPECS: Record<string, FieldSpec[]> = {
     { key: 'temperature', label: 'Temperature', type: 'number', placeholder: '0.7' },
     { key: 'max_tokens', label: 'Max tokens', type: 'number', placeholder: '1024' },
   ],
-  'desk.create_task': [
+  'desk.list_conversations': [
+    { key: 'status', label: 'Status filter', type: 'select', options: ['open', 'pending', 'resolved', 'all'], placeholder: 'all' },
+  ],
+  'desk.get_conversation': [
+    { key: 'id', label: 'Conversation ID', type: 'text', placeholder: '{{node_1.output.conversations[0].id}}' },
+  ],
+  'desk.send_response': [
+    { key: 'conversation_id', label: 'Conversation ID', type: 'text', placeholder: '{{trigger.payload.conversation_id}}' },
+    { key: 'content', label: 'Reply content', type: 'textarea', placeholder: 'Hello! …' },
+    { key: 'agent_id', label: 'Agent ID', type: 'text' },
+  ],
+  'desk.takeover': [
+    { key: 'conversation_id', label: 'Conversation ID', type: 'text' },
+    { key: 'agent_id', label: 'Agent ID', type: 'text' },
+  ],
+  'desk.resolve': [
+    { key: 'conversation_id', label: 'Conversation ID', type: 'text' },
+    { key: 'agent_id', label: 'Agent ID', type: 'text' },
+  ],
+  'recap.list_meetings': [],
+  'recap.get_meeting': [
+    { key: 'id', label: 'Meeting ID', type: 'text', placeholder: '{{node_1.output.meetings[0].id}}' },
+  ],
+  'recap.create_meeting': [
     { key: 'title', label: 'Title', type: 'text' },
-    { key: 'description', label: 'Description', type: 'textarea' },
-    { key: 'assignee', label: 'Assignee', type: 'text' },
-    { key: 'priority', label: 'Priority', type: 'select', options: ['low', 'normal', 'medium', 'high', 'urgent'] },
-    { key: 'labels', label: 'Labels', type: 'list' },
-    { key: 'project_id', label: 'Project ID', type: 'text' },
-    { key: 'due_date', label: 'Due date', type: 'text', placeholder: '2026-12-31 or {{…}}' },
+    { key: 'meeting_type', label: 'Meeting type', type: 'select', options: ['standup', 'client', 'review', '1on1', 'other'] },
+    { key: 'language', label: 'Language', type: 'select', options: ['zh', 'en', 'auto'] },
   ],
-  'desk.create_project': [
-    { key: 'name', label: 'Name', type: 'text' },
-    { key: 'description', label: 'Description', type: 'textarea' },
-    { key: 'owner', label: 'Owner', type: 'text' },
-  ],
-  'desk.create_calendar_event': [
-    { key: 'title', label: 'Title', type: 'text' },
-    { key: 'description', label: 'Description', type: 'textarea' },
-    { key: 'offset_hours', label: 'Offset (hours)', type: 'number' },
-    { key: 'duration_minutes', label: 'Duration (minutes)', type: 'number' },
-    { key: 'attendees', label: 'Attendees', type: 'list' },
-  ],
-  'desk.list_tasks': [
-    { key: 'status', label: 'Status', type: 'select', options: ['open', 'in_progress', 'done'] },
-    { key: 'updated_since', label: 'Updated since', type: 'text', placeholder: 'ISO 8601 date' },
-  ],
-  'desk.send_notification': [
-    { key: 'channel', label: 'Channel', type: 'text' },
-    { key: 'title', label: 'Title', type: 'text' },
-    { key: 'body', label: 'Body', type: 'textarea' },
-    { key: 'message', label: 'Message', type: 'textarea' },
-    { key: 'priority', label: 'Priority', type: 'select', options: ['low', 'normal', 'high', 'urgent'] },
-    { key: 'recipient', label: 'Recipient', type: 'text' },
-  ],
-  'recap.summarize': [
-    { key: 'transcript_id', label: 'Transcript ID', type: 'text' },
-    { key: 'content', label: 'Content', type: 'textarea' },
-    { key: 'max_length', label: 'Max length (words)', type: 'number' },
-    { key: 'format', label: 'Format', type: 'select', options: ['bullet_points', 'executive_summary', 'paragraph', 'markdown'] },
-    { key: 'prompt', label: 'Custom prompt', type: 'textarea' },
-  ],
-  'recap.extract_action_items': [
-    { key: 'transcript_id', label: 'Transcript ID', type: 'text' },
-    { key: 'content', label: 'Content', type: 'textarea' },
-    { key: 'assignee', label: 'Default assignee', type: 'text' },
-    { key: 'include_owners', label: 'Include owners', type: 'boolean' },
-    { key: 'include_due_dates', label: 'Include due dates', type: 'boolean' },
-  ],
-  'recap.classify': [
-    { key: 'content', label: 'Content', type: 'textarea' },
-    { key: 'categories', label: 'Categories', type: 'list' },
+  'recap.sync': [
+    { key: 'meeting_id', label: 'Meeting ID', type: 'text' },
+    { key: 'action', label: 'Action', type: 'select', options: ['sync', 'resync'] },
+    { key: 'token', label: 'JWT token (optional)', type: 'text', hint: 'leave blank when the connector instance holds credentials' },
   ],
   'generic.rest_call': [
     { key: 'method', label: 'Method', type: 'select', options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
@@ -224,8 +203,6 @@ const FIELD_SPECS: Record<string, FieldSpec[]> = {
   ],
   'control.delay': [{ key: 'duration_ms', label: 'Duration (ms)', type: 'number' }],
   'control.parallel': [],
-  'code.typescript': [{ key: 'code', label: 'Code', type: 'textarea', placeholder: 'return { result: input }' }],
-  'code.python': [{ key: 'code', label: 'Code', type: 'textarea' }],
 };
 
 /** Render a typed config value as an editable string. */

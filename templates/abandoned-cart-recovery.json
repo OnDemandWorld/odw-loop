@@ -33,7 +33,7 @@
         "type": "control.branch",
         "position": { "x": 400, "y": 200 },
         "config": {
-          "condition": "{{node_1.output.category}} == high-value"
+          "condition": "{{node_1.output.category}} == 'high-value'"
         },
         "timeout_ms": 5000
       },

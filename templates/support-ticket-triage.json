@@ -44,7 +44,7 @@
         "type": "control.branch",
         "position": { "x": 450, "y": 260 },
         "config": {
-          "condition": "{{node_2.output.category}} == urgent"
+          "condition": "{{node_2.output.category}} == 'urgent'"
         },
         "timeout_ms": 5000
       },

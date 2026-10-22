@@ -93,8 +93,32 @@ function meta(request: FastifyRequest, extra?: Record<string, unknown>) {
  */
 export function redactConnectorSecrets<T extends { config?: Record<string, unknown> }>(connector: T): T {
   const config = connector.config;
-  if (!config || typeof config !== 'object' || !('api_key' in config)) return connector;
-  return { ...connector, config: { ...config, api_key: '***redacted***' } };
+  if (!config || typeof config !== 'object') return connector;
+  const redacted: Record<string, unknown> = { ...config };
+  let changed = false;
+  if (typeof redacted['api_key'] === 'string') {
+    redacted['api_key'] = '***redacted***';
+    changed = true;
+  }
+  // V1.7 (L-2): generic connectors carry credentials inside config.headers —
+  // redact those too, not just the top-level api_key.
+  const headers = redacted['headers'];
+  if (headers !== null && typeof headers === 'object' && !Array.isArray(headers)) {
+    const redactedHeaders: Record<string, unknown> = { ...(headers as Record<string, unknown>) };
+    for (const header of ['authorization', 'x-api-key', 'cookie', 'proxy-authorization']) {
+      const lower: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(redactedHeaders)) lower[k.toLowerCase()] = v;
+      if (typeof lower[header] === 'string') {
+        // preserve original casing when replacing
+        for (const [k, v] of Object.entries(redactedHeaders)) {
+          if (k.toLowerCase() === header) redactedHeaders[k] = '***redacted***';
+        }
+        changed = true;
+      }
+    }
+    redacted['headers'] = redactedHeaders;
+  }
+  return changed ? { ...connector, config: redacted } : connector;
 }
 
 /**
@@ -612,13 +636,30 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     if (!deps.connectors.getAdapter(body.connector_type)) {
       throw new LoopError('VALIDATION_REQUIRED', `No adapter registered for connector type '${body.connector_type}'`, 400);
     }
+    const connectorId = crypto.randomUUID();
+    // V1.7 (L-2): `api_key` goes into the encrypted secrets store, NOT the
+    // plaintext config JSON column — the executor resolves it at dispatch time
+    // via its secretResolver. The registry row keeps only non-sensitive fields.
+    const { api_key: apiKey, ...configWithoutSecret } = body.config ?? {};
+    let storedConfig = configWithoutSecret as Record<string, unknown>;
+    if (typeof apiKey === 'string' && apiKey.length > 0) {
+      await deps.secretsManager.set({
+        name: 'api_key',
+        value: apiKey,
+        scope: 'connector',
+        scope_id: connectorId,
+        created_by: 'api',
+      });
+    } else {
+      storedConfig = body.config ?? {};
+    }
     const connector = await deps.store.connectors.create({
-      id: crypto.randomUUID(),
+      id: connectorId,
       connector_type: body.connector_type,
       name: body.name,
-      config: body.config,
+      config: storedConfig,
     });
-    deps.connectors.registerInstance(connector.id, body.connector_type, body.config);
+    deps.connectors.registerInstance(connector.id, body.connector_type, storedConfig);
     return reply.status(201).send({ success: true, data: connector, meta: meta(request) });
   });
 

@@ -47,7 +47,7 @@ declare module 'fastify' {
 const logger = createLogger({ name: 'loop:api:auth', component: 'api' });
 
 /** Path prefixes that are always public, even when auth is enforced. */
-const PUBLIC_PREFIXES = ['/health', '/ready', '/webhooks'] as const;
+const PUBLIC_PREFIXES = ['/health', '/ready', '/webhooks', '/api/v1/auth/login'] as const;
 
 /** The service account a valid static API key authenticates as. */
 const API_KEY_PRINCIPAL = 'system';

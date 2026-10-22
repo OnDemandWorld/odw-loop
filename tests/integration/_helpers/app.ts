@@ -90,6 +90,9 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     LOOP_LLM_TIMEOUT_MS: 2_000,
     LOOP_WORKFLOW_TIMEOUT_MS: 5_000,
     LOOP_EGRESS_UNCONFIGURED_POLICY: 'allow',
+    // Integration tests target loopback mocks — mirror a self-hosted suite
+    // on a trusted private network (V1.7 private-address blocklist escape).
+    LOOP_EGRESS_ALLOW_PRIVATE: true,
     LOOP_JWT_SECRET: 'test-jwt-secret-for-tests-only-32ch',
     LOOP_JWT_ACCESS_TTL: '15m',
     LOOP_JWT_REFRESH_TTL: '7d',
@@ -162,6 +165,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
   const egressGate = new EgressGate(egressEngine, {
     airgap: config.LOOP_AIRGAP_MODE,
     unconfiguredPolicy: config.LOOP_EGRESS_UNCONFIGURED_POLICY ?? 'allow',
+    allowPrivate: config.LOOP_EGRESS_ALLOW_PRIVATE ?? true,
   });
   const secretsManager = new SecretsManager(store, config.LOOP_ENCRYPTION_KEY);
   const llmRouter = createLLMRouter(config);

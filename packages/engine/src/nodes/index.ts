@@ -196,6 +196,16 @@ class ConditionParser {
 }
 
 export class BranchNode {
+  /**
+   * V1.7 (branch wiring): public entry for the executor. Evaluates a single
+   * `control.branch` condition against an execution context
+   * (`trigger.payload.*`, `variables.*`, `<nodeId>.output.*`) and reports
+   * which port fired.
+   */
+  static evaluateBranch(condition: string, context: Record<string, unknown>): boolean {
+    return this.evalCondition(condition, context);
+  }
+
   /** Evaluate a branch condition and return the selected branch ID. */
   static evaluate(conditions: Array<{ id: string; condition: string }>, context: Record<string, unknown>): string | null {
     for (const branch of conditions) {

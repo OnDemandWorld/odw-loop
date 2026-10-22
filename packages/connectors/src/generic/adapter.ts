@@ -33,9 +33,35 @@ export class GenericAdapter implements ConnectorAdapter {
     const headers = (params.config?.['headers'] as Record<string, string>) ?? {};
     const body = params.input['body'] as Record<string, unknown> | undefined;
 
+    // V1.7 (L-7): honour the `url` and `params` fields the canvas form offers.
+    // An absolute `url` overrides base_url+path (still egress-gated); `params`
+    // (object) is merged as query parameters after any inline ?query.
+    let target: string;
+    const inputUrl = params.input['url'];
+    if (typeof inputUrl === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(inputUrl)) {
+      target = inputUrl;
+    } else {
+      target = `${baseUrl}${path}${query}`;
+    }
+    const inputParams = params.input['params'];
+    if (inputParams !== null && typeof inputParams === 'object' && !Array.isArray(inputParams)) {
+      const search = new URLSearchParams();
+      for (const [key, value] of Object.entries(inputParams as Record<string, unknown>)) {
+        if (value === undefined || value === null) continue;
+        if (Array.isArray(value)) {
+          for (const item of value) search.append(key, String(item));
+        } else {
+          search.append(key, String(value));
+        }
+      }
+      const extra = search.toString();
+      if (extra.length > 0) {
+        target += target.includes('?') ? `&${extra}` : `?${extra}`;
+      }
+    }
+
     // The generic connector takes arbitrary targets from workflow input —
     // exactly the shape an SSRF needs. Enforce the egress gate when wired.
-    const target = `${baseUrl}${path}${query}`;
     await params.egress?.check(target);
 
     const response = await request(target, {
