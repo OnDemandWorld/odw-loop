@@ -30,6 +30,7 @@ export type ErrorCode =
   | 'CONFLICT_DUPLICATE'
   | 'REPLAY_IN_PROGRESS'
   | 'SECRET_CONFLICT'
+  | 'WORKFLOW_ARCHIVED'
   // Rate limit 429
   | 'RATE_LIMIT_EXCEEDED'
   // System 500

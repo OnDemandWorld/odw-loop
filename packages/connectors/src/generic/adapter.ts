@@ -32,6 +32,12 @@ export class GenericAdapter implements ConnectorAdapter {
     const query = qIndex === -1 ? '' : `?${rawPath.slice(qIndex + 1)}`;
     const headers = (params.config?.['headers'] as Record<string, string>) ?? {};
     const body = params.input['body'] as Record<string, unknown> | undefined;
+    // Authenticate upstream when an api_key is configured. The executor resolves
+    // it from the encrypted secrets store (POST /connectors strips it from the
+    // plaintext config); env-registered instances may carry it inline. Mirrors
+    // the Vault/Desk convention — without this the generic connector silently
+    // dropped the credential and called upstream unauthenticated.
+    const apiKey = params.secrets?.['api_key'] ?? (params.config?.['api_key'] as string) ?? '';
 
     // V1.7 (L-7): honour the `url` and `params` fields the canvas form offers.
     // An absolute `url` overrides base_url+path (still egress-gated); `params`
@@ -66,7 +72,11 @@ export class GenericAdapter implements ConnectorAdapter {
 
     const response = await request(target, {
       method: method as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
-      headers: { 'content-type': 'application/json', ...headers },
+      headers: {
+        'content-type': 'application/json',
+        ...headers,
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+      },
       body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body ?? {}),
       signal: params.signal,
     });

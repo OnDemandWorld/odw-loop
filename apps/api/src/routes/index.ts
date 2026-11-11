@@ -2,6 +2,7 @@
  * Route registration — all API endpoints from TSD §5.
  */
 
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { StateStore } from '@loop/state';
 import type { ConnectorRegistry } from '@loop/connectors';
@@ -87,6 +88,15 @@ function meta(request: FastifyRequest, extra?: Record<string, unknown>) {
 }
 
 /**
+ * Credential-bearing header names (case-insensitive). A fixed allowlist of four
+ * headers leaked the rest (x-auth-token, x-access-token, api-key, set-cookie,
+ * …); match by pattern instead so any auth/token/secret/cookie/key header is
+ * redacted. `api[-_]?key` is deliberately specific so benign headers such as
+ * `idempotency-key` are not treated as secrets.
+ */
+const CREDENTIAL_HEADER_RE = /(authorization|auth|token|secret|password|credential|cookie|api[-_]?key)/i;
+
+/**
  * Redact credential material from a connector row before it goes into a
  * response. config.api_key is a live upstream secret (Vault/Desk/Recap) —
  * it must never be readable back through the API.
@@ -105,14 +115,9 @@ export function redactConnectorSecrets<T extends { config?: Record<string, unkno
   const headers = redacted['headers'];
   if (headers !== null && typeof headers === 'object' && !Array.isArray(headers)) {
     const redactedHeaders: Record<string, unknown> = { ...(headers as Record<string, unknown>) };
-    for (const header of ['authorization', 'x-api-key', 'cookie', 'proxy-authorization']) {
-      const lower: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(redactedHeaders)) lower[k.toLowerCase()] = v;
-      if (typeof lower[header] === 'string') {
-        // preserve original casing when replacing
-        for (const [k, v] of Object.entries(redactedHeaders)) {
-          if (k.toLowerCase() === header) redactedHeaders[k] = '***redacted***';
-        }
+    for (const [k, v] of Object.entries(redactedHeaders)) {
+      if (typeof v === 'string' && CREDENTIAL_HEADER_RE.test(k)) {
+        redactedHeaders[k] = '***redacted***';
         changed = true;
       }
     }
@@ -200,6 +205,65 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
   });
 
+  // ─── Audit trail (§11 security checklist: "log security-relevant events") ──
+  // The audit_events table, the retrying store.audit.write path and the admin
+  // read route all existed, but nothing ever called write — the trail was
+  // permanently empty (found by runtime verification, case AU01). Record every
+  // successful mutating /api/v1 request centrally so workflow / trigger /
+  // secret / connector / egress changes are attributable. onSend gives us the
+  // serialized body (to capture a created resource's id) before the response
+  // flushes; a write failure is logged but never breaks the response.
+  const AUDIT_BASE_VERB: Record<string, string> = { POST: 'create', PUT: 'update', PATCH: 'update', DELETE: 'delete' };
+  const AUDIT_ACTION_SEGMENTS = new Set([
+    'execute', 'validate', 'instantiate', 'replay', 'cancel', 'complete', 'login', 'takeover', 'resolve', 'archive',
+  ]);
+  app.addHook('onSend', async (request, reply, payload) => {
+    try {
+      const method = request.method.toUpperCase();
+      const baseVerb = AUDIT_BASE_VERB[method];
+      if (!baseVerb) return payload;
+      const path = request.url.split('?')[0] ?? request.url;
+      if (!path.startsWith('/api/v1/')) return payload;
+      if (reply.statusCode < 200 || reply.statusCode >= 300) return payload;
+
+      const segments = path.slice('/api/v1/'.length).split('/').filter(Boolean);
+      const resourceRaw = segments[0] ?? 'unknown';
+      const resourceType = resourceRaw.endsWith('s') ? resourceRaw.slice(0, -1) : resourceRaw;
+      const last = segments[segments.length - 1] ?? '';
+      const actionVerb = method === 'POST' && AUDIT_ACTION_SEGMENTS.has(last) ? last : baseVerb;
+
+      const params = request.params as Record<string, unknown> | undefined;
+      let resourceId = typeof params?.['id'] === 'string' ? (params['id'] as string) : undefined;
+      if (!resourceId && typeof payload === 'string') {
+        try {
+          const body = JSON.parse(payload) as { data?: { id?: unknown } };
+          if (typeof body?.data?.id === 'string') resourceId = body.data.id;
+        } catch {
+          /* non-JSON payload */
+        }
+      }
+
+      let actor = request.authPrincipal ?? 'system';
+      if (resourceType === 'auth' && actionVerb === 'login') {
+        const username = (request.body as { username?: unknown } | undefined)?.username;
+        actor = typeof username === 'string' ? username : 'anonymous';
+      }
+
+      await deps.store.audit.write({
+        id: randomUUID(),
+        actor,
+        action: `${resourceType}.${actionVerb}`,
+        resource_type: resourceType,
+        resource_id: resourceId,
+        details: { method, path, status_code: reply.statusCode, role: request.authRole ?? null },
+        ip_address: request.ip,
+      });
+    } catch (err) {
+      logger.warn({ error: String(err) }, 'Audit write failed (non-fatal)');
+    }
+    return payload;
+  });
+
   // ─── Workflows (§5.3) ───────────────────────────────────────────────────
 
   // Fail-fast node-type validation: every node's connector prefix must be a
@@ -208,7 +272,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   // this a typo'd node type (e.g. `vaultt.search`) produced a green execution
   // that did nothing (found by QA round 1, case L-F07).
   const assertKnownNodeTypes = (definition: WorkflowDefinition): void => {
-    const passThrough = new Set(['stub', 'control']);
+    // 'workflow' is the engine built-in `workflow.invoke` (sub-workflow), not a
+    // connector — without it here every sub-workflow definition was rejected at
+    // create/instantiate time even though the executor handles it natively.
+    const passThrough = new Set(['stub', 'control', 'workflow']);
     for (const node of definition?.nodes ?? []) {
       const connectorType = String(node.type).split('.')[0] ?? node.type;
       if (passThrough.has(connectorType)) continue;
@@ -301,7 +368,16 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const { id } = request.params as { id: string };
     const body = request.body as { payload?: Record<string, unknown> };
     const actor = getActor(request);
-    const executionId = await deps.manualHandler.trigger(id, body?.payload ?? {}, actor.principal);
+    // Resolve the workflow BEFORE creating an execution row: getById throws a
+    // 404 for an unknown id (previously the manual trigger inserted first and
+    // the FK violation surfaced as a 500), and an archived workflow must not
+    // run at all.
+    const workflow = await deps.authoring.getById(id);
+    if (workflow.status === 'archived') {
+      throw new LoopError('WORKFLOW_ARCHIVED', `Workflow '${id}' is archived and cannot be executed`, 409);
+    }
+    const payload = body?.payload ?? {};
+    const executionId = await deps.manualHandler.trigger(id, payload, actor.principal);
     // The manual trigger only persists a *pending* execution record; actually
     // run the workflow asynchronously. The executor transitions the execution
     // pending -> running -> succeeded/failed and the client polls
@@ -309,10 +385,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     // testing: executions previously stayed 'pending' forever because nothing
     // ever invoked the executor, so workflow nodes — incl. the Vault/Desk
     // connectors — never ran.)
-    const payload = body?.payload ?? {};
     void (async () => {
       try {
-        const workflow = await deps.authoring.getById(id);
         await deps.executor.execute(executionId, workflow.definition, payload);
       } catch (err) {
         // Guarded transition — a user-cancelled execution is not overwritten.
@@ -350,6 +424,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/v1/executions/:id', async (request) => {
     const { id } = request.params as { id: string };
     const execution = await deps.store.executions.getById(id);
+    if (!execution) throw new NotFoundError('execution', id);
     const nodeExecutions = await deps.store.nodeExecutions.listByExecution(id);
     return { success: true, data: { ...execution, nodes: nodeExecutions }, meta: meta(request) };
   });
@@ -446,11 +521,20 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       }
     }
 
+    // Webhook triggers must be signed: auto-generate a secret when the caller
+    // didn't supply one, so a freshly created webhook is never an open endpoint
+    // that accepts unsigned events. Returned once in the create response
+    // (GitHub-style) and redacted on every subsequent read.
+    let triggerConfig = body.config;
+    if (body.trigger_type === 'webhook' && typeof triggerConfig['secret'] !== 'string') {
+      triggerConfig = { ...triggerConfig, secret: randomBytes(32).toString('hex') };
+    }
+
     const trigger = await deps.store.triggers.create({
       id: crypto.randomUUID(),
       workflow_id: workflowId,
       trigger_type: body.trigger_type,
-      config: body.config,
+      config: triggerConfig,
     });
 
     // Register cron triggers immediately — previously they only took effect
@@ -518,7 +602,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
 
     const trigger = await deps.store.triggers.getById(triggerId);
-    return { success: true, data: trigger, meta: meta(request) };
+    return { success: true, data: trigger ? redactTriggerSecrets(trigger) : trigger, meta: meta(request) };
   });
 
   app.get('/api/v1/workflows/:id/triggers', async (request) => {

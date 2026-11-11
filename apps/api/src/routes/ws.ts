@@ -91,6 +91,10 @@ export async function registerExecutionWebSocket(app: FastifyInstance, deps: WsR
 
     /** Subscribe to the bus and forward events until the socket closes. */
     function attach(sock: RealtimeSocket, execId: string): void {
+      // Auth resolves asynchronously; the client may have disconnected in the
+      // meantime. Attaching to a closed socket leaks a bus subscription — its
+      // 'close' event already fired, so the cleanup listener never runs.
+      if (sock.readyState !== WS_OPEN) return;
       const unsubscribe = bus.subscribe(execId, (event: ExecutionBusEvent) => {
         if (sock.readyState !== WS_OPEN) return;
         try {

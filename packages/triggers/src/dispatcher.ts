@@ -41,17 +41,26 @@ export class TriggerDispatcher {
       }
 
       if (matches) {
-        const executionId = randomUUID();
         // Snapshot the workflow's current version at trigger time (M5 parity
         // with the cron/webhook paths) — a hardcoded 1 resolved stale
-        // definitions during replay.
+        // definitions during replay. Also skip archived workflows: a workflow
+        // archived via PUT (which doesn't disarm triggers) must not keep firing.
         let workflowVersion = 1;
+        let archived = false;
         try {
           const workflow = await this.store.workflows.getById(trigger.workflow_id);
-          if (workflow) workflowVersion = workflow.version;
+          if (workflow) {
+            workflowVersion = workflow.version;
+            archived = workflow.status === 'archived';
+          }
         } catch {
           logger.warn({ workflowId: trigger.workflow_id }, 'Failed to read workflow version, defaulting to 1');
         }
+        if (archived) {
+          logger.warn({ triggerId: trigger.id, workflowId: trigger.workflow_id }, 'Event trigger skipped: workflow is archived');
+          continue;
+        }
+        const executionId = randomUUID();
         await this.store.executions.create({
           id: executionId,
           workflow_id: trigger.workflow_id,

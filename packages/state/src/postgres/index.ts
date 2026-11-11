@@ -362,6 +362,18 @@ export class PostgresStateStore implements StateStore {
       return (result.rowCount ?? 0) > 0;
     },
 
+    startIfNotCancelled: async (id: string, data: { started_at?: string }) => {
+      const setClauses = ["status = 'running'"];
+      const params: unknown[] = [id];
+      let paramIdx = 2;
+      if (data.started_at !== undefined) { setClauses.push(`started_at = $${paramIdx}`); params.push(data.started_at); paramIdx++; }
+      const result = await this.conn.pool.query(
+        `UPDATE workflow_executions SET ${setClauses.join(', ')} WHERE id = $1 AND status <> 'cancelled'`,
+        params,
+      );
+      return (result.rowCount ?? 0) > 0;
+    },
+
     findInterrupted: async () => {
       // 'running' (died mid-execution) AND 'pending' (created but never
       // dispatched — e.g. crash between record creation and executor pickup).

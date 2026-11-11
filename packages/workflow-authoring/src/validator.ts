@@ -46,6 +46,18 @@ export function validateWorkflow(definition: WorkflowDefinition): ValidationResu
     }
   }
 
+  // Branch ports: a control.branch decides 'true'/'false'; an outgoing edge on
+  // any other port (e.g. the default 'output') is pruned at runtime, silently
+  // dropping that arm. Surface the misconfiguration at authoring time.
+  for (const edge of edges) {
+    const sourceNode = nodeMap.get(edge.source);
+    if (sourceNode?.type === 'control.branch' && edge.source_port !== 'true' && edge.source_port !== 'false') {
+      warnings.push(
+        `Edge '${edge.id}' leaves branch node '${edge.source}' on port '${edge.source_port}' — branch arms must use 'true' or 'false' (this arm will never execute)`,
+      );
+    }
+  }
+
   // Rule 4: Required config — nodes with config schemas should have required fields
   // (This would require connector-specific config schemas; for now we skip deep validation)
 

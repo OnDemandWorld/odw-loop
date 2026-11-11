@@ -2,7 +2,7 @@
  * SQLite implementation of the StateStore interface.
  */
 
-import { eq, and, desc, asc, or, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, or, sql, inArray, ne } from 'drizzle-orm';
 import { createLogger } from '@loop/observability';
 import type { WorkflowDefinition } from '@loop/types';
 import type {
@@ -305,6 +305,17 @@ export class SqliteStateStore implements StateStore {
       }).where(and(
         eq(schema.workflowExecutions.id, id),
         inArray(schema.workflowExecutions.status, ['pending', 'running']),
+      )).run();
+      return result.changes > 0;
+    },
+
+    startIfNotCancelled: async (id: string, data: { started_at?: string }) => {
+      const result = this.db.update(schema.workflowExecutions).set({
+        status: 'running',
+        ...(data.started_at !== undefined ? { started_at: data.started_at } : {}),
+      }).where(and(
+        eq(schema.workflowExecutions.id, id),
+        ne(schema.workflowExecutions.status, 'cancelled'),
       )).run();
       return result.changes > 0;
     },

@@ -43,6 +43,10 @@ export class ExecutionRecovery {
           error: 'Interrupted by system restart',
           completed_at: new Date().toISOString(),
         });
+        await recordEvent(this.store, execution.id, 'execution_failed', undefined, {
+          error: 'Interrupted by system restart',
+          reason: 'recovery_non_recoverable',
+        });
         logger.info({ executionId: execution.id }, 'Marked non-recoverable execution as failed');
         failed++;
         continue;
@@ -70,6 +74,10 @@ export class ExecutionRecovery {
             status: 'failed',
             error: `Recovery dispatch failed: ${String(err)}`,
             completed_at: new Date().toISOString(),
+          });
+          await recordEvent(this.store, execution.id, 'execution_failed', undefined, {
+            error: `Recovery dispatch failed: ${String(err)}`,
+            reason: 'recovery_dispatch_failed',
           });
           logger.warn({ executionId: execution.id, error: String(err) }, 'Recovery dispatch failed');
           failed++;

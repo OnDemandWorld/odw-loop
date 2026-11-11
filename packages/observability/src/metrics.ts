@@ -6,9 +6,17 @@
  * never fail at load time.
  */
 
+import { createRequire } from 'node:module';
 import { createLogger } from './logger.js';
 
 const logger = createLogger({ name: 'loop:metrics', component: 'observability' });
+
+// The package is ESM ("type": "module"), so the bare CommonJS `require` global
+// does not exist at runtime — a plain `require('prom-client')` threw, was
+// swallowed by the catch below, and silently degraded every metric to a no-op
+// stub (/metrics returned an empty body). createRequire gives us a real require
+// bound to this module while keeping prom-client optional at load time.
+const require = createRequire(import.meta.url);
 
 // ──────────────────────────────────────────────────────────────────────────────
 // prom-client types (loaded dynamically so the package stays optional at runtime)

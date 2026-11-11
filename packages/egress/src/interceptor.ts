@@ -48,23 +48,90 @@ export function isPrivateIPv4(ip: string): boolean {
   return PRIVATE_V4_RANGES.some(([base, bits]) => ipv4InCidr(ip, base, bits));
 }
 
+/**
+ * Expand an IPv6 literal into eight 16-bit hextets, or null when malformed.
+ * Handles `::` compression, an embedded trailing dotted-quad (`::ffff:127.0.0.1`),
+ * bracketed literals and zone indices (`fe80::1%eth0`). Canonicalizing first is
+ * what closes the SSRF bypass: `::ffff:7f00:1` and `0:0:0:0:0:ffff:127.0.0.1`
+ * are the same loopback target as `::ffff:127.0.0.1`, but a textual regex only
+ * matched the last form.
+ */
+function expandIPv6(ip: string): number[] | null {
+  let addr = ip.toLowerCase().replace(/^\[|\]$/g, '');
+  const pct = addr.indexOf('%');
+  if (pct !== -1) addr = addr.slice(0, pct);
+
+  // Fold a trailing dotted-quad into two hextets so the rest is pure hex.
+  const tailHextets: number[] = [];
+  const lastColon = addr.lastIndexOf(':');
+  const tail = addr.slice(lastColon + 1);
+  if (tail.includes('.')) {
+    const octets = tail.split('.').map((o) => Number(o));
+    if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) return null;
+    // eslint-disable-next-line no-bitwise
+    tailHextets.push(((octets[0]! << 8) | octets[1]!) >>> 0, ((octets[2]! << 8) | octets[3]!) >>> 0);
+    addr = addr.slice(0, lastColon);
+  }
+
+  const parseGroups = (groups: string[]): number[] | null => {
+    const out: number[] = [];
+    for (const g of groups) {
+      if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+      out.push(Number.parseInt(g, 16));
+    }
+    return out;
+  };
+
+  const doubleIdx = addr.indexOf('::');
+  let head: string[];
+  let rest: string[];
+  if (doubleIdx !== -1) {
+    if (addr.indexOf('::', doubleIdx + 1) !== -1) return null; // only one '::' allowed
+    const headStr = addr.slice(0, doubleIdx);
+    const restStr = addr.slice(doubleIdx + 2);
+    head = headStr.length ? headStr.split(':') : [];
+    rest = restStr.length ? restStr.split(':') : [];
+  } else {
+    head = addr.length ? addr.split(':') : [];
+    rest = [];
+  }
+
+  const headNums = parseGroups(head);
+  const restNums = parseGroups(rest);
+  if (headNums === null || restNums === null) return null;
+
+  let full: number[];
+  if (doubleIdx !== -1) {
+    const zeros = 8 - (headNums.length + restNums.length + tailHextets.length);
+    if (zeros < 1) return null; // '::' must compress at least one group
+    full = [...headNums, ...Array<number>(zeros).fill(0), ...restNums, ...tailHextets];
+  } else {
+    full = [...headNums, ...restNums, ...tailHextets];
+  }
+  return full.length === 8 ? full : null;
+}
+
 /** True for loopback/ULA/link-local/unspecified/v4-mapped-private IPv6 addresses. */
 export function isPrivateIPv6(ip: string): boolean {
-  const normalized = ip.toLowerCase().replace(/^\[|\]$/g, '');
-  if (normalized === '::1' || normalized === '::') return true;
-  // v4-mapped (::ffff:a.b.c.d) — evaluate the embedded IPv4.
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized);
-  if (mapped) return isPrivateIPv4(mapped[1]!);
-  const first = normalized.split(':')[0] ?? '';
-  if (first.length === 0) return false;
-  // fc00::/7 unique-local and fe80::/10 link-local by leading 16 bits.
-  const high16 = Number.parseInt(first.padEnd(4, '0'), 16);
-  if (Number.isFinite(high16)) {
-    // eslint-disable-next-line no-bitwise
-    if (((high16 & 0xfe00) >>> 0) === 0xfc00) return true;
-    // eslint-disable-next-line no-bitwise
-    if (((high16 & 0xffc0) >>> 0) === 0xfe80) return true;
+  const groups = expandIPv6(ip);
+  if (groups === null) return false;
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups as [number, number, number, number, number, number, number, number];
+  // Unspecified (::) and loopback (::1).
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0 && g6 === 0 && (g7 === 0 || g7 === 1)) {
+    return true;
   }
+  // IPv4-mapped (::ffff:0:0/96) and IPv4-compatible (::/96): evaluate the
+  // embedded IPv4 regardless of how it was written (hex hextets or dotted).
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && (g5 === 0xffff || g5 === 0)) {
+    // eslint-disable-next-line no-bitwise
+    const embedded = `${g6 >>> 8}.${g6 & 0xff}.${g7 >>> 8}.${g7 & 0xff}`;
+    return isPrivateIPv4(embedded);
+  }
+  // fc00::/7 unique-local and fe80::/10 link-local by leading 16 bits.
+  // eslint-disable-next-line no-bitwise
+  if ((g0 & 0xfe00) === 0xfc00) return true;
+  // eslint-disable-next-line no-bitwise
+  if ((g0 & 0xffc0) === 0xfe80) return true;
   return false;
 }
 

@@ -356,13 +356,16 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   // ─── Shutdown ────────────────────────────────────────────────────────────
 
   app.addHook('onClose', async () => {
+    // Stop scheduled triggers FIRST so no new cron executions start during the
+    // drain window — a tick mid-drain would otherwise spawn work that outlives
+    // the graceful-shutdown budget.
+    cronHandler.shutdown();
     // V1.7 (L-10): wait (bounded) for in-flight executions so side effects are
     // not severed mid-flight; recovery remains the safety net for the rest.
     const drained = await executor.drain(10_000);
     if (!drained) {
       logger.warn('Executor drain timed out — in-flight executions will be recovered on next startup');
     }
-    cronHandler.shutdown();
     await store.close();
     logger.info('Server closed');
   });

@@ -25,6 +25,11 @@ const OPERATORS = [
   '>', '<', '!', '(', ')',
 ] as const;
 
+/** JSON string escapes decoded inside condition string literals. */
+const STRING_ESCAPES: Record<string, string> = {
+  n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '/': '/', '\\': '\\', '\'': '\'', '"': '"',
+};
+
 function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
@@ -34,12 +39,44 @@ function tokenize(input: string): Token[] {
       i++;
       continue;
     }
-    // String literal ('…' or "…") — no escapes, conditions compare scalars.
+    // String literal ('…' or "…") with JSON escape handling. Interpolated
+    // {{reference}} values are JSON.stringify'd, so a value containing a quote
+    // or backslash arrives escaped (e.g. "a\"b", "C:\\temp"). The previous
+    // indexOf(closeQuote) scan truncated at the first inner quote and failed
+    // the whole condition closed; decode escapes so such values round-trip.
     if (ch === '\'' || ch === '"') {
-      const end = input.indexOf(ch, i + 1);
-      if (end === -1) throw new Error('unterminated string literal');
-      tokens.push({ kind: 'string', value: input.slice(i + 1, end) });
-      i = end + 1;
+      let j = i + 1;
+      let value = '';
+      let closed = false;
+      while (j < input.length) {
+        const c = input[j]!;
+        if (c === '\\') {
+          const next = input[j + 1];
+          if (next === undefined) throw new Error('unterminated string literal');
+          if (next === 'u') {
+            const hex = input.slice(j + 2, j + 6);
+            if (!/^[0-9a-fA-F]{4}$/.test(hex)) throw new Error('invalid unicode escape in condition');
+            value += String.fromCharCode(Number.parseInt(hex, 16));
+            j += 6;
+            continue;
+          }
+          const decoded = STRING_ESCAPES[next];
+          if (decoded === undefined) throw new Error(`invalid escape '\\${next}' in condition`);
+          value += decoded;
+          j += 2;
+          continue;
+        }
+        if (c === ch) {
+          closed = true;
+          j++;
+          break;
+        }
+        value += c;
+        j++;
+      }
+      if (!closed) throw new Error('unterminated string literal');
+      tokens.push({ kind: 'string', value });
+      i = j;
       continue;
     }
     // Number literal.
@@ -275,8 +312,22 @@ export class ApprovalNode {
 // ─── Delay ────────────────────────────────────────────────────────────────────
 
 export class DelayNode {
-  /** Pause execution for a specified duration. */
-  static async delay(durationMs: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, durationMs));
+  /** Pause execution for a specified duration, abortable via signal. */
+  static async delay(durationMs: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error('Delay aborted'));
+        return;
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, durationMs);
+      function onAbort(): void {
+        clearTimeout(timer);
+        reject(new Error('Delay aborted'));
+      }
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
   }
 }

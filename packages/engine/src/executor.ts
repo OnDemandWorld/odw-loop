@@ -132,6 +132,12 @@ export interface ExecuteOptions {
   parentExecutionId?: string;
   /** Definition keys already on the invocation stack (cycle detection). */
   visited?: Set<string>;
+  /**
+   * The parent node's fused abort signal. A sub-workflow must stop when its
+   * parent times out or is cancelled — otherwise the child keeps running
+   * orphaned, firing connector side effects after the parent already failed.
+   */
+  parentSignal?: AbortSignal;
 }
 
 export class ExecutionExecutor {
@@ -261,19 +267,21 @@ export class ExecutionExecutor {
       skippedNodes: new Set(),
       variables,
     };
-    this.activeRuns++;
 
     // V1.1 M1 (F1 resume / F2 idempotency): seed the context with outputs of
     // nodes that already succeeded for this execution so a resumed run skips
     // them instead of re-dispatching (and re-triggering side effects).
     await this.loadCompletedOutputs(executionId, ctx);
 
-    // Transition execution to running
-    await this.store.executions.updateStatus(executionId, {
-      status: 'running',
+    // Guarded start (cancel-before-start race): a user may cancel a pending
+    // execution before the executor picks it up; never overwrite 'cancelled'.
+    // Non-cancelled terminal states are still allowed so replay can re-run them.
+    const started = await this.store.executions.startIfNotCancelled(executionId, {
       started_at: new Date().toISOString(),
     });
-    metrics.activeExecutions.inc();
+    if (!started) {
+      throw new LoopError('EXECUTION_CANCELLED', `Execution '${executionId}' was cancelled before it started`, 400);
+    }
     await recordEvent(this.store, executionId, 'execution_started', undefined, {
       resumed: ctx.completedOutputs.size > 0,
     });
@@ -294,8 +302,19 @@ export class ExecutionExecutor {
       workflowTimedOut = true;
       controller.abort();
     }, workflowTimeoutMs);
+    // Fuse the parent's abort signal (sub-workflow invocation) into this
+    // execution's controller so a parent timeout/cancel stops the child too.
+    const parentSignal = options?.parentSignal;
+    const forwardParentAbort = (): void => controller.abort();
+    if (parentSignal?.aborted) controller.abort();
+    else parentSignal?.addEventListener('abort', forwardParentAbort, { once: true });
 
     try {
+      // Counters are incremented INSIDE the try so the finally always balances
+      // them — incrementing before the try leaked activeRuns whenever the
+      // setup (start transition / event write) threw.
+      this.activeRuns++;
+      metrics.activeExecutions.inc();
       // Group nodes into topological levels; nodes within a level have no
       // inter-dependencies and run in parallel (§6.2). Levels run sequentially
       // so downstream nodes observe upstream outputs.
@@ -314,6 +333,11 @@ export class ExecutionExecutor {
         const current = await this.store.executions.getById(executionId);
         if (current?.status === 'cancelled') {
           throw new LoopError('EXECUTION_CANCELLED', `Execution '${executionId}' was cancelled`, 400);
+        }
+        // A parent abort that lands between levels (parent timeout/cancel) must
+        // also stop scheduling — the child row itself is never flipped.
+        if (controller.signal.aborted) {
+          throw new LoopError('EXECUTION_CANCELLED', `Execution '${executionId}' was aborted by its parent workflow`, 400);
         }
         // V1.7 (branch wiring): prune nodes whose every incoming edge is off a
         // non-taken branch port (or descends from a pruned node) BEFORE the
@@ -349,6 +373,7 @@ export class ExecutionExecutor {
       throw finalErr;
     } finally {
       clearTimeout(timer);
+      parentSignal?.removeEventListener('abort', forwardParentAbort);
       metrics.activeExecutions.dec();
       this.activeRuns--;
     }
@@ -384,19 +409,29 @@ export class ExecutionExecutor {
         continue;
       }
       ctx.skippedNodes.add(node.id);
-      const nodeExecId = randomUUID();
-      await this.store.nodeExecutions.create({
-        id: nodeExecId,
-        execution_id: ctx.executionId,
-        node_id: node.id,
-        node_type: node.type,
-        input: node.config,
-        idempotency_key: `${ctx.executionId}:${node.id}`,
-      });
-      await this.store.nodeExecutions.updateStatus(nodeExecId, {
-        status: 'skipped',
-        completed_at: new Date().toISOString(),
-      });
+      const idempotencyKey = `${ctx.executionId}:${node.id}`;
+      // A replay / crash-recovery re-prunes the same node; reuse its existing
+      // row instead of INSERTing a duplicate that the UNIQUE(idempotency_key)
+      // index would reject (which crashed the whole re-run).
+      const existing = await this.store.nodeExecutions.findByIdempotencyKey(idempotencyKey);
+      const nodeExecId = existing?.id ?? randomUUID();
+      if (!existing) {
+        await this.store.nodeExecutions.create({
+          id: nodeExecId,
+          execution_id: ctx.executionId,
+          node_id: node.id,
+          node_type: node.type,
+          input: node.config,
+          idempotency_key: idempotencyKey,
+        });
+      }
+      // Never downgrade a node that already succeeded (a previously taken arm).
+      if (existing?.status !== 'succeeded') {
+        await this.store.nodeExecutions.updateStatus(nodeExecId, {
+          status: 'skipped',
+          completed_at: new Date().toISOString(),
+        });
+      }
       await recordEvent(this.store, ctx.executionId, 'node_skipped', node.id, {
         reason: 'branch_not_taken',
       });
@@ -762,7 +797,7 @@ export class ExecutionExecutor {
     // connector — intercept it before connector routing so it recurses into a
     // child execution on the same executor (reusing timeout/events/idempotency).
     if (node.type === 'workflow.invoke') {
-      return this.invokeSubWorkflow(node, input, ctx);
+      return this.invokeSubWorkflow(node, input, ctx, signal);
     }
 
     // V1.7 (L-4): `control.delay` is an engine built-in — actually wait (bounded
@@ -773,7 +808,7 @@ export class ExecutionExecutor {
       if (!Number.isFinite(ms) || ms < 0) {
         throw new LoopError('VALIDATION_INVALID', `control.delay node '${node.id}' requires a non-negative numeric duration_ms`, 400);
       }
-      await DelayNode.delay(Math.floor(ms));
+      await DelayNode.delay(Math.floor(ms), signal);
       return { delayed_ms: Math.floor(ms) };
     }
 
@@ -1010,6 +1045,7 @@ export class ExecutionExecutor {
     node: WorkflowNode,
     input: Record<string, unknown>,
     ctx: ExecutorContext,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     const childDepth = ctx.depth + 1;
     if (childDepth > this.maxSubWorkflowDepth) {
@@ -1109,6 +1145,7 @@ export class ExecutionExecutor {
       depth: childDepth,
       parentExecutionId: ctx.executionId,
       visited,
+      ...(signal ? { parentSignal: signal } : {}),
     });
 
     // Output return (S3): expose the child's final per-node outputs.

@@ -80,6 +80,16 @@ function clearFailures(username: string): void {
   failures.delete(username);
 }
 
+/** Parse a TTL duration string ('90s', '15m', '12h', '7d') into seconds. */
+function ttlSeconds(ttl: string | undefined): number {
+  const match = /^(\d+)\s*([smhd])$/.exec((ttl ?? '').trim());
+  if (!match) return 15 * 60; // missing/unparseable → the schema default (15m)
+  const n = Number(match[1]);
+  const unit = match[2];
+  const mult = unit === 's' ? 1 : unit === 'm' ? 60 : unit === 'h' ? 3600 : 86400;
+  return n * mult;
+}
+
 export interface AuthRoutesDeps {
   store: StateStore;
   config: LoopConfig;
@@ -111,11 +121,14 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRoutesDeps): 
 
     const secret = new TextEncoder().encode(deps.config.LOOP_JWT_SECRET);
     const now = Math.floor(Date.now() / 1000);
+    // Honour LOOP_JWT_ACCESS_TTL (default 15m) — the lifetime was previously
+    // hardcoded to 12h, so the configured TTL was dead config.
+    const ttl = ttlSeconds(deps.config.LOOP_JWT_ACCESS_TTL);
     const token = await new SignJWT({ role: mapRole(user.role) })
       .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
       .setSubject(user.id)
       .setIssuedAt(now)
-      .setExpirationTime(now + 12 * 60 * 60)
+      .setExpirationTime(now + ttl)
       .sign(secret);
 
     logger.info({ username }, 'User login succeeded');
@@ -124,7 +137,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRoutesDeps): 
       data: {
         token,
         token_type: 'Bearer',
-        expires_in: 12 * 60 * 60,
+        expires_in: ttl,
         user: { id: user.id, username: user.username, email: user.email, role: mapRole(user.role) },
       },
     });

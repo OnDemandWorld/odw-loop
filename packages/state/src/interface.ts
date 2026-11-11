@@ -164,6 +164,19 @@ export interface StateStore {
       },
     ): Promise<boolean>;
 
+    /**
+     * Guarded start transition: flips the execution to `running` (stamping
+     * started_at) unless it is already `cancelled`, returning whether it
+     * applied. Closes the cancel-before-start race — a user cancelling a
+     * pending execution must not be overwritten by the executor's start write.
+     * Non-cancelled terminal states (succeeded/failed) are still allowed so the
+     * replay/resume path can re-run them.
+     */
+    startIfNotCancelled(
+      id: string,
+      data: { started_at?: string },
+    ): Promise<boolean>;
+
     findInterrupted(): Promise<WorkflowExecution[]>;
   };
 

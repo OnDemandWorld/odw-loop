@@ -44,7 +44,7 @@ export class RecapAdapter implements ConnectorAdapter {
       case 'list_meetings':
         return this.callRecap(baseUrl, token, 'GET', '/meetings/', undefined, idemKey, params);
       case 'get_meeting':
-        return this.callRecap(baseUrl, token, 'GET', `/meetings/${String(params.input['id'])}`, undefined, idemKey, params);
+        return this.callRecap(baseUrl, token, 'GET', `/meetings/${encodeURIComponent(String(params.input['id'] ?? ''))}`, undefined, idemKey, params);
       case 'create_meeting':
         return this.callRecap(baseUrl, token, 'POST', '/meetings/', params.input, idemKey, params);
       case 'sync':

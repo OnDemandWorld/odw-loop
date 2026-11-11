@@ -4,6 +4,8 @@
 
 import Database from 'better-sqlite3';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { createLogger } from '@loop/observability';
 import * as schema from '../schema.js';
 
@@ -63,6 +65,13 @@ export interface SqliteConnectionOptions {
 }
 
 export function createSqliteConnection(opts: SqliteConnectionOptions): SqliteConnection {
+  // A fresh deployment may point LOOP_DB_PATH at a directory that does not
+  // exist yet (e.g. a new volume mount). better-sqlite3 refuses to create the
+  // file in a missing directory, which crashed the API at boot — create the
+  // parent tree first (no-op for ':memory:' and existing directories).
+  if (opts.path !== ':memory:') {
+    mkdirSync(dirname(opts.path), { recursive: true });
+  }
   const client = new Database(opts.path);
   openClients.add(client);
   installProcessExitHook();
