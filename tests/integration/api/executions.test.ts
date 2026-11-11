@@ -8,7 +8,6 @@ import type { WorkflowDefinition } from '../../../packages/types/src/index.js';
 import {
   buildTestApp,
   seedWorkflow,
-  SYSTEM_USER_ID,
   type TestApp,
 } from '../_helpers/app.js';
 

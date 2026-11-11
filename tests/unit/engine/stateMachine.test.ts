@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { StateMachine } from '../../../packages/engine/src/stateMachine';
-import type { ExecutionState, NodeState } from '../../../packages/engine/src/stateMachine';
 
 describe('StateMachine - Execution State Transitions', () => {
   describe('Valid execution transitions', () => {

@@ -10,7 +10,6 @@ import { describe, it, expect } from 'vitest';
 import {
   createSqliteConnection,
   SqliteStateStore,
-  type SqliteConnection,
 } from '../../../packages/state/src/index.js';
 
 const EXPECTED_TABLES = [

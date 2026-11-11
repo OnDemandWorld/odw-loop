@@ -16,7 +16,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { createTestContext, type TestContext, createNode, createEdge } from './helpers';
+import { createTestContext, type TestContext, createNode } from './helpers';
 import type { WorkflowDefinition } from '../../packages/types';
 
 /**

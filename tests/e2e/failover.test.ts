@@ -21,7 +21,6 @@ import {
   type TestContext,
 } from './helpers';
 import { ExecutionRecovery } from '../../packages/engine/src/recovery';
-import { createSqliteConnection, SqliteStateStore } from '../../packages/state/src';
 
 describe('Failover / execution recovery (E2E)', () => {
   let ctx: TestContext;

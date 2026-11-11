@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { topologicalSort, computeLevels } from '../../../packages/engine/src/scheduler';
-import { ValidationError } from '../../../packages/types/src/errors';
 import type { WorkflowNode, WorkflowEdge } from '../../../packages/types/src/schemas/workflow';
 
 function createNode(id: string): WorkflowNode {

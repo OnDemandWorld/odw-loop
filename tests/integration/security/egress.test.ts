@@ -13,7 +13,6 @@ import {
   type SqliteConnection,
 } from '../../../packages/state/src/index.js';
 import { EgressEngine, EgressInterceptor } from '../../../packages/egress/src/index.js';
-import { LoopError } from '../../../packages/types/src/index.js';
 
 // Mock the resolver so tests are deterministic (no real DNS).
 vi.mock('../../../packages/egress/src/resolver.js', () => ({

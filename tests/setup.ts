@@ -12,8 +12,15 @@
  */
 
 import { afterEach } from 'vitest';
+import { WebSocket as UndiciWebSocket } from 'undici';
 
 import { closeTrackedConnections } from './helpers/testStore.js';
+
+// Node exposes a global WebSocket only from v22 (unflagged) onward; CI and the
+// Docker images run Node 20, so back it with undici's spec-compliant client.
+if (typeof globalThis.WebSocket === 'undefined') {
+  (globalThis as Record<string, unknown>).WebSocket = UndiciWebSocket;
+}
 
 afterEach(() => {
   closeTrackedConnections();

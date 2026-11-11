@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { LLMRouter } from '../../../packages/llm/src/router';
-import type { LLMProvider, CompletionRequest, CompletionResponse } from '../../../packages/llm/src/interface';
+import type { LLMProvider, CompletionRequest } from '../../../packages/llm/src/interface';
 
 describe('LLMRouter', () => {
   it('falls through to next provider on failure', async () => {

@@ -27,7 +27,7 @@ import { ExecutionExecutor } from '../../packages/engine/src/executor';
 import { ConnectorRegistry } from '../../packages/connectors/src';
 import { DeskAdapter } from '../../packages/connectors/src/desk/adapter';
 import { GenericAdapter } from '../../packages/connectors/src/generic/adapter';
-import { createSqliteConnection, SqliteStateStore, type SqliteConnection } from '../../packages/state/src';
+import { createSqliteConnection, SqliteStateStore } from '../../packages/state/src';
 import {
   redactConnectorSecrets,
   redactTriggerSecrets,

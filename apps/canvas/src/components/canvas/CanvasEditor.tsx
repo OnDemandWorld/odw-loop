@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import ReactFlow, {
   addEdge,
   useNodesState,
@@ -36,7 +36,7 @@ interface CanvasEditorProps {
 }
 
 export function CanvasEditor({ initialNodes = [], initialEdges = [], onNodesChange, onEdgesChange }: CanvasEditorProps) {
-  const [nodes, setNodes, onNodesChangeInternal] = useNodesState(initialNodes);
+  const [nodes, _setNodes, onNodesChangeInternal] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChangeInternal] = useEdgesState(initialEdges);
 
   const onConnect = useCallback(
