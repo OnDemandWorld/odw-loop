@@ -1,6 +1,6 @@
 # Loop — Development Status
 
-**Last Updated:** 2026-08-02
+**Last Updated:** 2026-11-11
 **Status:** ✅ V1.0 complete + V1.1 M1 (execution reliability) + V1.1 M2 (frontend usability + real-time monitoring) + V1.2 M3 (sub-workflow invocation) + V1.3 M1 (event-sourced replay) + V1.3 RBAC (role-based access control) + V1.4 M2 (replay output persistence) + V1.5 M1 (PostgreSQL Scale layer + test hardening + distributed tracing) + V1.6 M1 (DB lifecycle root-cause fix + tracing spans) implemented
 
 ---
@@ -664,3 +664,27 @@ The project includes comprehensive documentation:
 | Tests | 30 (16 unit + 8 integration + 6 E2E) |
 | Documentation | 11 (README, DEVELOPMENT, CONTRIBUTING, AGENTS, CHANGELOG, DEPRECATED, prd, sad, tsd, tbk, research) |
 | **Total** | **~167 files** |
+
+---
+
+## Deep-Review Round 7 — Full-Flow Runtime Verification (2026-11-11)
+
+Verified the whole engine end-to-end against **real processes + test data**, not
+just unit mocks: `scripts/runtime-verify/verify.mjs` boots the built API
+(`node apps/api/dist/server.js`) plus mock Vault/Desk/Recap/REST/LLM upstreams and
+runs 100 assertions across auth/RBAC, templates, CRUD, webhook/cron/event triggers,
+connectors/secrets/egress, LLM, retry/timeout, WebSocket, concurrency,
+sub-workflows, crash recovery (resume + non-recoverable), graceful drain and
+production guardrails.
+
+**Measured results:** harness 100/100; build 16/16; typecheck 0 errors; lint 0
+errors; unit 685 + integration 169 + e2e 29 = **883 tests green**.
+
+Two P0 defects found and fixed: an IPv6 v4-mapped SSRF bypass (hex/expanded
+spellings evaded the private-range blocklist) and a permanently-empty audit trail
+(`store.audit.write` had no caller). Plus a batch of correctness fixes (cancel
+propagation, abortable delay, condition-escape decoding, ESM `/metrics`, JWT TTL,
+archived/unknown workflow + execution 404/409, generic api_key Bearer). See
+CHANGELOG 2026-11-11 for the full list and NEXT_STEPS.md (round-7 appendix) for the
+honest deferred items (DNS-rebinding pinning, webhook replay window, production
+auth enforcement, execution-data-at-rest encryption, template drift, sandbox).

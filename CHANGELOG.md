@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 2026-11-11 — 第七轮深度审查（全流程实测验证）
+
+> 本轮以"真实进程 + 测试数据"对全工程做端到端验证：`scripts/runtime-verify/verify.mjs`
+> 启动构建后的 API（`node apps/api/dist/server.js`）+ mock Vault/Desk/Recap/REST/LLM
+> 上游，覆盖 100 项检查（认证/RBAC、模板、CRUD、webhook HMAC/cron/event 触发器、
+> 连接器/密钥/出口策略、LLM、重试/超时、WebSocket、并发、子工作流、崩溃恢复、
+> 优雅停机、生产护栏）。**最终 100/100 通过**；质量门全绿：build 16/16、typecheck 0 错误、
+> lint 0 错误、单元 685 + 集成 169 + E2E 29 = 883 测试通过。
+
+### Added
+- **审计日志接线**：`store.audit.write`（含重试）与 admin 只读路由早已存在，但**全仓无任何
+  调用方**，审计表恒空。现在 `registerRoutes` 挂一个集中 `onSend` 钩子，对每个成功的
+  `/api/v1` 变更请求（POST/PUT/PATCH/DELETE）落审计：actor（JWT subject / API-key system /
+  登录用户名）、action（`resource.verb`）、resource_type/id（创建时从响应体取 id）、ip、
+  状态码与角色。写失败仅告警，绝不影响响应。
+- **全流程运行时验证 harness**（`scripts/runtime-verify/`）：100 项断言 + mock 上游服务，
+  可重复执行（`node scripts/runtime-verify/verify.mjs`），退出码反映成败。
+- **回归测试**：IPv6 v4-mapped SSRF 规范化（`ipv6-canonicalization.test.ts`）、条件字符串
+  转义解码（`condition-escapes.test.ts`）、可中止延迟（`delay-abort.test.ts`）。
+
+### Fixed
+- **[P0] IPv6 SSRF 绕过**：私网黑名单此前只匹配点分十进制 v4-mapped 形式
+  （`::ffff:127.0.0.1`）；同一回环目标的十六进制写法（`::ffff:7f00:1`）与全展开写法
+  （`0:0:0:0:0:ffff:127.0.0.1`）可绕过。现先把 IPv6 规范化为 8 个 16 位组再判定，
+  并处理方括号/zone index；畸形字面量安全归为"非私网"。
+- **[P0] 审计恒空**：见 Added（安全合规缺口，上线必备）。
+- **崩溃恢复语义**：执行器 resume 路径（跳过已成功节点）经实测验证；harness 修正为
+  双节点工作流（首节点完成后杀进程）以真正覆盖 resume，并新增 CR03 断言"零完成节点
+  崩溃 → 标记 failed（副作用不可判定，不可安全重跑）"的既定安全行为。
+- **取消传播**：`startIfNotCancelled`（SQLite+PG）让"取消与启动竞争"时取消胜出；
+  父 AbortSignal 透传进子工作流；`control.delay` 可被信号即时中止（不再等满定时器）；
+  `activeExecutions` 指标在所有路径平衡。
+- **条件求值器转义**：插值值经 JSON.stringify 后含引号/反斜杠/换行会带转义到达，
+  旧 indexOf(closeQuote) 扫描在首个内层引号截断并整条件 fail-closed。现解码 JSON 转义
+  （含 `\uXXXX`），畸形字面量仍 fail-closed。
+- **ESM 指标**：`prom-client` 经 `createRequire` 加载，修复 ESM dist 下 `/metrics` 恒空。
+- **JWT TTL**：`LOOP_JWT_ACCESS_TTL` 原为死配置（硬编码 12h），现按配置签发并容忍缺省值。
+- **连接器**：generic 把解析出的 api_key 以 Bearer 发往上游；recap `get_meeting` 对 id 编码。
+- **API 健壮性**：执行未知工作流 404、archived 工作流 409；GET 未知执行 404；dispatcher
+  跳过 archived；PUT trigger 脱敏；webhook 未带 secret 时自动生成；凭据头按模式脱敏。
+- **其它**：WS 订阅前校验 socket readyState；停机先停 cron 再 drain；SQLite 自动建父目录；
+  validator 对未接线的 branch 端口告警；恢复期补记 `execution_failed` 事件。
+
 ## 2026-10-22 — 第六轮深度审查
 
 ### Added

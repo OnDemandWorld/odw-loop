@@ -138,3 +138,43 @@
 ## 附：本轮（第四轮复审）已修复项速览
 
 egress 一致管控（补 LLM 直连 API 旁路）、未知 provider 400、事件触发器接通、触发器启停、egress/connector 管理 API、update 节点类型校验、约束冲突统一 409、git 路径消毒、connectors↔llm 构建引用、Ollama-only 启动告警、`llm.complete` 进 Canvas、能力级漂移告警。**全部有回归测试覆盖，823 测试通过。**
+
+---
+
+## 附：第七轮深度审查（2026-11-11，全流程实测验证）
+
+> 本节为追加的 dated 快照，不改动上文第四轮的冻结结论。上文 §1–§9 的多数 P0/P1
+> 仍未关闭（模板漂移、code 节点、sandbox、AI 深化、事件触发器鉴权、分布式 cron、
+> OTel、Redis 队列），本轮聚焦"用真实进程 + 测试数据把全链路跑通并修真实缺陷"。
+
+**本轮验证手段**：新增 `scripts/runtime-verify/verify.mjs`（100 项断言）启动构建后的
+API + mock 上游，端到端覆盖认证/RBAC、模板、CRUD、三类触发器、连接器/密钥/出口、
+LLM、重试/超时、WS、并发、子工作流、崩溃恢复、优雅停机、生产护栏。
+
+**本轮结果（实测，非报告）**：harness **100/100**；build 16/16、typecheck 0 错误、
+lint 0 错误、单元 685 + 集成 169 + E2E 29 = **883 测试全绿**。
+
+**本轮已修（详见 CHANGELOG 2026-11-11）**：IPv6 v4-mapped SSRF 规范化、审计日志接线
+（恒空 → 集中 onSend 落审计）、取消传播 + 可中止 delay、条件求值器转义解码、ESM
+`/metrics`、JWT TTL 死配置、generic api_key Bearer、archived/未知工作流与执行的
+404/409、WS readyState、停机先停 cron、SQLite 建目录、branch 端口告警、恢复期事件。
+
+### 本轮明确推迟（honest deferred，上线前需产品/安全决策）
+
+| 项 | 级别 | 现状与推迟原因 |
+|---|---|---|
+| DNS-rebinding 钉扎 | P1 安全 | egress 在 `check()` 时解析 DNS，但真正的 undici 请求会**再次解析**——检查与请求之间存在 TOCTOU 重绑定窗口。需把已校验的 IP 钉扎进实际请求（自定义 dispatcher/lookup）。本轮未改，私网黑名单已覆盖字面量与首次解析。 |
+| Webhook 时间戳防重放 | P1 安全 | HMAC 校验签名但**无 timestamp/容差窗口**（tsd §11.6），抓包后可原样重放。需加 `x-loop-timestamp` + 容差 + nonce 去重。 |
+| 执行 I/O 静态加密 | P1 合规 | 节点输出/事件 payload 明文落库；secrets 已 AES-256-GCM，但执行数据未加密。需按合规要求决定是否加密 `execution_events`/`node_executions`。 |
+| 非幂等 POST 重试分类 | P1 正确性 | 重试默认对所有操作生效，非幂等 POST 重试可能重复副作用。需按操作幂等性分类（仅对 GET/幂等键操作自动重试）。 |
+| 生产强制认证 | P1 安全 | 生产护栏目前仅拒绝默认加密 key（PG01）；`LOOP_REQUIRE_AUTH` 缺省仍为开放。需决定生产是否强制 auth=true 否则拒绝启动。 |
+| 模板 ↔ 连接器漂移 | P0（见 §1） | 仍为能力级**告警**非致命；需产品决策 A 扩连接器 / B 改模板。本轮未动。 |
+| `{{secrets.*}}` 插值 | P2 | 密钥经连接器 secretResolver 解析，不支持节点 config 直接 `{{secrets.*}}` 插值；如需该能力要单独设计（避免明文扩散）。 |
+| 连接器实例选择 | P2 | 工作流按连接器**类型**路由，多实例选择能力有限；多实例编排需补选择策略。 |
+| code 节点 / sandbox | P1（见 §3/§4） | 仍为 stub，未落地隔离执行。本轮未动。 |
+| 事件触发器鉴权 / 分布式 cron / OTel / Redis 队列 | P2（见 §6/§7/§8） | 仍开放，属 Scale/运维增强，非本轮上线阻断项。 |
+
+**上线判断**：核心编排链路（含崩溃恢复、优雅停机、RBAC、出口管控、审计）已实测全绿，
+本轮修复消除了两个 P0（SSRF 绕过、审计恒空）与一批正确性缺陷。上表 P1 安全/合规项
+（DNS 钉扎、webhook 防重放、生产强制认证、执行数据加密）建议在公网暴露前关闭；
+其余 P0 模板漂移与 P1 sandbox 属功能完整性，按 §10 迭代推进。
