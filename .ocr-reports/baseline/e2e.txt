@@ -1,0 +1,353 @@
+
+> odw-loop@1.0.0 test:e2e /Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop
+> vitest run --config vitest.e2e.config.ts
+
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v1.6.1 /Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop
+
+{"level":30,"time":1795530798480,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530798482,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530798483,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530798484,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530798485,"component":"engine","name":"loop:engine:recovery","executionId":"exec-crash-1","msg":"Marked non-recoverable execution as failed"}
+{"level":30,"time":1795530798486,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530798486,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530798490,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530798490,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530798493,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530798494,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530798496,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530798496,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530798497,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530798483,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530798483,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530798487,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530798487,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530798488,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530798491,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530798491,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530798491,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530798494,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530798495,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530798495,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530798496,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530798497,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530798497,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530798488,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530798491,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530798495,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530798497,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530798485,"component":"engine","name":"loop:engine:recovery","recovered":0,"failed":1,"total":1,"msg":"Execution recovery complete"}
+{"level":30,"time":1795530798490,"component":"engine","name":"loop:engine:recovery","executionId":"exec-crash-2","lastNode":"node_1","reason":"resume_from_last_succeeded","msg":"Recovered execution — reset to pending and re-dispatched"}
+{"level":30,"time":1795530798490,"component":"engine","name":"loop:engine:recovery","recovered":1,"failed":0,"total":1,"msg":"Execution recovery complete"}
+{"level":30,"time":1795530798493,"component":"engine","name":"loop:engine:recovery","executionId":"exec-multi-a","msg":"Marked non-recoverable execution as failed"}
+{"level":30,"time":1795530798493,"component":"engine","name":"loop:engine:recovery","executionId":"exec-multi-b","lastNode":"node_1","reason":"resume_from_last_succeeded","msg":"Recovered execution — reset to pending and re-dispatched"}
+{"level":30,"time":1795530798493,"component":"engine","name":"loop:engine:recovery","recovered":1,"failed":1,"total":2,"msg":"Execution recovery complete"}
+{"level":30,"time":1795530798495,"component":"engine","name":"loop:engine:recovery","executionId":"exec-idempotent","msg":"Marked non-recoverable execution as failed"}
+{"level":30,"time":1795530798495,"component":"engine","name":"loop:engine:recovery","recovered":0,"failed":1,"total":1,"msg":"Execution recovery complete"}
+{"level":30,"time":1795530798496,"component":"engine","name":"loop:engine:recovery","recovered":0,"failed":0,"total":0,"msg":"Execution recovery complete"}
+{"level":30,"time":1795530798497,"component":"engine","name":"loop:engine:recovery","executionId":"exec-auto-recover","msg":"Marked non-recoverable execution as failed"}
+{"level":30,"time":1795530798497,"component":"engine","name":"loop:engine:recovery","recovered":0,"failed":1,"total":1,"msg":"Execution recovery complete"}
+{"level":30,"time":1795530798484,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530798484,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530798484,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530798488,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530798488,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530798488,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530798488,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530798492,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530798492,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530798492,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530798492,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530798495,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530798495,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530798495,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530798495,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530798497,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530798497,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530798497,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530798497,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+ ✓ tests/e2e/failover.test.ts  (5 tests) 21ms
+{"level":30,"time":1795530798890,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530798893,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530798894,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530798894,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530798893,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530798894,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530798894,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530798894,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530798894,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530798909,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530798910,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530798911,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530798911,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530798910,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530798911,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530798911,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530798911,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530798911,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530798911,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530798914,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530798915,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530798915,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530798916,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530798914,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530798915,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530798915,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530798916,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530798916,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530798916,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530798919,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530798919,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530798920,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530798920,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530798919,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530798920,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530798920,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530798920,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530798920,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530798920,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530798920,"component":"connectors","name":"loop:connectors:registry","type":"code","msg":"Adapter registered"}
+{"level":30,"time":1795530798925,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"a84673e90b909b50742d5ef65263f5ef","span_id":"b76d8388b32e41f3","parent_span_id":"ffe9bb66f73b3db9","start_ms":1795530798922,"status":"error","attrs":{"node.id":"node_1","node.type":"code.javascript","execution.id":"exec-code-fs-1","error.message":"Error: sandbox:filesystem_denied"},"duration_ms":3},"msg":"trace span"}
+{"level":50,"time":1795530798925,"component":"engine","name":"loop:engine:executor","executionId":"exec-code-fs-1","error":"Error: sandbox:filesystem_denied","msg":"Execution failed"}
+{"level":30,"time":1795530798927,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530798927,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530798928,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530798928,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530798926,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"a84673e90b909b50742d5ef65263f5ef","span_id":"ffe9bb66f73b3db9","start_ms":1795530798921,"status":"error","attrs":{"execution.id":"exec-code-fs-1","workflow.id":"fs-attempt","execution.depth":0,"error.message":"Error: sandbox:filesystem_denied"},"duration_ms":5},"msg":"trace span"}
+{"level":30,"time":1795530798928,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530798928,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530798928,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530798928,"component":"connectors","name":"loop:connectors:registry","type":"code","msg":"Adapter registered"}
+{"level":30,"time":1795530798927,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530798928,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530798928,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530798932,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"732e925ead3529785c117b15cad15c3e","span_id":"1d04a41044f18b21","parent_span_id":"ca3c3f5dd07faf3c","start_ms":1795530798929,"status":"error","attrs":{"node.id":"node_1","node.type":"code.javascript","execution.id":"exec-code-net-1","error.message":"Error: sandbox:network_denied"},"duration_ms":3},"msg":"trace span"}
+{"level":50,"time":1795530798932,"component":"engine","name":"loop:engine:executor","executionId":"exec-code-net-1","error":"Error: sandbox:network_denied","msg":"Execution failed"}
+{"level":30,"time":1795530798932,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530798932,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"732e925ead3529785c117b15cad15c3e","span_id":"ca3c3f5dd07faf3c","start_ms":1795530798928,"status":"error","attrs":{"execution.id":"exec-code-net-1","workflow.id":"net-attempt","execution.depth":0,"error.message":"Error: sandbox:network_denied"},"duration_ms":4},"msg":"trace span"}
+ ✓ tests/e2e/code-node-isolation.test.ts  (5 tests) 54ms
+{"level":30,"time":1795530799281,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530799283,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530799285,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530799285,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530799287,"component":"engine","name":"loop:engine:recovery","executionId":"exec-crash-1","lastNode":"node_1","reason":"resume_from_last_succeeded","msg":"Recovered execution — reset to pending and re-dispatched"}
+{"level":30,"time":1795530799290,"component":"engine","name":"loop:engine:executor","executionId":"exec-crash-1","nodeId":"node_1","msg":"Skipping already-succeeded node (resume/idempotent)"}
+{"level":30,"time":1795530799290,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"468d435d942fe12a49106c1318e7c18a","span_id":"e87653a2e0fab9a4","parent_span_id":"00f6ce21843d51ba","start_ms":1795530799290,"status":"ok","attrs":{"node.id":"node_1","node.type":"recap.get_meeting","execution.id":"exec-crash-1"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530799294,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530799295,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530799299,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530799285,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530799285,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530799285,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530799296,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530799296,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530799296,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530799296,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530799287,"component":"engine","name":"loop:engine:recovery","recovered":1,"failed":0,"total":1,"msg":"Execution recovery complete"}
+{"level":30,"time":1795530799284,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530799284,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530799295,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530799295,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530799296,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530799296,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530799291,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"468d435d942fe12a49106c1318e7c18a","span_id":"9ea041a92aeaeb96","parent_span_id":"00f6ce21843d51ba","start_ms":1795530799290,"status":"ok","attrs":{"node.id":"node_2","node.type":"vault.create_document","execution.id":"exec-crash-1"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530799292,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"468d435d942fe12a49106c1318e7c18a","span_id":"f233fc88c141c055","parent_span_id":"00f6ce21843d51ba","start_ms":1795530799291,"status":"ok","attrs":{"node.id":"node_3","node.type":"desk.send_response","execution.id":"exec-crash-1"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530799292,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"468d435d942fe12a49106c1318e7c18a","span_id":"00f6ce21843d51ba","start_ms":1795530799289,"status":"ok","attrs":{"execution.id":"exec-crash-1","workflow.id":"crash-recovery","execution.depth":0},"duration_ms":3},"msg":"trace span"}
+{"level":30,"time":1795530799297,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"a8163403814b95f843769c9a734ab9ee","span_id":"76bf536cfe30b192","parent_span_id":"22dc0dc00fc08a27","start_ms":1795530799297,"status":"ok","attrs":{"node.id":"node_1","node.type":"recap.get_meeting","execution.id":"exec-fresh-1"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530799298,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"a8163403814b95f843769c9a734ab9ee","span_id":"26e3c696c9c3d305","parent_span_id":"22dc0dc00fc08a27","start_ms":1795530799297,"status":"ok","attrs":{"node.id":"node_2","node.type":"vault.create_document","execution.id":"exec-fresh-1"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530799298,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"a8163403814b95f843769c9a734ab9ee","span_id":"9b5d4e2c8dd92e13","parent_span_id":"22dc0dc00fc08a27","start_ms":1795530799298,"status":"ok","attrs":{"node.id":"node_3","node.type":"desk.send_response","execution.id":"exec-fresh-1"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530799299,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"a8163403814b95f843769c9a734ab9ee","span_id":"22dc0dc00fc08a27","start_ms":1795530799296,"status":"ok","attrs":{"execution.id":"exec-fresh-1","workflow.id":"crash-recovery","execution.depth":0},"duration_ms":3},"msg":"trace span"}
+ ✓ tests/e2e/crash-recovery.test.ts  (2 tests) 21ms
+{"level":30,"time":1795530799652,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530799654,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530799655,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530799656,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530799655,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530799655,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530799656,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530799656,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530799656,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530799665,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530799666,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530799666,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530799667,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530799666,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530799666,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530799666,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530799667,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530799667,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530799667,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530799670,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530799671,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530799672,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530799672,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530799671,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530799672,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530799672,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530799672,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530799671,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530799672,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530799675,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530799676,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530799677,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530799677,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530799676,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530799677,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530799677,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530799677,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530799676,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530799677,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530799679,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530799680,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530799681,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530799681,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530799680,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530799681,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530799681,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530799681,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530799681,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530799681,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530799685,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530799686,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530799687,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530799687,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530799686,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530799687,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530799687,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530799687,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530799686,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530799687,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":40,"time":1795530799688,"component":"egress","name":"loop:egress:interceptor","url":"https://blocked.example.com/data","reason":"No matching allow policy (default deny)","msg":"Egress blocked"}
+{"level":30,"time":1795530799689,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530799690,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530799690,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530799691,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530799690,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530799690,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530799690,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530799691,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530799691,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530799691,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530799692,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+ ✓ tests/e2e/egress-policy.test.ts  (7 tests) 45ms
+{"level":30,"time":1795530800049,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530800051,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530800052,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530800053,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530800058,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"90e6a275de698ff8347d5dd58389f549","span_id":"b20b4af64f882b40","parent_span_id":"df16299ee3080a10","start_ms":1795530800056,"status":"ok","attrs":{"node.id":"node_1","node.type":"recap.get_meeting","execution.id":"exec-meeting-1"},"duration_ms":2},"msg":"trace span"}
+{"level":50,"time":1795530800067,"component":"engine","name":"loop:engine:executor","executionId":"exec-fail-1","error":"Error: Recap service unavailable","msg":"Execution failed"}
+{"level":30,"time":1795530800062,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530800063,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530800068,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530800060,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"90e6a275de698ff8347d5dd58389f549","span_id":"5e4d3a980628dd65","parent_span_id":"df16299ee3080a10","start_ms":1795530800058,"status":"ok","attrs":{"node.id":"node_2","node.type":"vault.create_document","execution.id":"exec-meeting-1"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530800060,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"90e6a275de698ff8347d5dd58389f549","span_id":"cda0ce9596e065f7","parent_span_id":"df16299ee3080a10","start_ms":1795530800058,"status":"ok","attrs":{"node.id":"node_3","node.type":"desk.send_response","execution.id":"exec-meeting-1"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530800060,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"90e6a275de698ff8347d5dd58389f549","span_id":"df16299ee3080a10","start_ms":1795530800054,"status":"ok","attrs":{"execution.id":"exec-meeting-1","workflow.id":"meeting-to-tasks","execution.depth":0},"duration_ms":6},"msg":"trace span"}
+{"level":30,"time":1795530800067,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"2b365154368ee0355aa843542ae5e01e","span_id":"ef3eef2239aa0e66","parent_span_id":"4be4d1e2306ccc98","start_ms":1795530800066,"status":"error","attrs":{"node.id":"node_1","node.type":"recap.get_meeting","execution.id":"exec-fail-1","error.message":"Error: Recap service unavailable"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530800067,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"2b365154368ee0355aa843542ae5e01e","span_id":"4be4d1e2306ccc98","start_ms":1795530800065,"status":"error","attrs":{"execution.id":"exec-fail-1","workflow.id":"meeting-to-tasks","execution.depth":0,"error.message":"Error: Recap service unavailable"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530800064,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530800052,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530800052,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530800063,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530800064,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530800064,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530800053,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530800053,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530800053,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530800064,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530800064,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530800064,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530800064,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+ ✓ tests/e2e/meeting-to-tasks.test.ts  (2 tests) 23ms
+{"level":30,"time":1795530800416,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530800418,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530800419,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530800419,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530800418,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530800419,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530800419,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530800419,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530800419,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530800430,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530800431,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530800431,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530800432,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530800430,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530800431,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530800431,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530800432,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530800432,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530800432,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530800434,"component":"connectors","name":"loop:connectors:registry","type":"local_llm","msg":"Adapter registered"}
+{"level":30,"time":1795530800438,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"efa5247d6c5db24816972c8662d0c59e","span_id":"6986720a34aed2db","parent_span_id":"04f5bb1a6601748b","start_ms":1795530800437,"status":"ok","attrs":{"node.id":"node_1","node.type":"local_llm.generate","execution.id":"exec-airgap-local-1"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530800439,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530800439,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"efa5247d6c5db24816972c8662d0c59e","span_id":"04f5bb1a6601748b","start_ms":1795530800435,"status":"ok","attrs":{"execution.id":"exec-airgap-local-1","workflow.id":"local-llm-flow","execution.depth":0},"duration_ms":4},"msg":"trace span"}
+ ✓ tests/e2e/airgapped-deployment.test.ts  (2 tests) 27ms
+{"level":30,"time":1795530800782,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530800784,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530800786,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530800786,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530800789,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530800789,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530800791,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530800791,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530800792,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530800793,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530800794,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530800794,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530800796,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530800796,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530800797,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530800790,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530800792,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530800794,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530800795,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530800797,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530800785,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530800786,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530800790,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530800790,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530800790,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530800791,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530800792,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530800792,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530800793,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530800793,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530800794,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530800794,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530800795,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530800795,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530800796,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530800797,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530800797,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530800786,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530800787,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530800787,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530800791,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530800791,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530800791,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530800791,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530800792,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530800792,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530800792,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530800792,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530800794,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530800794,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530800794,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530800794,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530800795,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530800795,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530800795,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530800795,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+{"level":30,"time":1795530800797,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530800797,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530800797,"component":"connectors","name":"loop:connectors:registry","type":"recap","msg":"Adapter registered"}
+{"level":30,"time":1795530800797,"component":"connectors","name":"loop:connectors:registry","type":"generic","msg":"Adapter registered"}
+ ✓ tests/e2e/rbac-enforcement.test.ts  (6 tests) 20ms
+
+ Test Files  7 passed (7)
+      Tests  29 passed (29)
+   Start at  22:33:17
+   Duration  2.86s (transform 180ms, setup 1.42s, collect 538ms, tests 211ms, environment 1ms, prepare 260ms)
+

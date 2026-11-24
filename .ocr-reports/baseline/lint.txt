@@ -1,0 +1,837 @@
+
+> odw-loop@1.0.0 lint /Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop
+> eslint . --ext .ts,.tsx
+
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/api/src/config.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/api/src/middleware/auth.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  26:1  warning  There should be at least one empty line between import groups        import/order
+  27:1  warning  There should be at least one empty line between import groups        import/order
+  27:1  warning  `node:crypto` import should occur before type import of `fastify`    import/order
+  29:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/api/src/middleware/errorHandler.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/api/src/middleware/requestId.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/api/src/middleware/traceId.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  15:1  warning  There should be at least one empty line between import groups        import/order
+  16:1  warning  There should be at least one empty line between import groups        import/order
+  16:1  warning  `node:crypto` import should occur before type import of `fastify`    import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/api/src/raw-body.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/api/src/routes/auth.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  20:1  warning  There should be at least one empty line between import groups        import/order
+  21:1  warning  There should be at least one empty line between import groups        import/order
+  21:1  warning  `node:crypto` import should occur before type import of `fastify`    import/order
+  24:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/api/src/routes/index.ts
+    1:1   warning  Resolve error: typescript with invalid interface loaded as resolver           import/order
+   27:1   warning  Imports "TemplateRegistry" are only used as type                              @typescript-eslint/consistent-type-imports
+   27:1   warning  There should be at least one empty line between import groups                 import/order
+  113:24  error    'v' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/api/src/routes/ws.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  16:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/api/src/server.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  18:1  warning  There should be at least one empty line between import groups        import/order
+  19:1  warning  There should be at least one empty line between import groups        import/order
+  19:1  warning  `./raw-body.js` import should occur after import of `@loop/llm`      import/order
+  22:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/App.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/api/client.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/Shell.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  3:1  warning  There should be at least one empty line between import groups        import/order
+  4:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/ThemeToggle.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  2:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/canvas/CanvasEditor.tsx
+   1:1   warning  Resolve error: typescript with invalid interface loaded as resolver                  import/order
+   1:30  error    'useMemo' is defined but never used. Allowed unused vars must match /^_/u            @typescript-eslint/no-unused-vars
+   2:1   warning  There should be at least one empty line between import groups                        import/order
+  39:17  error    'setNodes' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/canvas/NodeConfigPanel.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/canvas/NodeLibrary.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/canvas/edges/CustomEdge.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/canvas/nodes/CodeNode.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/canvas/nodes/ConnectorNode.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/canvas/nodes/ControlNode.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/executions/ExecutionMonitor.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/components/ui.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  2:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/lib/theme.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/main.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  2:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/pages/Dashboard.tsx
+  1:1   warning  Resolve error: typescript with invalid interface loaded as resolver            import/order
+  1:17  error    'useCallback' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  3:1   warning  There should be at least one empty line between import groups                  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/pages/ExecutionDetail.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  3:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/pages/Executions.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  2:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/pages/Templates.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  3:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/pages/WorkflowEditor.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  3:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/pages/Workflows.tsx
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  2:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/store/executions.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/canvas/src/store/workflows.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  8:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/control-plane/src/server.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/apps/sandbox/src/server.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/connectors/src/desk/adapter.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver               import/order
+  16:1  warning  There should be at least one empty line between import groups                     import/order
+  17:1  warning  There should be at least one empty line between import groups                     import/order
+  17:1  warning  `../interface.js` type import should occur after import of `@loop/observability`  import/order
+  20:1  warning  There should be at least one empty line between import groups                     import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/connectors/src/generic/adapter.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver       import/order
+  5:1  warning  There should be at least one empty line between import groups             import/order
+  6:1  warning  There should be at least one empty line between import groups             import/order
+  6:1  warning  `../interface.js` type import should occur after import of `@loop/types`  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/connectors/src/interface.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/connectors/src/llm/adapter.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver          import/order
+  19:1  warning  There should be at least one empty line between import groups                import/order
+  19:1  warning  `../interface.js` type import should occur after type import of `@loop/llm`  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/connectors/src/notification/index.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  5:1  warning  There should be at least one empty line between import groups        import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+  6:1  warning  `node:crypto` import should occur before import of `undici`          import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/connectors/src/recap/adapter.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver               import/order
+  17:1  warning  There should be at least one empty line between import groups                     import/order
+  18:1  warning  There should be at least one empty line between import groups                     import/order
+  18:1  warning  `../interface.js` type import should occur after import of `@loop/observability`  import/order
+  21:1  warning  There should be at least one empty line between import groups                     import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/connectors/src/registry.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/connectors/src/trace.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/connectors/src/vault/adapter.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver               import/order
+  16:1  warning  There should be at least one empty line between import groups                     import/order
+  17:1  warning  There should be at least one empty line between import groups                     import/order
+  17:1  warning  `../interface.js` type import should occur after import of `@loop/observability`  import/order
+  20:1  warning  There should be at least one empty line between import groups                     import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/egress/src/engine.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/egress/src/interceptor.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver   import/order
+   5:1  warning  There should be at least one empty line between import groups         import/order
+   5:1  warning  `undici` import should occur after import of `node:net`               import/order
+   8:1  warning  There should be at least one empty line between import groups         import/order
+   9:1  warning  There should be at least one empty line between import groups         import/order
+  10:1  warning  There should be at least one empty line between import groups         import/order
+  10:1  warning  `./engine.js` type import should occur after import of `@loop/types`  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/egress/src/resolver.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/circuitBreaker.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/dag.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/eventBus.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/eventLog.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/executor.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+   5:1  warning  There should be at least one empty line between import groups        import/order
+  12:1  warning  There should be at least one empty line between import groups        import/order
+  17:1  warning  Imports "EventBus" are only used as type                             @typescript-eslint/consistent-type-imports
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/nodes/index.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/recovery.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  14:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/replay.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  24:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/scheduler.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/stateMachine.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/engine/src/types.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/llm/src/anthropic.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/llm/src/azure.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/llm/src/bedrock.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/llm/src/factory.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  14:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/llm/src/gemini.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/llm/src/ollama.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/llm/src/openai.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  12:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/llm/src/router.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/llm/src/vertex.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/llm/src/vllm.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/observability/src/correlation.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/observability/src/exporters.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/observability/src/logger.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/observability/src/metrics.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/observability/src/tracing.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/secrets/src/encryption.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/secrets/src/manager.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  5:1  warning  There should be at least one empty line between import groups        import/order
+  7:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/state/src/interface.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/state/src/migrate.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+  7:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/state/src/postgres/connection.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  7:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/state/src/postgres/index.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  7:1  warning  There should be at least one empty line between import groups        import/order
+  8:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/state/src/postgres/migrations.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+  7:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/state/src/schema.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/state/src/sqlite/connection.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  7:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/state/src/sqlite/index.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+   7:1  warning  There should be at least one empty line between import groups        import/order
+  16:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/templates/src/interface.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/templates/src/registry.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  14:1  warning  There should be at least one empty line between import groups        import/order
+  16:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/triggers/src/cron.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  5:1  warning  There should be at least one empty line between import groups        import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+  6:1  warning  `node:crypto` import should occur before import of `node-cron`       import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/triggers/src/dispatcher.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/triggers/src/event.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver       import/order
+  5:1  warning  There should be at least one empty line between import groups             import/order
+  6:1  warning  All imports in the declaration are only used as types. Use `import type`  @typescript-eslint/consistent-type-imports
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/triggers/src/manual.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  5:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/triggers/src/webhook.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/registry.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/schemas/actionItem.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/schemas/calendarEvent.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/schemas/connector.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/schemas/document.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/schemas/execution.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/schemas/replay.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  11:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/schemas/task.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/schemas/transcript.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/schemas/trigger.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/schemas/workflow.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/types/src/validator.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/versioning/src/diff.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/versioning/src/git.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+   8:1  warning  There should be at least one empty line between import groups        import/order
+   8:1  warning  `isomorphic-git` import should occur after import of `node:path`     import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/versioning/src/service.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver       import/order
+   6:1  warning  There should be at least one empty line between import groups             import/order
+   9:1  warning  There should be at least one empty line between import groups             import/order
+  10:1  warning  All imports in the declaration are only used as types. Use `import type`  @typescript-eslint/consistent-type-imports
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/workflow-authoring/src/service.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+   5:1  warning  There should be at least one empty line between import groups        import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/workflow-authoring/src/topology.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/packages/workflow-authoring/src/validator.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  5:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/e2e/airgapped-deployment.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver           import/order
+  10:1  warning  There should be at least one empty line between import groups                 import/order
+  11:1  warning  There should be at least one empty line between import groups                 import/order
+  17:1  warning  `../../packages/types` type import should occur before import of `./helpers`  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/e2e/code-node-isolation.test.ts
+   1:1   warning  Resolve error: typescript with invalid interface loaded as resolver           import/order
+  18:1   warning  There should be at least one empty line between import groups                 import/order
+  19:1   warning  There should be at least one empty line between import groups                 import/order
+  19:59  error    'createEdge' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  20:1   warning  `../../packages/types` type import should occur before import of `./helpers`  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/e2e/crash-recovery.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver               import/order
+  15:1  warning  There should be at least one empty line between import groups                     import/order
+  16:1  warning  There should be at least one empty line between import groups                     import/order
+  22:1  warning  `../../packages/types/src` type import should occur before import of `./helpers`  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/e2e/egress-policy.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver                       import/order
+  15:1  warning  There should be at least one empty line between import groups                             import/order
+  16:1  warning  There should be at least one empty line between import groups                             import/order
+  17:1  warning  `../../packages/egress/src/interceptor` import should occur before import of `./helpers`  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/e2e/failover.test.ts
+   1:1   warning  Resolve error: typescript with invalid interface loaded as resolver                       import/order
+  16:1   warning  There should be at least one empty line between import groups                             import/order
+  17:1   warning  There should be at least one empty line between import groups                             import/order
+  17:1   warning  `./helpers` import should occur after import of `../../packages/state/src`                import/order
+  24:10  error    'createSqliteConnection' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  24:34  error    'SqliteStateStore' is defined but never used. Allowed unused vars must match /^_/u        @typescript-eslint/no-unused-vars
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/e2e/helpers.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  12:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/e2e/meeting-to-tasks.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/e2e/rbac-enforcement.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  11:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/helpers/testStore.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/_helpers/app.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+  11:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/api/admin-routes.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/api/auth-guard.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  13:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/api/auth.test.ts
+   1:1   warning  Resolve error: typescript with invalid interface loaded as resolver               import/order
+  11:53  error    'beforeEach' is defined but never used. Allowed unused vars must match /^_/u      @typescript-eslint/no-unused-vars
+  13:1   warning  There should be at least one empty line between import groups                     import/order
+  16:3   error    'seedWorkflow' is defined but never used. Allowed unused vars must match /^_/u    @typescript-eslint/no-unused-vars
+  17:3   error    'SYSTEM_USER_ID' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/api/executions.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver               import/order
+   6:1  warning  There should be at least one empty line between import groups                     import/order
+  11:3  error    'SYSTEM_USER_ID' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/api/llm.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  11:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/api/rbac.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  13:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/api/replay.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  11:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/api/templates.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  9:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/api/workflows.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  9:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/api/ws-executions.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  15:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/connectors/_mock-server.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/connectors/desk.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+   9:1  warning  There should be at least one empty line between import groups        import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/connectors/recap.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+   9:1  warning  There should be at least one empty line between import groups        import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/connectors/vault.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+   9:1  warning  There should be at least one empty line between import groups        import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/engine/e2e-execution.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  9:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/engine/replay-output.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  13:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/engine/subworkflow.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  11:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/security/egress.test.ts
+   1:1   warning  Resolve error: typescript with invalid interface loaded as resolver          import/order
+   9:1   warning  There should be at least one empty line between import groups                import/order
+  16:10  error    'LoopError' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/state/migration.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver                 import/order
+   9:1  warning  There should be at least one empty line between import groups                       import/order
+  13:8  error    'SqliteConnection' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/integration/triggers/trigger-to-execution.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+   8:1  warning  There should be at least one empty line between import groups        import/order
+   9:1  warning  There should be at least one empty line between import groups        import/order
+   9:1  warning  `node:crypto` import should occur before import of `vitest`          import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/setup.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/api/auth-login.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  7:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/api/auth-rbac.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  11:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/api/config.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/api/errorHandler.test.ts
+   1:1   warning  Resolve error: typescript with invalid interface loaded as resolver                                     import/order
+   1:1   warning  There should be at least one empty line between import groups                                           import/order
+   2:1   warning  There should be at least one empty line between import groups                                           import/order
+   3:1   warning  `fastify` type import should occur before import of `../../../apps/api/src/middleware/errorHandler.js`  import/order
+  23:73  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  40:27  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  41:27  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  48:27  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  55:27  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/api/trace.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/connectors/desk-adapter.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+  2:1  warning  There should be at least one empty line between import groups        import/order
+  2:1  warning  `node:http` import should occur before import of `vitest`            import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/connectors/llm-adapter.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  5:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/connectors/notification.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+  2:1  warning  `node:crypto` import should occur before import of `vitest`          import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/connectors/recap-adapter.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver                                  import/order
+  1:1  warning  There should be at least one empty line between import groups                                        import/order
+  2:1  warning  There should be at least one empty line between import groups                                        import/order
+  2:1  warning  `node:http` import should occur before import of `vitest`                                            import/order
+  3:1  warning  There should be at least one empty line between import groups                                        import/order
+  4:1  warning  `@loop/types` import should occur before import of `../../../packages/connectors/src/recap/adapter`  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/connectors/registry.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/connectors/trace-propagation.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  13:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/egress/engine.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/egress/gate.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  12:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/egress/private-blocklist.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  10:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/circuitBreaker.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/eventBus.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  9:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/eventLog.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  8:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/executor-branch.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/executor-events.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  9:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/executor-resume.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  8:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/executor-subworkflow.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  16:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/executor-tracing.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/executor.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  11:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/nodes.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  9:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/recovery.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  9:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/replay.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  11:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/retry.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/scheduler.test.ts
+  1:1   warning  Resolve error: typescript with invalid interface loaded as resolver                import/order
+  1:1   warning  There should be at least one empty line between import groups                      import/order
+  3:10  error    'ValidationError' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/engine/stateMachine.test.ts
+  1:1   warning  Resolve error: typescript with invalid interface loaded as resolver               import/order
+  1:1   warning  There should be at least one empty line between import groups                     import/order
+  3:15  error    'ExecutionState' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  3:31  error    'NodeState' is defined but never used. Allowed unused vars must match /^_/u       @typescript-eslint/no-unused-vars
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/llm/factory.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/llm/providers.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+   8:1  warning  There should be no empty line within import group                    import/order
+  15:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/llm/router.test.ts
+  1:1   warning  Resolve error: typescript with invalid interface loaded as resolver                   import/order
+  1:1   warning  There should be at least one empty line between import groups                         import/order
+  3:47  error    'CompletionResponse' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/observability/exporters.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/observability/tracing.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/review-round4.test.ts
+    1:1   warning  Resolve error: typescript with invalid interface loaded as resolver                 import/order
+   17:1   warning  There should be at least one empty line between import groups                       import/order
+   17:1   warning  `vitest` import should occur after import of `node:crypto`                          import/order
+   30:57  error    'SqliteConnection' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   99:10  error    Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+  122:10  error    Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/secrets/encryption.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/state/complete-if-active.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  12:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/state/execution-events.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/state/migrations.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/state/postgres.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  12:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/state/store-lifecycle.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/templates/registry.test.ts
+   1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  11:1  warning  There should be at least one empty line between import groups        import/order
+  12:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/templates/validation.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  6:1  warning  There should be at least one empty line between import groups        import/order
+  6:1  warning  `vitest` import should occur after import of `node:url`              import/order
+  9:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/triggers/cron.test.ts
+   1:1   warning  Resolve error: typescript with invalid interface loaded as resolver   import/order
+   1:1   warning  There should be at least one empty line between import groups         import/order
+   1:32  error    'vi' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   6:29  error    Unexpected any. Specify a different type                              @typescript-eslint/no-explicit-any
+  15:29  error    Unexpected any. Specify a different type                              @typescript-eslint/no-explicit-any
+  24:29  error    Unexpected any. Specify a different type                              @typescript-eslint/no-explicit-any
+  28:28  error    Unexpected any. Specify a different type                              @typescript-eslint/no-explicit-any
+  31:28  error    Unexpected any. Specify a different type                              @typescript-eslint/no-explicit-any
+  35:29  error    Unexpected any. Specify a different type                              @typescript-eslint/no-explicit-any
+  41:28  error    Unexpected any. Specify a different type                              @typescript-eslint/no-explicit-any
+  44:28  error    Unexpected any. Specify a different type                              @typescript-eslint/no-explicit-any
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/triggers/dispatcher.test.ts
+    1:1   warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+    1:1   warning  There should be at least one empty line between import groups        import/order
+   20:10  error    Unexpected any. Specify a different type                             @typescript-eslint/no-explicit-any
+   51:10  error    Unexpected any. Specify a different type                             @typescript-eslint/no-explicit-any
+   82:10  error    Unexpected any. Specify a different type                             @typescript-eslint/no-explicit-any
+  100:10  error    Unexpected any. Specify a different type                             @typescript-eslint/no-explicit-any
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/triggers/webhook.test.ts
+    1:1   warning  Resolve error: typescript with invalid interface loaded as resolver           import/order
+    1:1   warning  There should be at least one empty line between import groups                 import/order
+    1:36  error    'beforeEach' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+    2:1   warning  There should be at least one empty line between import groups                 import/order
+    2:1   warning  `node:crypto` import should occur before import of `vitest`                   import/order
+   31:10  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   51:10  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   69:10  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   92:10  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+  124:10  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+  145:10  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+  168:10  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/types/validator.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/versioning/diff.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/workflow-authoring/topology.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/workflow-authoring/validator.test.ts
+  1:1  warning  Resolve error: typescript with invalid interface loaded as resolver  import/order
+  1:1  warning  There should be at least one empty line between import groups        import/order
+
+✖ 450 problems (46 errors, 404 warnings)
+  0 errors and 214 warnings potentially fixable with the `--fix` option.
+
+ ELIFECYCLE  Command failed with exit code 1.

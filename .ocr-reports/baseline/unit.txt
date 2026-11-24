@@ -1,0 +1,845 @@
+
+> odw-loop@1.0.0 test:unit /Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop
+> vitest run --config vitest.config.ts
+
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v1.6.1 /Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop
+
+{"level":40,"time":1795530694400,"component":"state","name":"loop:state:postgres","attempt":0,"error":"Error: transient","msg":"Audit write failed, retrying"}
+{"level":40,"time":1795530694400,"component":"state","name":"loop:state:postgres","attempt":1,"error":"Error: transient","msg":"Audit write failed, retrying"}
+ ✓ tests/unit/state/postgres.test.ts  (23 tests) 8ms
+{"level":30,"time":1795530694947,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530694950,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530694951,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530694952,"component":"connectors","name":"loop:connectors:registry","type":"svc","msg":"Adapter registered"}
+{"level":30,"time":1795530694957,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f8fab6f99eefc0ee4af89263604d47b1","span_id":"461b7328b57b1a38","parent_span_id":"668e4c28a2c70a28","start_ms":1795530694955,"status":"ok","attrs":{"node.id":"n_src","node.type":"svc.classify","execution.id":"exec-0539c529-4989-41b6-b658-369555d5c033"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530694958,"component":"engine","name":"loop:engine:executor","executionId":"exec-0539c529-4989-41b6-b658-369555d5c033","nodeId":"n_normal","msg":"Node skipped — branch not taken"}
+{"level":30,"time":1795530694961,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530694961,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530694965,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530694966,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530694969,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530694969,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530694971,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530694972,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530694962,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530694967,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530694970,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530694972,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530694962,"component":"connectors","name":"loop:connectors:registry","type":"svc","msg":"Adapter registered"}
+{"level":30,"time":1795530694967,"component":"connectors","name":"loop:connectors:registry","type":"svc","msg":"Adapter registered"}
+{"level":30,"time":1795530694970,"component":"connectors","name":"loop:connectors:registry","type":"svc","msg":"Adapter registered"}
+{"level":30,"time":1795530694958,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f8fab6f99eefc0ee4af89263604d47b1","span_id":"cea6e078548e6618","parent_span_id":"668e4c28a2c70a28","start_ms":1795530694957,"status":"ok","attrs":{"node.id":"n_branch","node.type":"control.branch","execution.id":"exec-0539c529-4989-41b6-b658-369555d5c033"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530694959,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f8fab6f99eefc0ee4af89263604d47b1","span_id":"2fd8f12986c8b269","parent_span_id":"668e4c28a2c70a28","start_ms":1795530694958,"status":"ok","attrs":{"node.id":"n_critical","node.type":"svc.alert","execution.id":"exec-0539c529-4989-41b6-b658-369555d5c033"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530694960,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"f8fab6f99eefc0ee4af89263604d47b1","span_id":"668e4c28a2c70a28","start_ms":1795530694954,"status":"ok","attrs":{"execution.id":"exec-0539c529-4989-41b6-b658-369555d5c033","workflow.id":"","execution.depth":0},"duration_ms":6},"msg":"trace span"}
+{"level":30,"time":1795530694964,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f7a48d96c73e5a6b8c7b4c631c1ece4e","span_id":"4ddc9d33b774a89c","parent_span_id":"618a59d8e2cca21e","start_ms":1795530694963,"status":"ok","attrs":{"node.id":"b","node.type":"control.branch","execution.id":"exec-d97c4e9d-8ab2-49d1-be18-96c0c4faaf58"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530694965,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f7a48d96c73e5a6b8c7b4c631c1ece4e","span_id":"97db796fb78df9e7","parent_span_id":"618a59d8e2cca21e","start_ms":1795530694965,"status":"ok","attrs":{"node.id":"f","node.type":"svc.op","execution.id":"exec-d97c4e9d-8ab2-49d1-be18-96c0c4faaf58"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530694965,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"f7a48d96c73e5a6b8c7b4c631c1ece4e","span_id":"618a59d8e2cca21e","start_ms":1795530694963,"status":"ok","attrs":{"execution.id":"exec-d97c4e9d-8ab2-49d1-be18-96c0c4faaf58","workflow.id":"","execution.depth":0},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530694968,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"2290cb0ef80e446abb6e47cccbd73ae1","span_id":"af738715ad50a28f","parent_span_id":"81b1035f7b18b22f","start_ms":1795530694967,"status":"ok","attrs":{"node.id":"b","node.type":"control.branch","execution.id":"exec-d07c2f4c-f385-4f33-89fb-f58bdd955a27"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530694968,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"2290cb0ef80e446abb6e47cccbd73ae1","span_id":"a01836d7e2318c7f","parent_span_id":"81b1035f7b18b22f","start_ms":1795530694968,"status":"ok","attrs":{"node.id":"t","node.type":"svc.op","execution.id":"exec-d07c2f4c-f385-4f33-89fb-f58bdd955a27"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530694968,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"2290cb0ef80e446abb6e47cccbd73ae1","span_id":"81b1035f7b18b22f","start_ms":1795530694967,"status":"ok","attrs":{"execution.id":"exec-d07c2f4c-f385-4f33-89fb-f58bdd955a27","workflow.id":"","execution.depth":0},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530694971,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"571a7b5445db9f430d2aec0bc5b4270c","span_id":"8012125c07a0315c","parent_span_id":"e5eda96044004a2d","start_ms":1795530694970,"status":"ok","attrs":{"node.id":"b","node.type":"control.branch","execution.id":"exec-aa683e4f-1cfb-43de-a78d-6819143698f1"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530694971,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"571a7b5445db9f430d2aec0bc5b4270c","span_id":"e5eda96044004a2d","start_ms":1795530694970,"status":"ok","attrs":{"execution.id":"exec-aa683e4f-1cfb-43de-a78d-6819143698f1","workflow.id":"","execution.depth":0},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530694951,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530694951,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530694961,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530694962,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530694962,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530694966,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530694966,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530694967,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530694969,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530694969,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530694970,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530694972,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530694972,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530694972,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530694964,"component":"engine","name":"loop:engine:executor","executionId":"exec-d97c4e9d-8ab2-49d1-be18-96c0c4faaf58","nodeId":"t","msg":"Node skipped — branch not taken"}
+{"level":30,"time":1795530694968,"component":"engine","name":"loop:engine:executor","executionId":"exec-d07c2f4c-f385-4f33-89fb-f58bdd955a27","nodeId":"f","msg":"Node skipped — branch not taken"}
+{"level":30,"time":1795530694971,"component":"engine","name":"loop:engine:executor","executionId":"exec-aa683e4f-1cfb-43de-a78d-6819143698f1","nodeId":"mid","msg":"Node skipped — branch not taken"}
+{"level":30,"time":1795530694971,"component":"engine","name":"loop:engine:executor","executionId":"exec-aa683e4f-1cfb-43de-a78d-6819143698f1","nodeId":"leaf","msg":"Node skipped — branch not taken"}
+{"level":30,"time":1795530695025,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"1eb8577ced0694dc71aeca5999de84a2","span_id":"49815d7e0d251744","parent_span_id":"50b592302b1c9568","start_ms":1795530694973,"status":"ok","attrs":{"node.id":"d","node.type":"control.delay","execution.id":"exec-4dcaa8de-11d6-4c73-9a81-032387ccd268"},"duration_ms":52},"msg":"trace span"}
+{"level":30,"time":1795530695025,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530695026,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530695026,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":50,"time":1795530695028,"component":"engine","name":"loop:engine:executor","executionId":"exec-4cd0b885-1893-4e0c-8d8c-a755d1f89a12","error":"LoopError: control.delay node 'd' requires a non-negative numeric duration_ms","msg":"Execution failed"}
+{"level":30,"time":1795530695030,"component":"connectors","name":"loop:connectors:registry","type":"svc","msg":"Adapter registered"}
+{"level":30,"time":1795530695025,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"1eb8577ced0694dc71aeca5999de84a2","span_id":"50b592302b1c9568","start_ms":1795530694973,"status":"ok","attrs":{"execution.id":"exec-4dcaa8de-11d6-4c73-9a81-032387ccd268","workflow.id":"","execution.depth":0},"duration_ms":52},"msg":"trace span"}
+{"level":30,"time":1795530695028,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"fe3c5577365b745e9e6203e42fb8b122","span_id":"124e1a70ed08a48b","parent_span_id":"eb872f2cd89789fe","start_ms":1795530695027,"status":"error","attrs":{"node.id":"d","node.type":"control.delay","execution.id":"exec-4cd0b885-1893-4e0c-8d8c-a755d1f89a12","error.message":"LoopError: control.delay node 'd' requires a non-negative numeric duration_ms"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530695028,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"fe3c5577365b745e9e6203e42fb8b122","span_id":"eb872f2cd89789fe","start_ms":1795530695027,"status":"error","attrs":{"execution.id":"exec-4cd0b885-1893-4e0c-8d8c-a755d1f89a12","workflow.id":"","execution.depth":0,"error.message":"LoopError: control.delay node 'd' requires a non-negative numeric duration_ms"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530695031,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f1616c57ac4a8a880440013bb6d67209","span_id":"23cd65d6d55e3f7d","parent_span_id":"723e706751a63d09","start_ms":1795530695030,"status":"ok","attrs":{"node.id":"n","node.type":"svc.op","execution.id":"exec-c352a964-b6c0-4ba0-a6db-43203429fdd7"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530695031,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"f1616c57ac4a8a880440013bb6d67209","span_id":"723e706751a63d09","start_ms":1795530695030,"status":"ok","attrs":{"execution.id":"exec-c352a964-b6c0-4ba0-a6db-43203429fdd7","workflow.id":"","execution.depth":0},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530695033,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"ea8204e4f285ae3fa453a3766fd102e8","span_id":"7952b62ceb21a18d","parent_span_id":"7ca4a16433ab729f","start_ms":1795530695033,"status":"ok","attrs":{"node.id":"n","node.type":"svc.op","execution.id":"exec-b4757d04-369f-4f84-975f-aad993b89ce7"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530695033,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"ea8204e4f285ae3fa453a3766fd102e8","span_id":"7ca4a16433ab729f","start_ms":1795530695033,"status":"ok","attrs":{"execution.id":"exec-b4757d04-369f-4f84-975f-aad993b89ce7","workflow.id":"","execution.depth":0},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530695035,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"73e7f7e804628e44a99e176143e03afa","span_id":"6b3241859e177f98","parent_span_id":"06fa5b15e2a60a8c","start_ms":1795530695035,"status":"ok","attrs":{"node.id":"n","node.type":"svc.op","execution.id":"exec-b6f74d2b-a897-4c37-87ce-7f81bf5c508f"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530695035,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"73e7f7e804628e44a99e176143e03afa","span_id":"06fa5b15e2a60a8c","start_ms":1795530695035,"status":"ok","attrs":{"execution.id":"exec-b6f74d2b-a897-4c37-87ce-7f81bf5c508f","workflow.id":"","execution.depth":0},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530695026,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530695026,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530695029,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530695029,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530695030,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530695032,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530695032,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530695032,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530695034,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530695034,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530695034,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530695036,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530695036,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530695036,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530695030,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530695032,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530695034,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530695036,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530695026,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530695029,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530695029,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530695031,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530695031,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530695033,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530695034,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530695035,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530695036,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530695032,"component":"connectors","name":"loop:connectors:registry","type":"svc","msg":"Adapter registered"}
+{"level":30,"time":1795530695034,"component":"connectors","name":"loop:connectors:registry","type":"svc","msg":"Adapter registered"}
+{"level":30,"time":1795530695037,"component":"connectors","name":"loop:connectors:registry","type":"svc","msg":"Adapter registered"}
+{"level":40,"time":1795530695038,"component":"engine","name":"loop:engine:executor","nodeId":"n","attempt":1,"error":"Error: transient","msg":"Node retry"}
+{"level":40,"time":1795530695038,"component":"engine","name":"loop:engine:executor","nodeId":"n","attempt":2,"error":"Error: transient","msg":"Node retry"}
+{"level":30,"time":1795530695039,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"3d7e5f836d67bc958d219a77988b8d90","span_id":"acb020a75d7a0af5","parent_span_id":"e7f2fcf2db3fa6fc","start_ms":1795530695037,"status":"ok","attrs":{"node.id":"n","node.type":"svc.op","execution.id":"exec-e6fc47c1-98ea-4545-87dc-3abb6ff2d02b"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530695040,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530695040,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"3d7e5f836d67bc958d219a77988b8d90","span_id":"e7f2fcf2db3fa6fc","start_ms":1795530695037,"status":"ok","attrs":{"execution.id":"exec-e6fc47c1-98ea-4545-87dc-3abb6ff2d02b","workflow.id":"","execution.depth":0},"duration_ms":3},"msg":"trace span"}
+ ✓ tests/unit/engine/executor-branch.test.ts  (10 tests) 110ms
+{"level":40,"time":1795530696539,"component":"triggers","name":"loop:triggers:cron","triggerId":"t-1","workflowId":"wf-1","msg":"Cron trigger skipped: workflow is archived"}
+{"level":40,"time":1795530697539,"component":"triggers","name":"loop:triggers:cron","triggerId":"t-1","workflowId":"wf-1","msg":"Cron trigger skipped: workflow is archived"}
+{"level":40,"time":1795530697740,"component":"triggers","name":"loop:triggers:webhook","triggerId":"archived-webhook-trigger","workflowId":"wf-1","msg":"Webhook trigger skipped: workflow is archived"}
+{"level":30,"time":1795530697744,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530697745,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530697747,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530697751,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"5a368a6931b8e59e9584185acabea5ec","span_id":"174de72b5ffd4e50","parent_span_id":"4be0f97c2a2a904e","start_ms":1795530697749,"status":"error","attrs":{"node.id":"node_sub","node.type":"workflow.invoke","execution.id":"exec-bf72576e-bfad-4a32-86ba-16bb2763a518","error.message":"LoopError: workflow.invoke node 'node_sub': inline definition contains a dependency cycle"},"duration_ms":2},"msg":"trace span"}
+{"level":50,"time":1795530697751,"component":"engine","name":"loop:engine:executor","executionId":"exec-bf72576e-bfad-4a32-86ba-16bb2763a518","error":"LoopError: workflow.invoke node 'node_sub': inline definition contains a dependency cycle","msg":"Execution failed"}
+{"level":30,"time":1795530697752,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530697746,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530697747,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530697752,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"5a368a6931b8e59e9584185acabea5ec","span_id":"4be0f97c2a2a904e","start_ms":1795530697748,"status":"error","attrs":{"execution.id":"exec-bf72576e-bfad-4a32-86ba-16bb2763a518","workflow.id":"parent","execution.depth":0,"error.message":"LoopError: workflow.invoke node 'node_sub': inline definition contains a dependency cycle"},"duration_ms":4},"msg":"trace span"}
+ ✓ tests/unit/review-round4.test.ts  (12 tests) 2252ms
+{"level":30,"time":1795530698112,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698114,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698115,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698116,"component":"connectors","name":"loop:connectors:registry","type":"ok","msg":"Adapter registered"}
+{"level":30,"time":1795530698119,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"96f2ddc164757ba4e76abb2c64e46acc","span_id":"3e1ed4cc120179c6","parent_span_id":"b71f1cdf8d0d18bd","start_ms":1795530698118,"status":"ok","attrs":{"node.id":"a","node.type":"ok.op","execution.id":"496c3d08-f42a-44fd-ac2d-6862f557570a"},"duration_ms":1},"msg":"trace span"}
+{"level":50,"time":1795530698120,"component":"engine","name":"loop:engine:executor","executionId":"496c3d08-f42a-44fd-ac2d-6862f557570a","error":"Error: bad exploded","msg":"Execution failed"}
+{"level":30,"time":1795530698125,"component":"engine","name":"loop:engine:replay","executionId":"4c01b599-bb39-4f28-8a45-75d7f9f83b83","nodes":2,"msg":"Dry-run replay (read-only, no side effects)"}
+{"level":30,"time":1795530698121,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698121,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698125,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698126,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698129,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698129,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698130,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698130,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698131,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698131,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698135,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698135,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698136,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698115,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698115,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698121,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698122,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698122,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698126,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698126,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698126,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698129,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698129,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698130,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698130,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698131,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698131,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698132,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698132,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698132,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698135,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698135,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698135,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698122,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698126,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698130,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698131,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698132,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698135,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698116,"component":"connectors","name":"loop:connectors:registry","type":"bad","msg":"Adapter registered"}
+{"level":30,"time":1795530698122,"component":"connectors","name":"loop:connectors:registry","type":"ok","msg":"Adapter registered"}
+{"level":30,"time":1795530698122,"component":"connectors","name":"loop:connectors:registry","type":"bad","msg":"Adapter registered"}
+{"level":30,"time":1795530698127,"component":"connectors","name":"loop:connectors:registry","type":"ok","msg":"Adapter registered"}
+{"level":30,"time":1795530698130,"component":"connectors","name":"loop:connectors:registry","type":"ok","msg":"Adapter registered"}
+{"level":30,"time":1795530698132,"component":"connectors","name":"loop:connectors:registry","type":"ok","msg":"Adapter registered"}
+{"level":30,"time":1795530698120,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"96f2ddc164757ba4e76abb2c64e46acc","span_id":"ca979ed4545b6288","parent_span_id":"b71f1cdf8d0d18bd","start_ms":1795530698119,"status":"error","attrs":{"node.id":"b","node.type":"bad.op","execution.id":"496c3d08-f42a-44fd-ac2d-6862f557570a","error.message":"Error: bad exploded"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530698120,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"96f2ddc164757ba4e76abb2c64e46acc","span_id":"b71f1cdf8d0d18bd","start_ms":1795530698117,"status":"error","attrs":{"execution.id":"496c3d08-f42a-44fd-ac2d-6862f557570a","workflow.id":"two-node","execution.depth":0,"error.message":"Error: bad exploded"},"duration_ms":3},"msg":"trace span"}
+{"level":30,"time":1795530698124,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"a639c6bbc6ba860f096f48676a42ad37","span_id":"22b59d4b1627f824","parent_span_id":"4d84ae2ee622c276","start_ms":1795530698123,"status":"ok","attrs":{"node.id":"a","node.type":"ok.op","execution.id":"4c01b599-bb39-4f28-8a45-75d7f9f83b83"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530698125,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"a639c6bbc6ba860f096f48676a42ad37","span_id":"0f229da8261b0040","parent_span_id":"4d84ae2ee622c276","start_ms":1795530698124,"status":"error","attrs":{"node.id":"b","node.type":"bad.op","execution.id":"4c01b599-bb39-4f28-8a45-75d7f9f83b83","error.message":"Error: bad exploded"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530698125,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"a639c6bbc6ba860f096f48676a42ad37","span_id":"4d84ae2ee622c276","start_ms":1795530698123,"status":"error","attrs":{"execution.id":"4c01b599-bb39-4f28-8a45-75d7f9f83b83","workflow.id":"two-node","execution.depth":0,"error.message":"Error: bad exploded"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530698127,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f8bc8e22bcb8fa27718f287e8a7c7afd","span_id":"f2126a153364b839","parent_span_id":"8a1ec36c2b608dad","start_ms":1795530698127,"status":"ok","attrs":{"node.id":"a","node.type":"ok.op","execution.id":"e3918e1b-f036-4e1b-b1d2-5f8b618871ce"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698128,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f8bc8e22bcb8fa27718f287e8a7c7afd","span_id":"9acc066e77cd46af","parent_span_id":"8a1ec36c2b608dad","start_ms":1795530698128,"status":"ok","attrs":{"node.id":"b","node.type":"ok.op","execution.id":"e3918e1b-f036-4e1b-b1d2-5f8b618871ce"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698128,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"f8bc8e22bcb8fa27718f287e8a7c7afd","span_id":"8a1ec36c2b608dad","start_ms":1795530698127,"status":"ok","attrs":{"execution.id":"e3918e1b-f036-4e1b-b1d2-5f8b618871ce","workflow.id":"all-ok","execution.depth":0},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530698133,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"531d0dd675104af7942114eeb528af5f","span_id":"cfa2365269dcad01","parent_span_id":"dc3db3f024f7a65d","start_ms":1795530698133,"status":"ok","attrs":{"node.id":"a","node.type":"ok.op","execution.id":"b0cf5712-8818-49de-a28b-86f2c72ad018"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698133,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"531d0dd675104af7942114eeb528af5f","span_id":"ffc6aaf6237f5943","parent_span_id":"dc3db3f024f7a65d","start_ms":1795530698133,"status":"ok","attrs":{"node.id":"b","node.type":"ok.op","execution.id":"b0cf5712-8818-49de-a28b-86f2c72ad018"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698134,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"531d0dd675104af7942114eeb528af5f","span_id":"dc3db3f024f7a65d","start_ms":1795530698132,"status":"ok","attrs":{"execution.id":"b0cf5712-8818-49de-a28b-86f2c72ad018","workflow.id":"rerun-ok","execution.depth":0},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530698134,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"51738343b63dc17cd86f930897044422","span_id":"5d65c7dc9382a34e","parent_span_id":"1a02ce3aa1b14081","start_ms":1795530698134,"status":"ok","attrs":{"node.id":"a","node.type":"ok.op","execution.id":"b0cf5712-8818-49de-a28b-86f2c72ad018"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698134,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"51738343b63dc17cd86f930897044422","span_id":"08111be2d48652fb","parent_span_id":"1a02ce3aa1b14081","start_ms":1795530698134,"status":"ok","attrs":{"node.id":"b","node.type":"ok.op","execution.id":"b0cf5712-8818-49de-a28b-86f2c72ad018"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698134,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"51738343b63dc17cd86f930897044422","span_id":"1a02ce3aa1b14081","start_ms":1795530698134,"status":"ok","attrs":{"execution.id":"b0cf5712-8818-49de-a28b-86f2c72ad018","workflow.id":"rerun-ok","execution.depth":0},"duration_ms":0},"msg":"trace span"}
+{"level":50,"time":1795530698125,"component":"engine","name":"loop:engine:executor","executionId":"4c01b599-bb39-4f28-8a45-75d7f9f83b83","error":"Error: bad exploded","msg":"Execution failed"}
+{"level":30,"time":1795530698134,"component":"engine","name":"loop:engine:executor","executionId":"b0cf5712-8818-49de-a28b-86f2c72ad018","nodeId":"a","msg":"Skipping already-succeeded node (resume/idempotent)"}
+{"level":30,"time":1795530698134,"component":"engine","name":"loop:engine:executor","executionId":"b0cf5712-8818-49de-a28b-86f2c72ad018","nodeId":"b","msg":"Skipping already-succeeded node (resume/idempotent)"}
+{"level":30,"time":1795530698128,"component":"engine","name":"loop:engine:replay","executionId":"e3918e1b-f036-4e1b-b1d2-5f8b618871ce","nodes":2,"msg":"Dry-run replay (read-only, no side effects)"}
+{"level":30,"time":1795530698130,"component":"engine","name":"loop:engine:replay","executionId":"e3e4d2f9-2c40-446d-be33-30f5db5e6515","nodes":2,"msg":"Dry-run replay (read-only, no side effects)"}
+{"level":30,"time":1795530698134,"component":"engine","name":"loop:engine:replay","executionId":"b0cf5712-8818-49de-a28b-86f2c72ad018","msg":"Replaying execution (dryRun=false) — re-executing non-succeeded nodes"}
+ ✓ tests/unit/engine/replay.test.ts  (10 tests) 30ms
+{"level":30,"time":1795530698474,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698476,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698477,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698477,"component":"connectors","name":"loop:connectors:registry","type":"mock","msg":"Adapter registered"}
+{"level":30,"time":1795530698482,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f59ae4c8ad5827acd0e970ccee653ae6","span_id":"43b3eef952193215","parent_span_id":"52c329b95507d598","start_ms":1795530698481,"status":"ok","attrs":{"node.id":"node_c1","node.type":"mock.op","execution.id":"04ea09d1-fe1c-40ed-b94a-52d8408a6d94"},"duration_ms":1},"msg":"trace span"}
+{"level":50,"time":1795530698488,"component":"engine","name":"loop:engine:executor","executionId":"1d61d190-caeb-41e8-9e1c-f1c4c3bccf95","error":"Error: child adapter exploded","msg":"Execution failed"}
+{"level":30,"time":1795530698485,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698485,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698489,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698489,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698495,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698495,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698498,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698498,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530698501,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530698476,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698477,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698485,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698486,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698486,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698489,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698490,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698490,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698495,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698495,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698495,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698498,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530698499,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530698499,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530698483,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"f59ae4c8ad5827acd0e970ccee653ae6","span_id":"52c329b95507d598","parent_span_id":"91aeafbfe3e0c102","start_ms":1795530698481,"status":"ok","attrs":{"execution.id":"04ea09d1-fe1c-40ed-b94a-52d8408a6d94","workflow.id":"child","execution.depth":1},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530698483,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f59ae4c8ad5827acd0e970ccee653ae6","span_id":"91aeafbfe3e0c102","parent_span_id":"1310ec18db177e08","start_ms":1795530698479,"status":"ok","attrs":{"node.id":"node_sub","node.type":"workflow.invoke","execution.id":"exec-c7e5b94f-739b-4cb2-bbde-241d726f08ac"},"duration_ms":4},"msg":"trace span"}
+{"level":30,"time":1795530698484,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"f59ae4c8ad5827acd0e970ccee653ae6","span_id":"a72a20f644973af7","parent_span_id":"1310ec18db177e08","start_ms":1795530698483,"status":"ok","attrs":{"node.id":"node_downstream","node.type":"mock.op","execution.id":"exec-c7e5b94f-739b-4cb2-bbde-241d726f08ac"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698484,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"f59ae4c8ad5827acd0e970ccee653ae6","span_id":"1310ec18db177e08","start_ms":1795530698478,"status":"ok","attrs":{"execution.id":"exec-c7e5b94f-739b-4cb2-bbde-241d726f08ac","workflow.id":"parent","execution.depth":0},"duration_ms":6},"msg":"trace span"}
+{"level":30,"time":1795530698488,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"0f99b454bdd3e81a10e8051cc1f38c35","span_id":"bca657169ffeee4e","parent_span_id":"440ecd2c9adbeccd","start_ms":1795530698488,"status":"error","attrs":{"node.id":"node_c1","node.type":"mock.op","execution.id":"1d61d190-caeb-41e8-9e1c-f1c4c3bccf95","error.message":"Error: child adapter exploded"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698488,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"0f99b454bdd3e81a10e8051cc1f38c35","span_id":"440ecd2c9adbeccd","parent_span_id":"b147d2b9b04c22c9","start_ms":1795530698487,"status":"error","attrs":{"execution.id":"1d61d190-caeb-41e8-9e1c-f1c4c3bccf95","workflow.id":"failing-child","execution.depth":1,"error.message":"Error: child adapter exploded"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530698488,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"0f99b454bdd3e81a10e8051cc1f38c35","span_id":"b147d2b9b04c22c9","parent_span_id":"e15aee3b8c2e61d3","start_ms":1795530698487,"status":"error","attrs":{"node.id":"node_sub","node.type":"workflow.invoke","execution.id":"exec-2b9ac274-3c2b-4219-94c2-d6bb66706dbf","error.message":"Error: child adapter exploded"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530698489,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"0f99b454bdd3e81a10e8051cc1f38c35","span_id":"e15aee3b8c2e61d3","start_ms":1795530698487,"status":"error","attrs":{"execution.id":"exec-2b9ac274-3c2b-4219-94c2-d6bb66706dbf","workflow.id":"parent-fail","execution.depth":0,"error.message":"Error: child adapter exploded"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530698493,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"149c7afdb00f30bca00b54ed7c5f9fef","span_id":"f42686f76eeb7e54","parent_span_id":"a918d78f9e393fe8","start_ms":1795530698493,"status":"error","attrs":{"node.id":"node_invoke","node.type":"workflow.invoke","execution.id":"e2e8e08f-d0bd-4e5d-aaad-81a38885d7c7","error.message":"LoopError: Sub-workflow recursion depth 3 exceeds the maximum of 2 (node 'node_invoke')"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698494,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"149c7afdb00f30bca00b54ed7c5f9fef","span_id":"a918d78f9e393fe8","parent_span_id":"27625d211642ed2f","start_ms":1795530698493,"status":"error","attrs":{"execution.id":"e2e8e08f-d0bd-4e5d-aaad-81a38885d7c7","workflow.id":"chain-2","execution.depth":2,"error.message":"LoopError: Sub-workflow recursion depth 3 exceeds the maximum of 2 (node 'node_invoke')"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530698494,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"149c7afdb00f30bca00b54ed7c5f9fef","span_id":"27625d211642ed2f","parent_span_id":"ca4a39b46fe51ea6","start_ms":1795530698492,"status":"error","attrs":{"node.id":"node_invoke","node.type":"workflow.invoke","execution.id":"714cab62-dc0c-4dc3-a956-6e0dbe2d698c","error.message":"LoopError: Sub-workflow recursion depth 3 exceeds the maximum of 2 (node 'node_invoke')"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530698494,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"149c7afdb00f30bca00b54ed7c5f9fef","span_id":"ca4a39b46fe51ea6","parent_span_id":"c0e0117a9a26398c","start_ms":1795530698491,"status":"error","attrs":{"execution.id":"714cab62-dc0c-4dc3-a956-6e0dbe2d698c","workflow.id":"chain-3","execution.depth":1,"error.message":"LoopError: Sub-workflow recursion depth 3 exceeds the maximum of 2 (node 'node_invoke')"},"duration_ms":3},"msg":"trace span"}
+{"level":30,"time":1795530698494,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"149c7afdb00f30bca00b54ed7c5f9fef","span_id":"c0e0117a9a26398c","parent_span_id":"a26a0fabce8190df","start_ms":1795530698491,"status":"error","attrs":{"node.id":"node_invoke","node.type":"workflow.invoke","execution.id":"exec-0eb6e766-c814-4624-af53-b84bf2ecb1f7","error.message":"LoopError: Sub-workflow recursion depth 3 exceeds the maximum of 2 (node 'node_invoke')"},"duration_ms":3},"msg":"trace span"}
+{"level":30,"time":1795530698494,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"149c7afdb00f30bca00b54ed7c5f9fef","span_id":"a26a0fabce8190df","start_ms":1795530698490,"status":"error","attrs":{"execution.id":"exec-0eb6e766-c814-4624-af53-b84bf2ecb1f7","workflow.id":"chain-4","execution.depth":0,"error.message":"LoopError: Sub-workflow recursion depth 3 exceeds the maximum of 2 (node 'node_invoke')"},"duration_ms":4},"msg":"trace span"}
+{"level":30,"time":1795530698497,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"edd8518b3901e488b1526cf57a155f51","span_id":"023ae33a8c520d3f","parent_span_id":"aea965acc0cf577b","start_ms":1795530698497,"status":"error","attrs":{"node.id":"node_loop","node.type":"workflow.invoke","execution.id":"2ad95b83-ca39-400c-8538-7271e37a744f","error.message":"LoopError: Sub-workflow invocation cycle detected at 'id:wf-15eca6aa-6885-4c48-80bb-57c6ac90e0a2' (node 'node_loop')"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698497,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"edd8518b3901e488b1526cf57a155f51","span_id":"aea965acc0cf577b","parent_span_id":"9ab67500a8abb0a5","start_ms":1795530698497,"status":"error","attrs":{"execution.id":"2ad95b83-ca39-400c-8538-7271e37a744f","workflow.id":"self-invoking","execution.depth":1,"error.message":"LoopError: Sub-workflow invocation cycle detected at 'id:wf-15eca6aa-6885-4c48-80bb-57c6ac90e0a2' (node 'node_loop')"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698498,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"edd8518b3901e488b1526cf57a155f51","span_id":"9ab67500a8abb0a5","parent_span_id":"233d2ca38c5d7f23","start_ms":1795530698496,"status":"error","attrs":{"node.id":"node_loop","node.type":"workflow.invoke","execution.id":"exec-81a6b0f6-1450-4d79-9c07-1a46ad4af333","error.message":"LoopError: Sub-workflow invocation cycle detected at 'id:wf-15eca6aa-6885-4c48-80bb-57c6ac90e0a2' (node 'node_loop')"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530698498,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"edd8518b3901e488b1526cf57a155f51","span_id":"233d2ca38c5d7f23","start_ms":1795530698496,"status":"error","attrs":{"execution.id":"exec-81a6b0f6-1450-4d79-9c07-1a46ad4af333","workflow.id":"self-invoking","execution.depth":0,"error.message":"LoopError: Sub-workflow invocation cycle detected at 'id:wf-15eca6aa-6885-4c48-80bb-57c6ac90e0a2' (node 'node_loop')"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530698500,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"d945e0851f6380e62ace25231ba7b2e7","span_id":"d6df0a15a87db8f9","parent_span_id":"f83e9e0e8043f091","start_ms":1795530698500,"status":"ok","attrs":{"node.id":"node_c1","node.type":"mock.op","execution.id":"a8042e0d-290a-419e-9ced-68992a56ed1f"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530698501,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"d945e0851f6380e62ace25231ba7b2e7","span_id":"f83e9e0e8043f091","parent_span_id":"7988ad12a463243c","start_ms":1795530698500,"status":"ok","attrs":{"execution.id":"a8042e0d-290a-419e-9ced-68992a56ed1f","workflow.id":"child-events","execution.depth":1},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530698501,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"d945e0851f6380e62ace25231ba7b2e7","span_id":"7988ad12a463243c","parent_span_id":"9c675d3fb462fb1f","start_ms":1795530698499,"status":"ok","attrs":{"node.id":"node_sub","node.type":"workflow.invoke","execution.id":"exec-d107a68e-53f4-4804-bc73-218a4fd0bb62"},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530698501,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"d945e0851f6380e62ace25231ba7b2e7","span_id":"9c675d3fb462fb1f","start_ms":1795530698499,"status":"ok","attrs":{"execution.id":"exec-d107a68e-53f4-4804-bc73-218a4fd0bb62","workflow.id":"parent-events","execution.depth":0},"duration_ms":2},"msg":"trace span"}
+{"level":50,"time":1795530698488,"component":"engine","name":"loop:engine:executor","executionId":"exec-2b9ac274-3c2b-4219-94c2-d6bb66706dbf","error":"Error: child adapter exploded","msg":"Execution failed"}
+{"level":50,"time":1795530698493,"component":"engine","name":"loop:engine:executor","executionId":"e2e8e08f-d0bd-4e5d-aaad-81a38885d7c7","error":"LoopError: Sub-workflow recursion depth 3 exceeds the maximum of 2 (node 'node_invoke')","msg":"Execution failed"}
+{"level":50,"time":1795530698494,"component":"engine","name":"loop:engine:executor","executionId":"714cab62-dc0c-4dc3-a956-6e0dbe2d698c","error":"LoopError: Sub-workflow recursion depth 3 exceeds the maximum of 2 (node 'node_invoke')","msg":"Execution failed"}
+{"level":50,"time":1795530698494,"component":"engine","name":"loop:engine:executor","executionId":"exec-0eb6e766-c814-4624-af53-b84bf2ecb1f7","error":"LoopError: Sub-workflow recursion depth 3 exceeds the maximum of 2 (node 'node_invoke')","msg":"Execution failed"}
+{"level":50,"time":1795530698497,"component":"engine","name":"loop:engine:executor","executionId":"2ad95b83-ca39-400c-8538-7271e37a744f","error":"LoopError: Sub-workflow invocation cycle detected at 'id:wf-15eca6aa-6885-4c48-80bb-57c6ac90e0a2' (node 'node_loop')","msg":"Execution failed"}
+{"level":50,"time":1795530698498,"component":"engine","name":"loop:engine:executor","executionId":"exec-81a6b0f6-1450-4d79-9c07-1a46ad4af333","error":"LoopError: Sub-workflow invocation cycle detected at 'id:wf-15eca6aa-6885-4c48-80bb-57c6ac90e0a2' (node 'node_loop')","msg":"Execution failed"}
+{"level":30,"time":1795530698486,"component":"connectors","name":"loop:connectors:registry","type":"mock","msg":"Adapter registered"}
+{"level":30,"time":1795530698490,"component":"connectors","name":"loop:connectors:registry","type":"mock","msg":"Adapter registered"}
+{"level":30,"time":1795530698496,"component":"connectors","name":"loop:connectors:registry","type":"mock","msg":"Adapter registered"}
+{"level":30,"time":1795530698499,"component":"connectors","name":"loop:connectors:registry","type":"mock","msg":"Adapter registered"}
+{"level":30,"time":1795530698486,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698490,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698495,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530698499,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+ ✓ tests/unit/engine/executor-subworkflow.test.ts  (5 tests) 30ms
+ ✓ tests/unit/egress/engine.test.ts  (18 tests) 3ms
+ ✓ tests/unit/observability/tracing.test.ts  (16 tests) 9ms
+ ✓ tests/unit/llm/providers.test.ts  (13 tests) 4ms
+{"level":30,"time":1795530699808,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530699810,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530699811,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530699811,"component":"connectors","name":"loop:connectors:registry","type":"slow","msg":"Adapter registered"}
+{"level":30,"time":1795530699810,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530699811,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530699896,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"02f1d53465da6b24c49a4fab0907c4ce","span_id":"fdd0165f31b2d80c","parent_span_id":"48c2e57dffc6e8ac","start_ms":1795530699813,"status":"ok","attrs":{"node.id":"a","node.type":"slow.op","execution.id":"exec-0ae7d8d1-0019-4798-8205-e7257d64705e"},"duration_ms":83},"msg":"trace span"}
+{"level":30,"time":1795530699898,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530699898,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530699899,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530699899,"component":"connectors","name":"loop:connectors:registry","type":"slow","msg":"Adapter registered"}
+{"level":30,"time":1795530699897,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"02f1d53465da6b24c49a4fab0907c4ce","span_id":"99b6fd3a4808572c","parent_span_id":"48c2e57dffc6e8ac","start_ms":1795530699813,"status":"ok","attrs":{"node.id":"b","node.type":"slow.op","execution.id":"exec-0ae7d8d1-0019-4798-8205-e7257d64705e"},"duration_ms":84},"msg":"trace span"}
+{"level":30,"time":1795530699897,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"02f1d53465da6b24c49a4fab0907c4ce","span_id":"48c2e57dffc6e8ac","start_ms":1795530699812,"status":"ok","attrs":{"execution.id":"exec-0ae7d8d1-0019-4798-8205-e7257d64705e","workflow.id":"parallel","execution.depth":0},"duration_ms":85},"msg":"trace span"}
+{"level":30,"time":1795530699898,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530699899,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530699899,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530699942,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"ea36642c7beb550d9955a9d44dcebc58","span_id":"da91c7602164a099","parent_span_id":"74d7645906f3ef52","start_ms":1795530699900,"status":"ok","attrs":{"node.id":"a","node.type":"slow.op","execution.id":"exec-1af3a385-f64e-4ac8-8b2e-8998d9700f0c"},"duration_ms":42},"msg":"trace span"}
+{"level":30,"time":1795530699983,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"ea36642c7beb550d9955a9d44dcebc58","span_id":"e67697c13aa4fc82","parent_span_id":"74d7645906f3ef52","start_ms":1795530699942,"status":"ok","attrs":{"node.id":"b","node.type":"slow.op","execution.id":"exec-1af3a385-f64e-4ac8-8b2e-8998d9700f0c"},"duration_ms":41},"msg":"trace span"}
+{"level":30,"time":1795530700025,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"ea36642c7beb550d9955a9d44dcebc58","span_id":"27d92b8812a41872","parent_span_id":"74d7645906f3ef52","start_ms":1795530699984,"status":"ok","attrs":{"node.id":"c","node.type":"slow.op","execution.id":"exec-1af3a385-f64e-4ac8-8b2e-8998d9700f0c"},"duration_ms":41},"msg":"trace span"}
+{"level":30,"time":1795530700025,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530700025,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530700026,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530700026,"component":"connectors","name":"loop:connectors:registry","type":"hang","msg":"Adapter registered"}
+{"level":30,"time":1795530700025,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"ea36642c7beb550d9955a9d44dcebc58","span_id":"74d7645906f3ef52","start_ms":1795530699900,"status":"ok","attrs":{"execution.id":"exec-1af3a385-f64e-4ac8-8b2e-8998d9700f0c","workflow.id":"batched","execution.depth":0},"duration_ms":125},"msg":"trace span"}
+{"level":30,"time":1795530700026,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530700026,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530700025,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530700228,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"d0ad5459d72019657867b78829bf1848","span_id":"5272b74ea6ee2d26","parent_span_id":"8ad3fe3071c59253","start_ms":1795530700027,"status":"error","attrs":{"node.id":"stuck","node.type":"hang.op","execution.id":"exec-57f349a8-020c-47a1-96c3-5db98b8face4","error.message":"LoopError: Node 'stuck' timed out after 200ms"},"duration_ms":201},"msg":"trace span"}
+{"level":50,"time":1795530700228,"component":"engine","name":"loop:engine:executor","executionId":"exec-57f349a8-020c-47a1-96c3-5db98b8face4","error":"LoopError: Node 'stuck' timed out after 200ms","msg":"Execution failed"}
+{"level":30,"time":1795530700230,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530700230,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530700231,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530700231,"component":"connectors","name":"loop:connectors:registry","type":"hang","msg":"Adapter registered"}
+{"level":30,"time":1795530700229,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"d0ad5459d72019657867b78829bf1848","span_id":"8ad3fe3071c59253","start_ms":1795530700027,"status":"error","attrs":{"execution.id":"exec-57f349a8-020c-47a1-96c3-5db98b8face4","workflow.id":"timeout","execution.depth":0,"error.message":"LoopError: Node 'stuck' timed out after 200ms"},"duration_ms":202},"msg":"trace span"}
+{"level":30,"time":1795530700230,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530700231,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530700231,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530700434,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"9955299ce4e82a03148d8c5339acadbb","span_id":"48f4193842d74d24","parent_span_id":"a02b3e4c54155b3a","start_ms":1795530700232,"status":"error","attrs":{"node.id":"stuck","node.type":"hang.op","execution.id":"exec-54a57aca-f946-458b-94bf-7f0ba342c9e1","error.message":"LoopError: Node 'stuck' timed out after 200ms"},"duration_ms":202},"msg":"trace span"}
+{"level":50,"time":1795530700434,"component":"engine","name":"loop:engine:executor","executionId":"exec-54a57aca-f946-458b-94bf-7f0ba342c9e1","error":"LoopError: Node 'stuck' timed out after 200ms","msg":"Execution failed"}
+{"level":30,"time":1795530700435,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530700435,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"9955299ce4e82a03148d8c5339acadbb","span_id":"a02b3e4c54155b3a","start_ms":1795530700232,"status":"error","attrs":{"execution.id":"exec-54a57aca-f946-458b-94bf-7f0ba342c9e1","workflow.id":"per-node-timeout","execution.depth":0,"error.message":"LoopError: Node 'stuck' timed out after 200ms"},"duration_ms":203},"msg":"trace span"}
+ ✓ tests/unit/engine/executor.test.ts  (4 tests) 631ms
+{"level":40,"time":1795530700744,"component":"engine","name":"loop:engine:circuitBreaker","name":"test-circuit","failures":3,"msg":"Circuit breaker → open"}
+{"level":40,"time":1795530700745,"component":"engine","name":"loop:engine:circuitBreaker","name":"test-circuit","failures":3,"msg":"Circuit breaker → open"}
+{"level":40,"time":1795530700746,"component":"engine","name":"loop:engine:circuitBreaker","name":"test-circuit","failures":3,"msg":"Circuit breaker → open"}
+{"level":40,"time":1795530700746,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","failures":2,"msg":"Circuit breaker → open"}
+{"level":30,"time":1795530700846,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","msg":"Circuit breaker → half_open"}
+{"level":30,"time":1795530700846,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","msg":"Circuit breaker → closed"}
+{"level":40,"time":1795530700746,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","failures":1,"msg":"Circuit breaker → open"}
+{"level":30,"time":1795530700846,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","msg":"Circuit breaker → half_open"}
+{"level":30,"time":1795530700846,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","msg":"Circuit breaker → closed"}
+{"level":40,"time":1795530700747,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","failures":1,"msg":"Circuit breaker → open"}
+{"level":30,"time":1795530700847,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","msg":"Circuit breaker → half_open"}
+{"level":40,"time":1795530700847,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","failures":2,"msg":"Circuit breaker → open"}
+{"level":40,"time":1795530700747,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","failures":2,"msg":"Circuit breaker → open"}
+{"level":30,"time":1795530700847,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","msg":"Circuit breaker → half_open"}
+{"level":30,"time":1795530700847,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","msg":"Circuit breaker → closed"}
+{"level":40,"time":1795530700847,"component":"engine","name":"loop:engine:circuitBreaker","name":"test","failures":2,"msg":"Circuit breaker → open"}
+{"level":40,"time":1795530700748,"component":"engine","name":"loop:engine:circuitBreaker","name":"test-circuit","failures":3,"msg":"Circuit breaker → open"}
+ ✓ tests/unit/engine/circuitBreaker.test.ts  (14 tests) 17ms
+{"level":30,"time":1795530701109,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530701111,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530701112,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530701113,"component":"connectors","name":"loop:connectors:registry","type":"track","msg":"Adapter registered"}
+{"level":30,"time":1795530701115,"component":"engine","name":"loop:engine:executor","executionId":"9300a93f-c538-406c-a969-4cfc9629b29b","nodeId":"a","msg":"Skipping already-succeeded node (resume/idempotent)"}
+{"level":30,"time":1795530701116,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"86a3cc7b59312cd246b433e88be0a6c6","span_id":"e3f63447dd439478","parent_span_id":"0debc7cfd55b6c74","start_ms":1795530701115,"status":"ok","attrs":{"node.id":"a","node.type":"track.op","execution.id":"9300a93f-c538-406c-a969-4cfc9629b29b"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530701119,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530701119,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530701123,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530701123,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530701127,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530701128,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530701122,"component":"engine","name":"loop:engine:executor","executionId":"aba03992-ed9c-4bd6-8736-47b22e3befbe","nodeId":"a","msg":"Skipping already-succeeded node (resume/idempotent)"}
+{"level":30,"time":1795530701123,"component":"engine","name":"loop:engine:executor","executionId":"aba03992-ed9c-4bd6-8736-47b22e3befbe","nodeId":"b","msg":"Skipping already-succeeded node (resume/idempotent)"}
+{"level":30,"time":1795530701117,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"86a3cc7b59312cd246b433e88be0a6c6","span_id":"9252ea870a0c9fc1","parent_span_id":"0debc7cfd55b6c74","start_ms":1795530701116,"status":"ok","attrs":{"node.id":"b","node.type":"track.op","execution.id":"9300a93f-c538-406c-a969-4cfc9629b29b"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530701118,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"86a3cc7b59312cd246b433e88be0a6c6","span_id":"0debc7cfd55b6c74","start_ms":1795530701114,"status":"ok","attrs":{"execution.id":"9300a93f-c538-406c-a969-4cfc9629b29b","workflow.id":"two-node","execution.depth":0},"duration_ms":4},"msg":"trace span"}
+{"level":30,"time":1795530701121,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"546b78051074d45f749696c01f67785e","span_id":"be56149b429e98b0","parent_span_id":"929cc2cedea60e2c","start_ms":1795530701121,"status":"ok","attrs":{"node.id":"a","node.type":"track.op","execution.id":"aba03992-ed9c-4bd6-8736-47b22e3befbe"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530701122,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"546b78051074d45f749696c01f67785e","span_id":"98bcb338ff120845","parent_span_id":"929cc2cedea60e2c","start_ms":1795530701121,"status":"ok","attrs":{"node.id":"b","node.type":"track.op","execution.id":"aba03992-ed9c-4bd6-8736-47b22e3befbe"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530701122,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"546b78051074d45f749696c01f67785e","span_id":"929cc2cedea60e2c","start_ms":1795530701120,"status":"ok","attrs":{"execution.id":"aba03992-ed9c-4bd6-8736-47b22e3befbe","workflow.id":"two-node","execution.depth":0},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530701123,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"34a8b3f59ae0dbc66fe13784e50a461b","span_id":"8417766d8d54d1b6","parent_span_id":"521b863acba4419f","start_ms":1795530701122,"status":"ok","attrs":{"node.id":"a","node.type":"track.op","execution.id":"aba03992-ed9c-4bd6-8736-47b22e3befbe"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530701123,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"34a8b3f59ae0dbc66fe13784e50a461b","span_id":"e52f8a04d6cf8c94","parent_span_id":"521b863acba4419f","start_ms":1795530701123,"status":"ok","attrs":{"node.id":"b","node.type":"track.op","execution.id":"aba03992-ed9c-4bd6-8736-47b22e3befbe"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530701123,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"34a8b3f59ae0dbc66fe13784e50a461b","span_id":"521b863acba4419f","start_ms":1795530701122,"status":"ok","attrs":{"execution.id":"aba03992-ed9c-4bd6-8736-47b22e3befbe","workflow.id":"two-node","execution.depth":0},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530701125,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"a4720f4e713d50c6deb835c50ee7d1a2","span_id":"74d5c7e290c1b8cd","parent_span_id":"e006947fceef5ca2","start_ms":1795530701125,"status":"ok","attrs":{"node.id":"a","node.type":"track.op","execution.id":"e878e41c-c145-4b54-bc12-b7a2ac0e0e0d"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530701127,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"a4720f4e713d50c6deb835c50ee7d1a2","span_id":"fb3503bd70de2264","parent_span_id":"e006947fceef5ca2","start_ms":1795530701126,"status":"ok","attrs":{"node.id":"b","node.type":"track.op","execution.id":"e878e41c-c145-4b54-bc12-b7a2ac0e0e0d"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530701127,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"a4720f4e713d50c6deb835c50ee7d1a2","span_id":"e006947fceef5ca2","start_ms":1795530701125,"status":"ok","attrs":{"execution.id":"e878e41c-c145-4b54-bc12-b7a2ac0e0e0d","workflow.id":"two-node","execution.depth":0},"duration_ms":2},"msg":"trace span"}
+{"level":30,"time":1795530701120,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530701124,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530701129,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530701120,"component":"connectors","name":"loop:connectors:registry","type":"track","msg":"Adapter registered"}
+{"level":30,"time":1795530701124,"component":"connectors","name":"loop:connectors:registry","type":"track","msg":"Adapter registered"}
+{"level":30,"time":1795530701129,"component":"connectors","name":"loop:connectors:registry","type":"hang","msg":"Adapter registered"}
+{"level":30,"time":1795530701112,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530701112,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530701119,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530701120,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530701120,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530701123,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530701124,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530701124,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530701128,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530701128,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530701129,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530701331,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"bc5bee48727cc8ac91323d4306e32d00","span_id":"73f3cd3c379fcedc","parent_span_id":"76cf80673d37dd34","start_ms":1795530701129,"status":"error","attrs":{"node.id":"stuck","node.type":"hang.op","execution.id":"bae37c6a-1617-488d-a346-68f6db251226","error.message":"LoopError: Node 'stuck' aborted by workflow timeout (workflow_timeout)"},"duration_ms":202},"msg":"trace span"}
+{"level":50,"time":1795530701331,"component":"engine","name":"loop:engine:executor","executionId":"bae37c6a-1617-488d-a346-68f6db251226","error":"Workflow 'bae37c6a-1617-488d-a346-68f6db251226' timed out after 200ms (workflow_timeout)","msg":"Execution failed"}
+{"level":30,"time":1795530701332,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530701333,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530701334,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530701334,"component":"connectors","name":"loop:connectors:registry","type":"track","msg":"Adapter registered"}
+{"level":30,"time":1795530701331,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"bc5bee48727cc8ac91323d4306e32d00","span_id":"76cf80673d37dd34","start_ms":1795530701129,"status":"error","attrs":{"execution.id":"bae37c6a-1617-488d-a346-68f6db251226","workflow.id":"two-node","execution.depth":0,"error.message":"LoopError: Workflow 'bae37c6a-1617-488d-a346-68f6db251226' timed out after 200ms (workflow_timeout)"},"duration_ms":202},"msg":"trace span"}
+{"level":30,"time":1795530701336,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"d77f491aa092df2d6934d04cd484a91f","span_id":"32edc11412a039a4","parent_span_id":"587bc5ac79f1d872","start_ms":1795530701335,"status":"ok","attrs":{"node.id":"a","node.type":"track.op","execution.id":"5a1af792-e691-4792-8434-230e870f78db"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530701336,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"d77f491aa092df2d6934d04cd484a91f","span_id":"fc44dd0db1af1248","parent_span_id":"587bc5ac79f1d872","start_ms":1795530701336,"status":"ok","attrs":{"node.id":"b","node.type":"track.op","execution.id":"5a1af792-e691-4792-8434-230e870f78db"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530701336,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"d77f491aa092df2d6934d04cd484a91f","span_id":"587bc5ac79f1d872","start_ms":1795530701335,"status":"ok","attrs":{"execution.id":"5a1af792-e691-4792-8434-230e870f78db","workflow.id":"two-node","execution.depth":0},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530701332,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530701336,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530701334,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530701334,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+ ✓ tests/unit/engine/executor-resume.test.ts  (5 tests) 230ms
+{"level":30,"time":1795530701639,"component":"observability","name":"loop:tracing:exporter","span":{"name":"test.span","trace_id":"0af7651916cd43dd8448eb211c80319c","span_id":"b7ad6b7169203331","start_ms":1700000000000,"duration_ms":12,"status":"ok"},"msg":"trace span"}
+ ✓ tests/unit/observability/exporters.test.ts  (11 tests) 96ms
+ ✓ tests/unit/types/validator.test.ts  (17 tests) 4ms
+ ✓ tests/unit/templates/registry.test.ts  (12 tests) 11ms
+{"level":30,"time":1795530702659,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530702661,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530702662,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530702664,"component":"engine","name":"loop:engine:recovery","executionId":"e5bf4e1b-3001-4661-b796-3ce273561590","lastNode":"node_a","reason":"resume_from_last_succeeded","msg":"Recovered execution — reset to pending and re-dispatched"}
+{"level":30,"time":1795530702666,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530702666,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530702668,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530702669,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530702671,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530702671,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530702673,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530702673,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530702675,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530702675,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530702677,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530702661,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530702662,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530702666,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530702667,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530702667,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530702669,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530702669,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530702669,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530702671,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530702672,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530702672,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530702673,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530702674,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530702674,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530702675,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530702676,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530702676,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530702667,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530702669,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530702672,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530702674,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530702676,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530702664,"component":"engine","name":"loop:engine:recovery","recovered":1,"failed":0,"total":1,"msg":"Execution recovery complete"}
+{"level":30,"time":1795530702668,"component":"engine","name":"loop:engine:recovery","executionId":"5a0ac643-5c5b-4a55-9890-f5f29647a8ed","msg":"Marked non-recoverable execution as failed"}
+{"level":30,"time":1795530702668,"component":"engine","name":"loop:engine:recovery","recovered":0,"failed":1,"total":1,"msg":"Execution recovery complete"}
+{"level":30,"time":1795530702673,"component":"engine","name":"loop:engine:recovery","executionId":"0b35e97a-a20a-45e9-b1a4-eb60c71e700e","lastNode":"node_a","reason":"resume_from_last_succeeded","msg":"Recovered execution — reset to pending and re-dispatched"}
+{"level":30,"time":1795530702673,"component":"engine","name":"loop:engine:recovery","recovered":1,"failed":0,"total":1,"msg":"Execution recovery complete"}
+{"level":30,"time":1795530702675,"component":"engine","name":"loop:engine:recovery","executionId":"7d1e2d19-3d0a-4cdb-acfe-8257aa4ab1cb","lastNode":null,"reason":"never_started","msg":"Recovered execution — reset to pending and re-dispatched"}
+{"level":30,"time":1795530702675,"component":"engine","name":"loop:engine:recovery","recovered":1,"failed":0,"total":1,"msg":"Execution recovery complete"}
+{"level":40,"time":1795530702677,"component":"engine","name":"loop:engine:recovery","executionId":"ea47e4df-0845-4662-b02e-2aed485fe9fb","error":"Error: workflow archived","msg":"Recovery dispatch failed"}
+{"level":30,"time":1795530702677,"component":"engine","name":"loop:engine:recovery","recovered":0,"failed":1,"total":1,"msg":"Execution recovery complete"}
+ ✓ tests/unit/engine/recovery.test.ts  (6 tests) 22ms
+ ✓ tests/unit/engine/stateMachine.test.ts  (34 tests) 4ms
+{"level":30,"time":1795530703265,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703267,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703268,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703271,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703272,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703274,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703275,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703277,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703277,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703279,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703279,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703281,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703281,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703283,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703268,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703268,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703272,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703273,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703273,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703275,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703275,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703276,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703277,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703278,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703278,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703279,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703280,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703280,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703281,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703282,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703282,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703282,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703273,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703276,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703278,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703280,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+ ✓ tests/unit/state/execution-events.test.ts  (6 tests) 22ms
+{"level":30,"time":1795530703570,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703572,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703573,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703576,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703576,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703578,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703578,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703580,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703580,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703581,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703582,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703583,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703584,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703586,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703573,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703573,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703576,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703577,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703577,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703579,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703579,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703579,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703580,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703581,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703581,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703582,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703582,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703582,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703584,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703584,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703584,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703577,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703579,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703581,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703582,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703584,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+ ✓ tests/unit/state/complete-if-active.test.ts  (6 tests) 19ms
+{"level":30,"time":1795530703945,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703947,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703949,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703949,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530703953,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"060b3dfccc1454d98f8413b47cb59fa0","span_id":"4d245da57801a2ef","parent_span_id":"1294ad43cbdad542","start_ms":1795530703951,"status":"ok","attrs":{"node.id":"node_a","node.type":"vault.op","execution.id":"exec-43d185a3-0bdd-4b26-8f69-f34f97fbc326"},"duration_ms":2},"msg":"trace span"}
+{"level":50,"time":1795530703958,"component":"engine","name":"loop:engine:executor","executionId":"exec-fe0d7ba9-50ac-4fe4-93be-163abdb4f079","error":"Error: adapter exploded","msg":"Execution failed"}
+{"level":30,"time":1795530703955,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703955,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703959,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703959,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530703962,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530703948,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703949,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703956,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703956,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703956,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703959,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530703960,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530703960,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530703956,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703960,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530703957,"component":"connectors","name":"loop:connectors:registry","type":"desk","msg":"Adapter registered"}
+{"level":30,"time":1795530703960,"component":"connectors","name":"loop:connectors:registry","type":"vault","msg":"Adapter registered"}
+{"level":30,"time":1795530703954,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"060b3dfccc1454d98f8413b47cb59fa0","span_id":"1294ad43cbdad542","start_ms":1795530703950,"status":"ok","attrs":{"execution.id":"exec-43d185a3-0bdd-4b26-8f69-f34f97fbc326","workflow.id":"events-ok","execution.depth":0},"duration_ms":4},"msg":"trace span"}
+{"level":30,"time":1795530703958,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"df924bb7212ab5013a2448c0a0dca5bd","span_id":"08e0fafc7f5a3a37","parent_span_id":"455ad3ef2fa5c910","start_ms":1795530703958,"status":"error","attrs":{"node.id":"node_x","node.type":"desk.op","execution.id":"exec-fe0d7ba9-50ac-4fe4-93be-163abdb4f079","error.message":"Error: adapter exploded"},"duration_ms":0},"msg":"trace span"}
+{"level":30,"time":1795530703958,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"df924bb7212ab5013a2448c0a0dca5bd","span_id":"455ad3ef2fa5c910","start_ms":1795530703957,"status":"error","attrs":{"execution.id":"exec-fe0d7ba9-50ac-4fe4-93be-163abdb4f079","workflow.id":"events-fail","execution.depth":0,"error.message":"Error: adapter exploded"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530703962,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.node","trace_id":"96583b54e0b91c623a6e0a3668dc9899","span_id":"e1ebf4790707564d","parent_span_id":"f7d5f475fd27e6a4","start_ms":1795530703961,"status":"ok","attrs":{"node.id":"node_a","node.type":"vault.op","execution.id":"exec-525e1d05-21ed-4dbf-a446-95f0000fa020"},"duration_ms":1},"msg":"trace span"}
+{"level":30,"time":1795530703962,"component":"observability","name":"loop:tracing:exporter","span":{"name":"loop.execution","trace_id":"96583b54e0b91c623a6e0a3668dc9899","span_id":"f7d5f475fd27e6a4","start_ms":1795530703961,"status":"ok","attrs":{"execution.id":"exec-525e1d05-21ed-4dbf-a446-95f0000fa020","workflow.id":"events-noop","execution.depth":0},"duration_ms":1},"msg":"trace span"}
+ ✓ tests/unit/engine/executor-events.test.ts  (3 tests) 22ms
+{"level":30,"time":1795530704324,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530704326,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530704327,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530704327,"component":"connectors","name":"loop:connectors:registry","type":"mock","msg":"Adapter registered"}
+{"level":50,"time":1795530704337,"component":"engine","name":"loop:engine:executor","executionId":"exec-f953f64e-bad1-4758-b9c3-ddedc102a6fb","error":"Error: adapter exploded","msg":"Execution failed"}
+{"level":30,"time":1795530704334,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530704335,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530704338,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530704338,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530704341,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530704326,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530704327,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530704335,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530704335,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530704335,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530704338,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530704339,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530704339,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530704336,"component":"connectors","name":"loop:connectors:registry","type":"bad","msg":"Adapter registered"}
+{"level":30,"time":1795530704339,"component":"connectors","name":"loop:connectors:registry","type":"mock","msg":"Adapter registered"}
+{"level":30,"time":1795530704335,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530704339,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+ ✓ tests/unit/engine/executor-tracing.test.ts  (3 tests) 21ms
+ ✓ tests/unit/workflow-authoring/validator.test.ts  (7 tests) 3ms
+ ✓ tests/unit/workflow-authoring/topology.test.ts  (7 tests) 3ms
+ ✓ tests/unit/templates/validation.test.ts  (254 tests) 23ms
+ ✓ tests/unit/engine/scheduler.test.ts  (10 tests) 4ms
+{"level":40,"time":1795530705894,"component":"llm","name":"loop:llm:router","provider":"failing","failures":5,"msg":"Circuit opened"}
+{"level":40,"time":1795530705894,"component":"llm","name":"loop:llm:router","provider":"failing","failures":5,"msg":"Circuit opened"}
+ ✓ tests/unit/llm/router.test.ts  (4 tests) 3ms
+ ✓ tests/unit/engine/retry.test.ts  (14 tests) 141ms
+{"level":30,"time":1795530706906,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530706908,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530706910,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530706947,"component":"api","name":"loop:api:auth-routes","username":"admin","msg":"Bootstrap admin user created from LOOP_BOOTSTRAP_ADMIN_*"}
+{"level":30,"time":1795530706984,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530706985,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530706986,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530706987,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530707084,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530707085,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530706909,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530706910,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530706985,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530706986,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530706986,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530706987,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530706987,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530706988,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530707085,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530707085,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530707086,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530706986,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530706988,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530707086,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530707025,"component":"api","name":"loop:api:auth-routes","username":"admin","msg":"Bootstrap admin user created from LOOP_BOOTSTRAP_ADMIN_*"}
+{"level":30,"time":1795530707082,"component":"api","name":"loop:api:auth-routes","username":"admin","msg":"User login succeeded"}
+{"level":30,"time":1795530707120,"component":"api","name":"loop:api:auth-routes","username":"admin","msg":"Bootstrap admin user created from LOOP_BOOTSTRAP_ADMIN_*"}
+{"level":30,"time":1795530707158,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530707158,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530707159,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530707192,"component":"api","name":"loop:api:auth-routes","username":"admin","msg":"Bootstrap admin user created from LOOP_BOOTSTRAP_ADMIN_*"}
+{"level":30,"time":1795530707158,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530707158,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530707159,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530707334,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530707334,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530707335,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530707371,"component":"api","name":"loop:api:auth-routes","username":"admin","msg":"Bootstrap admin user created from LOOP_BOOTSTRAP_ADMIN_*"}
+{"level":30,"time":1795530707334,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530707335,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530707335,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530707373,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+ ✓ tests/unit/api/auth-login.test.ts  (8 tests) 587ms
+{"level":40,"time":1795530707697,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707697,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707695-1","executionId":"e9ee0445-a52b-47b7-9eed-ba40444d4fa4","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707698,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707698,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"35283a26-ec9e-435b-a3be-b7bafd3e5ece","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707698,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707698,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"f726ce51-7647-4ef3-abfa-18381f6a4c9c","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"d786b240-1eff-48ee-a2db-84ab8dfe42b7","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"3bf592d8-6dc5-479b-82c7-ab77fa624159","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"f2843c19-8b71-4389-bf6d-927b03cab7ec","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"bebcc7da-4d50-426f-a2cb-4039e7d7644a","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"02356cf1-c09e-4352-b645-72f435d0a2a9","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"4d67b1b3-4a0e-4d3e-adc6-7571a3a618f9","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"2a9451f8-d22f-4e81-9011-bac472949b5d","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"631f570c-edf9-47a2-ac20-5eb8c5f25a3f","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"9b396cf5-3a8d-4c6d-b197-12e247787542","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"dd1a59a0-72ba-492a-9821-8e9cd8b642e6","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"4f534412-1f0b-4489-b010-c11abb373e40","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"77ba5cb0-6a74-44db-a051-bc055d0c8bca","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"f5134729-0390-4ec6-b402-c50a407b7452","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"7b1be580-2370-4c08-b70f-7d6d0725d850","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"20f7ae05-81ae-4561-97f1-075eee52ce33","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"98a7e4a4-f09e-4e1c-879f-abfcc14187c1","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"f4a66cec-c695-45b3-a629-21e80ef46bff","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"68f12884-a73b-4687-b30a-e78d8f8a571e","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"377bc040-8f81-4e8e-b81c-e62927c90220","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"ca49977d-495b-49e3-8f05-997a7e53d063","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"e31a0d48-3009-4c6f-a33b-935e29016845","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707699,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"12336d34-8e96-4309-a963-4330cce2389c","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"4f9ed9d2-720f-4dcc-b4f4-1b330638ccc4","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"452d1c83-c4ce-464f-b908-d7513914d78f","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"66191fb1-9458-4d40-9004-005de7719a0e","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"f0cb39da-e30e-4cd6-b5b4-ff893054d244","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"9324e892-78df-4e6c-a934-8729103be85d","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"6194c849-0a80-4bae-8d94-2a834728dfe3","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"8447119b-0701-4535-be89-379c7af29317","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"2d91cdaf-2d52-4e18-81ea-6945630b8b0b","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"a0002e72-29aa-4046-9e90-0c4f224917fa","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"201168e4-5d4c-4581-b8cc-409171e9a196","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"51425f0b-01ab-4ed8-8426-4cf98bd1f120","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"7bba86b6-1d75-4860-8436-a40be2ef57c5","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"bb659395-a505-49b6-b9de-dee5dfb45f41","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"b90dd752-76b9-4326-8e81-763557d8c84e","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"5e5414eb-ae11-4484-b3b9-c40002fccb0e","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"35f23817-5ca0-4279-bf4d-2a5d3f404c56","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"45c2a08a-8392-426b-9445-8903941c390e","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"9faa6ce4-2a13-4ec9-8bca-4c41cb3fa032","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"1bc59f50-5687-42e4-9668-f0cf976755e1","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"2d2dc3a0-efb7-47d8-9e81-15e7970e015b","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"e4cc2c24-5283-4cd1-91e6-4fe1a631e609","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"dd9b1b5e-0095-4873-9093-a76b83fcd8f7","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"304a9e64-51cb-4960-b134-5b4e66f65b95","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"488a7eef-6182-4b34-8749-7b2c83ed3d55","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"d272a37e-be86-4f6d-8b36-77739b99ad6e","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"b3fb9eb5-260c-42d7-8667-98d11da26ff1","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"2fce43d2-aef3-4e99-ba30-b7ed492e8d47","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707700,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"423d7b9c-82b7-4fdb-aacc-a96bf9257e94","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"201096cf-18d7-4f3c-a46a-e955ac5a62e4","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"c33caedf-f676-4f5d-a742-125f5e33743e","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"c18b8243-5a08-4aa1-a83f-ee4f9435fdcb","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"e9d5ba7a-7457-4ed8-8b3b-8a8fe6b13c8e","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"293b40c0-d048-48fc-aa50-6dd7364064c6","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"993b4240-66e5-4eb3-a07f-4aa8d3b1125c","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"b0e3cdf2-85b9-45bf-88ad-e9d52f8979aa","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707701,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707698-3","executionId":"22b50e3a-4ee3-49cc-b7c0-e08356520a7c","msg":"Webhook trigger fired"}
+{"level":40,"time":1795530707702,"component":"triggers","name":"loop:triggers:webhook","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530707702,"component":"triggers","name":"loop:triggers:webhook","triggerId":"trigger-1795530707701-6","executionId":"d40b63a5-4aec-4b88-91aa-3e4e46f453eb","msg":"Webhook trigger fired"}
+ ✓ tests/unit/triggers/webhook.test.ts  (7 tests) 7ms
+ ✓ tests/unit/versioning/diff.test.ts  (6 tests) 3ms
+{"level":30,"time":1795530708315,"component":"connectors","name":"loop:connectors:registry","type":"test-adapter","msg":"Adapter registered"}
+{"level":30,"time":1795530708316,"component":"connectors","name":"loop:connectors:registry","type":"test-adapter","msg":"Adapter registered"}
+{"level":30,"time":1795530708317,"component":"connectors","name":"loop:connectors:registry","type":"test-adapter","msg":"Adapter registered"}
+{"level":30,"time":1795530708317,"component":"connectors","name":"loop:connectors:registry","type":"test-adapter","msg":"Adapter registered"}
+{"level":30,"time":1795531068317,"component":"connectors","name":"loop:connectors:registry","type":"test-adapter","msg":"Adapter registered"}
+{"level":30,"time":1795531068317,"component":"connectors","name":"loop:connectors:registry","type":"test-adapter","msg":"Adapter registered"}
+{"level":30,"time":1795531068317,"component":"connectors","name":"loop:connectors:registry","type":"test-adapter","msg":"Adapter registered"}
+ ✓ tests/unit/connectors/registry.test.ts  (7 tests) 24ms
+ ✓ tests/unit/connectors/trace-propagation.test.ts  (6 tests) 7ms
+ ✓ tests/unit/connectors/llm-adapter.test.ts  (6 tests) 4ms
+ ✓ tests/unit/api/auth-rbac.test.ts  (12 tests) 2ms
+ ✓ tests/unit/egress/gate.test.ts  (7 tests) 8ms
+{"level":40,"time":1795530709992,"component":"engine","name":"loop:engine:eventBus","executionId":"exec-1","type":"node_started","error":"Error: listener boom","msg":"EventBus listener threw — isolated and continuing"}
+ ✓ tests/unit/engine/eventBus.test.ts  (8 tests) 4ms
+{"level":30,"time":1795530710289,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530710291,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530710292,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530710293,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530710294,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530710295,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530710295,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530710296,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530710297,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530710297,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530710298,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530710298,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530710299,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530710300,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530710300,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530710300,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530710292,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530710292,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530710294,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530710295,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530710295,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530710296,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530710296,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530710296,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530710297,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530710297,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530710298,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530710299,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530710299,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530710299,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530710300,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530710300,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530710301,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530710295,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530710296,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530710298,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530710299,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+{"level":30,"time":1795530710301,"component":"state","name":"loop:state:sqlite","msg":"State store initialised (SQLite)"}
+ ✓ tests/unit/state/store-lifecycle.test.ts  (8 tests) 16ms
+{"level":40,"time":1795530710640,"component":"egress","name":"loop:egress:interceptor","url":"http://127.0.0.1:9200/_search","address":"127.0.0.1","msg":"Egress blocked (private/reserved address)"}
+{"level":40,"time":1795530710641,"component":"egress","name":"loop:egress:interceptor","url":"http://169.254.169.254/latest/meta-data/iam/","address":"169.254.169.254","msg":"Egress blocked (private/reserved address)"}
+{"level":40,"time":1795530710641,"component":"egress","name":"loop:egress:interceptor","url":"http://10.0.0.5:8080/admin","address":"10.0.0.5","msg":"Egress blocked (private/reserved address)"}
+{"level":40,"time":1795530710644,"component":"egress","name":"loop:egress:interceptor","url":"http://localhost:8765/query","address":"::1","msg":"Egress blocked (private/reserved address)"}
+ ✓ tests/unit/egress/private-blocklist.test.ts  (9 tests) 21ms
+ ✓ tests/unit/secrets/encryption.test.ts  (10 tests) 4ms
+{"level":40,"time":1795530711254,"component":"triggers","name":"loop:triggers:dispatcher","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530711255,"component":"triggers","name":"loop:triggers:dispatcher","triggerId":"trigger-1","executionId":"d8ef866e-09be-46a9-805a-f2a97ba020ea","msg":"Trigger matched — execution created"}
+{"level":40,"time":1795530711257,"component":"triggers","name":"loop:triggers:dispatcher","workflowId":"workflow-1","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530711257,"component":"triggers","name":"loop:triggers:dispatcher","triggerId":"trigger-1","executionId":"d224cc90-b701-4376-a26a-79e665f19903","msg":"Trigger matched — execution created"}
+{"level":40,"time":1795530711257,"component":"triggers","name":"loop:triggers:dispatcher","workflowId":"workflow-2","msg":"Failed to read workflow version, defaulting to 1"}
+{"level":30,"time":1795530711257,"component":"triggers","name":"loop:triggers:dispatcher","triggerId":"trigger-2","executionId":"d3e43a28-8814-452c-9bdc-1d9003ffb7b4","msg":"Trigger matched — execution created"}
+ ✓ tests/unit/triggers/dispatcher.test.ts  (4 tests) 5ms
+ ✓ tests/unit/engine/nodes.test.ts  (7 tests) 2ms
+ ✓ tests/unit/llm/factory.test.ts  (7 tests) 2ms
+ ✓ tests/unit/api/trace.test.ts  (6 tests) 2ms
+{"level":30,"time":1795530712456,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530712457,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530712459,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530712459,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530712460,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530712460,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530712462,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530712462,"component":"state","name":"loop:state:sqlite","path":":memory:","wal":false,"msg":"SQLite connection opened"}
+{"level":30,"time":1795530712464,"component":"state","name":"loop:state:sqlite","msg":"SQLite connection closed"}
+{"level":30,"time":1795530712458,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530712458,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530712459,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530712460,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530712460,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530712460,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530712461,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530712461,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530712461,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+{"level":30,"time":1795530712462,"component":"state","name":"loop:state:migrate","version":"001","checksum":"b4ba03085e25","msg":"Applying migration"}
+{"level":30,"time":1795530712462,"component":"state","name":"loop:state:migrate","version":"002","checksum":"45366bd0b8f7","msg":"Applying migration"}
+{"level":30,"time":1795530712463,"component":"state","name":"loop:state:migrate","msg":"All migrations applied"}
+ ✓ tests/unit/state/migrations.test.ts  (4 tests) 12ms
+{"level":40,"time":1795530712744,"component":"engine","name":"loop:engine:eventLog","executionId":"exec-1","eventType":"execution_failed","error":"Error: disk full","msg":"Failed to record execution event (best-effort) — continuing"}
+ ✓ tests/unit/engine/eventLog.test.ts  (3 tests) 2ms
+ ✓ tests/unit/connectors/desk-adapter.test.ts  (2 tests) 16ms
+ ✓ tests/unit/api/config.test.ts  (4 tests) 4ms
+{"level":50,"time":1795530713677,"component":"api","name":"loop:api:errorHandler","error":"Error: boom","stack":"Error: boom\n    at fastifyError (/Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/api/errorHandler.test.ts:29:15)\n    at /Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/tests/unit/api/errorHandler.test.ts:53:18\n    at file:///Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:135:14\n    at file:///Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:60:26\n    at runTest (file:///Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:781:17)\n    at runSuite (file:///Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:909:15)\n    at runSuite (file:///Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:909:15)\n    at runFiles (file:///Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:958:5)\n    at startTests (file:///Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:967:3)\n    at file:///Users/eplt/ResilioSync/eplt-dev-temp/odw-ai/loop/node_modules/.pnpm/vitest@1.6.1_@types+node@20.19.43/node_modules/vitest/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:116:7","msg":"Unhandled error"}
+ ✓ tests/unit/api/errorHandler.test.ts  (3 tests) 3ms
+ ✓ tests/unit/triggers/cron.test.ts  (4 tests) 4ms
+ ✓ tests/unit/connectors/recap-adapter.test.ts  (1 test) 14ms
+ ✓ tests/unit/connectors/notification.test.ts  (1 test) 2ms
+
+ Test Files  50 passed (50)
+      Tests  664 passed (664)
+   Start at  22:31:33
+   Duration  20.78s (transform 541ms, setup 9.79s, collect 1.59s, tests 4.48s, environment 5ms, prepare 1.89s)
+
