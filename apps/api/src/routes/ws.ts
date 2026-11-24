@@ -10,14 +10,39 @@
  * `?token=`, `Authorization: Bearer`, or `x-api-key`).
  */
 
+import { randomUUID } from 'node:crypto';
+
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { StateStore } from '@loop/state';
 import type { EventBus, ExecutionBusEvent } from '@loop/engine';
 import { createLogger } from '@loop/observability';
+
 import type { LoopConfig } from '../config.js';
 import { resolveTokenPrincipal } from '../middleware/auth.js';
 
 const logger = createLogger({ name: 'loop:api:ws', component: 'api' });
+
+// ── Single-use WS tickets (audit #23) ──────────────────────────────────────
+// Long-lived JWTs in the WS URL leak into access logs (CWE-598). Clients
+// exchange their REST credentials for a 30s single-use ticket bound to one
+// execution; only the ticket travels in the URL.
+const tickets = new Map<string, { executionId: string; expires: number }>();
+const TICKET_TTL_MS = 30_000;
+
+export function issueExecutionTicket(executionId: string): { ticket: string; expires_in: number } {
+  const now = Date.now();
+  for (const [k, v] of tickets) if (v.expires <= now) tickets.delete(k);
+  const ticket = randomUUID();
+  tickets.set(ticket, { executionId, expires: now + TICKET_TTL_MS });
+  return { ticket, expires_in: TICKET_TTL_MS / 1000 };
+}
+
+export function consumeExecutionTicket(ticket: string, executionId: string): boolean {
+  const entry = tickets.get(ticket);
+  if (!entry) return false;
+  tickets.delete(ticket); // single-use
+  return entry.executionId === executionId && entry.expires > Date.now();
+}
 
 /**
  * Minimal structural view of the underlying ws socket. @fastify/websocket types
@@ -42,12 +67,10 @@ export interface WsRouteDeps {
   eventBus: EventBus;
 }
 
-/** Extract a single auth token from the upgrade request (query → bearer → key). */
+/** Extract a single auth token from the upgrade request (bearer → key).
+ *  Audit #23: the ?token= query path was removed — credentials in URLs leak
+ *  into logs; browser clients use single-use ?ticket= instead. */
 function presentedToken(request: FastifyRequest): string | undefined {
-  const query = request.query as Record<string, unknown>;
-  const q = query['token'];
-  if (typeof q === 'string' && q.length > 0) return q;
-
   const auth = request.headers['authorization'];
   if (typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')) {
     const token = auth.slice(7).trim();
@@ -74,6 +97,14 @@ export async function registerExecutionWebSocket(app: FastifyInstance, deps: WsR
 
     // ── Auth (V1.0 parity): enforce only when LOOP_REQUIRE_AUTH is on ──────
     if (deps.config.LOOP_REQUIRE_AUTH) {
+      // Audit #23: a valid single-use ticket (obtained over authenticated
+      // REST) authorizes this upgrade without putting a JWT in the URL.
+      const query = request.query as Record<string, unknown>;
+      const ticket = typeof query['ticket'] === 'string' ? query['ticket'] : undefined;
+      if (ticket && consumeExecutionTicket(ticket, executionId)) {
+        attach(socket, executionId);
+        return;
+      }
       // Resolve synchronously-ish: verify then either proceed or reject. The
       // subscription is only attached once auth succeeds.
       void resolveTokenPrincipal(presentedToken(request), deps.config).then((principal) => {

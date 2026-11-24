@@ -11,7 +11,7 @@ import {
 } from '../lib/api';
 import { Card, Icon, LoadingBlock, SectionTitle, StatusBadge } from '../components/ui';
 import { reduceNodes } from '../store/executions';
-import { openExecutionSocket, type ExecutionStreamEvent } from '../api/client';
+import { openExecutionSocket, type ExecutionStreamEvent, type ExecutionSocketHandle } from '../api/client';
 
 function NodeTraceRow({ node, index }: { node: NodeExecution; index: number }) {
   const [expanded, setExpanded] = useState(false);
@@ -154,10 +154,30 @@ export function ExecutionDetail() {
   // remains as a resilience fallback if the socket is unavailable.
   useEffect(() => {
     if (!id) return;
-    const socket = openExecutionSocket(id, (event) => {
-      setExecution((prev) => applyStreamEvent(prev, event));
-    });
-    return () => socket.close();
+    // Audit #23: exchange REST credentials for a single-use WS ticket first;
+    // the JWT never travels in the WebSocket URL. The 4s poll remains as the
+    // fallback if the ticket exchange or socket fails.
+    let handle: ExecutionSocketHandle | null = null;
+    let cancelled = false;
+    api
+      .getWsTicket(id)
+      .then(({ ticket }) => {
+        if (cancelled) return;
+        handle = openExecutionSocket(
+          id,
+          (event) => {
+            setExecution((prev) => applyStreamEvent(prev, event));
+          },
+          { ticket },
+        );
+      })
+      .catch(() => {
+        /* poll fallback covers live updates */
+      });
+    return () => {
+      cancelled = true;
+      handle?.close();
+    };
   }, [id]);
 
   if (error) {

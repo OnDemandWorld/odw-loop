@@ -262,8 +262,8 @@
     "suggested_fix": "Extract sensitive header values into the secrets store on create and in the startup migration (resolve at dispatch like api_key), or encrypt the whole config column; align migration with its comment.",
     "failure_scenario": "Editor creates a generic connector with config.headers.authorization='Bearer <live token>' -> token persisted as plaintext JSON in SQLite/PG -> anyone with DB/file access (backups, snapshots) reads the upstream credential, violating the encryption-at-rest guarantee the L-2 work claims.",
     "id": 19,
-    "status": "skipped",
-    "verification_notes": "Deferred for design review: extracting header credentials into the secrets store needs a dispatch-time resolution path for headers (like api_key) plus a migration for existing plaintext rows, and a policy for which headers count as sensitive. Root cause confirmed (POST /connectors extracts only api_key; server.ts migration comment overstates coverage). NOT fixed."
+    "status": "fixed",
+    "verification_notes": "POST /connectors extracts headers.authorization into the encrypted secrets store (name 'header.authorization', connector scope); startup migration now actually moves legacy header credentials (comment previously overstated); dispatchNode resolves and injects the header into adapter config. Regression: admin-routes audit #19 (config stripped, secret stored, non-sensitive headers kept) + executor-branch audit #19 (resolver-injected header reaches adapter). Verified: typecheck 0; unit 767/767; integration 179/180 (pre-existing only); e2e 29/29."
   },
   {
     "file": "apps/api/src/routes/index.ts",
@@ -318,8 +318,8 @@
     "suggested_fix": "Use a short-lived single-use ticket exchanged over REST, or Sec-WebSocket-Protocol carrier; at minimum redact token from server URL logging.",
     "failure_scenario": "Auth-enforced deployment: a viewer opens an execution monitor; their JWT is written to API/proxy access logs. Anyone with log read access can replay the token until expiry.",
     "id": 23,
-    "status": "skipped",
-    "verification_notes": "Deferred for design review: removing the token from the WS URL needs a single-use ticket exchange (REST -> short-lived ticket -> WS) or a Sec-WebSocket-Protocol carrier, spanning apps/api ws route + canvas client. Interim: server URL-log redaction recommended. NOT fixed."
+    "status": "fixed",
+    "verification_notes": "WS auth now uses single-use 30s tickets: POST /api/v1/executions/:id/ws-ticket (viewer role) issues a ticket bound to the execution; the WS route consumes ?ticket= (single-use, expiry-checked); the ?token= query path was REMOVED (header auth retained for non-browser clients). Canvas fetches a ticket before opening the socket; poll remains the fallback. Regression: ws-executions.test.ts (ticket upgrade receives live events; reused ticket -> 4401). Verified: typecheck 0; canvas tsc 0; unit 767/767; integration 179/180 (pre-existing only); e2e 29/29."
   },
   {
     "file": "apps/canvas/src/components/canvas/nodes/ControlNode.tsx",
@@ -1293,7 +1293,9 @@
     "root_cause": "authoring.getById returns archived rows (workflow-authoring/service.ts:59-63, no status check) and POST /execute dispatches the definition without checking status. Cron/webhook explicitly refuse archived workflows; manual does not. Downgraded to Low because manual execution is an explicit user action (arguably intentional, like executing inactive workflows in other orchestrators) — but it defeats DELETE's stated purpose of disarming the flow, and the event-trigger path (separate Medium finding) has no such excuse.",
     "suggested_fix": "Decide and document the policy: either reject status==='archived' on POST /execute with 409 (mirroring cron/webhook), or document that manual execution of archived workflows is allowed.",
     "failure_scenario": "User DELETEs a workflow (archives, disarms triggers) -> anyone later POSTs /api/v1/workflows/<id>/execute -> archived definition runs with real connector side effects.",
-    "id": 93
+    "id": 93,
+    "status": "fixed",
+    "verification_notes": "POST /workflows/:id/execute rejects archived workflows with 409 (mirrors cron/webhook fire-time guards); unknown workflow 404. Regression: admin-routes audit #93. Verified: typecheck 0; integration 179/180 (pre-existing only)."
   },
   {
     "file": "apps/api/src/routes/index.ts",
@@ -1305,7 +1307,9 @@
     "root_cause": "Unlike connectors/triggers routes, PUT and DELETE /api/v1/egress/policies/:id never check existence; store update/delete affects zero rows and the route returns updated:true / deleted:true (and invalidates cache).",
     "suggested_fix": "Load the policy first and throw NotFoundError when absent, matching other resource routes.",
     "failure_scenario": "Admin UI deletes an already-deleted policy id (double click/stale list) -> API answers deleted:true -> UI believes the policy existed and was removed, masking state drift; PUT typo'd id answers updated:true while nothing changed.",
-    "id": 94
+    "id": 94,
+    "status": "fixed",
+    "verification_notes": "PUT/DELETE /api/v1/egress/policies/:id check existence and return 404 for unknown ids; POST now returns the created id (was missing, broke client round-trips). Regression: admin-routes audit #94. Verified: typecheck 0; integration 179/180 (pre-existing only)."
   },
   {
     "file": "apps/api/src/server.ts",

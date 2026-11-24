@@ -115,6 +115,9 @@ export function requiredRoleFor(method: string, url: string): Role | null {
 
   const verb = method.toUpperCase();
   if (verb === 'GET' || verb === 'HEAD') return 'viewer';
+  // Audit #23: viewers monitor executions — the WS ticket exchange must be
+  // reachable with viewer role even though it is a POST.
+  if (verb === 'POST' && path.endsWith('/ws-ticket')) return 'viewer';
   return 'editor'; // POST / PUT / DELETE / PATCH
 }
 

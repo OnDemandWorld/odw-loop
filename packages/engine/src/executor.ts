@@ -876,7 +876,18 @@ export class ExecutionExecutor {
       );
     }
 
-    const config = instanceId ? this.connectors.getInstanceConfig(instanceId) : {};
+    let config = (instanceId ? this.connectors.getInstanceConfig(instanceId) : {}) ?? {};
+    // Audit #19: resolve the encrypted authorization header (moved out of the
+    // plaintext config by POST /connectors and the startup migration).
+    if (instanceId && this.secretResolver) {
+      const headerAuth = await this.secretResolver('header.authorization', 'connector', instanceId);
+      if (headerAuth !== null) {
+        config = {
+          ...config,
+          headers: { ...((config['headers'] as Record<string, unknown>) ?? {}), authorization: headerAuth },
+        };
+      }
+    }
     // Surface the instance's api_key (when present) as a secret so adapters can
     // authenticate upstream calls (INTEGRATION_CONTRACT.md §4.2). V1.7 (L-2):
     // the encrypted secrets store is consulted first (set via

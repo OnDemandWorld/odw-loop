@@ -246,6 +246,9 @@ export const api = {
     return requestEnvelope<Execution[]>(`/api/v1/executions${suffix}`).then(toPaginated);
   },
   getExecution: (id: string) => request<Execution>(`/api/v1/executions/${id}`),
+  // Audit #23: single-use WS ticket — keeps the JWT out of the WebSocket URL.
+  getWsTicket: (id: string) =>
+    request<{ ticket: string; expires_in: number }>(`/api/v1/executions/${id}/ws-ticket`, { method: 'POST' }),
   cancelExecution: (id: string) =>
     request<{ status: string }>(`/api/v1/executions/${id}/cancel`, { method: 'POST' }),
 

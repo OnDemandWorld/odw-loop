@@ -205,6 +205,29 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
         logger.warn({ connectorId: row.id, error: String(err) }, 'Failed to migrate legacy api_key — keeping inline config');
       }
     }
+    // Audit #19: the comment above always promised headers.authorization was
+    // migrated too — actually do it.
+    const legacyHeaders = config?.['headers'];
+    if (legacyHeaders !== null && typeof legacyHeaders === 'object' && !Array.isArray(legacyHeaders)) {
+      const authHeader = (legacyHeaders as Record<string, unknown>)['authorization'];
+      if (typeof authHeader === 'string' && authHeader.length > 0) {
+        try {
+          await secretsManager.set({
+            name: 'header.authorization',
+            value: authHeader,
+            scope: 'connector',
+            scope_id: row.id,
+            created_by: 'system-migration',
+          });
+          const { authorization: _dropHeader, ...restHeaders } = legacyHeaders as Record<string, unknown>;
+          config = { ...(config as Record<string, unknown>), headers: restHeaders };
+          await store.connectors.update(row.id, { config });
+          logger.info({ connectorId: row.id }, 'Migrated legacy plaintext headers.authorization into encrypted secrets store');
+        } catch (err) {
+          logger.warn({ connectorId: row.id, error: String(err) }, 'Failed to migrate legacy authorization header — keeping inline config');
+        }
+      }
+    }
     connectors.registerInstance(row.id, row.connector_type, config);
   }
   // Surface silent cross-product fallback: when a sibling URL is unset the

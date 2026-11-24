@@ -383,3 +383,90 @@ describe('Egress region policies rejected until GeoIP lands (audit #42)', () => 
     expect(put.statusCode).toBe(400);
   });
 });
+
+describe('Connector header credential custody (audit #19)', () => {
+  let ctx: TestApp;
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    ctx = await buildTestApp();
+    app = ctx.app;
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    ctx.conn.close();
+  });
+
+  it('moves headers.authorization into the encrypted secrets store', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/connectors',
+      payload: {
+        connector_type: 'generic',
+        name: 'header-custody',
+        config: { base_url: 'http://sibling.test', headers: { authorization: 'Bearer live-token-xyz', 'x-keep': 'yes' } },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const id = res.json().data.id;
+    // The stored config no longer carries the credential…
+    const row = await ctx.store.connectors.getById(id);
+    expect((row?.config as { headers: Record<string, unknown> }).headers['authorization']).toBeUndefined();
+    expect((row?.config as { headers: Record<string, unknown> }).headers['x-keep']).toBe('yes');
+    // …it lives encrypted in the secrets store.
+    expect(await ctx.secretsManager.get('header.authorization', 'connector', id)).toBe('Bearer live-token-xyz');
+  });
+});
+
+describe('Archived workflow execution guard (audit #93)', () => {
+  let ctx: TestApp;
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    ctx = await buildTestApp();
+    app = ctx.app;
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    ctx.conn.close();
+  });
+
+  it('POST /execute on an archived workflow returns 409', async () => {
+    const wf = await seedWorkflow(ctx.store, { name: 'Archived exec' });
+    await ctx.store.workflows.archive(wf.id);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workflows/${wf.id}/execute`,
+      payload: { payload: {} },
+    });
+    expect(res.statusCode).toBe(409);
+  });
+});
+
+describe('Egress policy existence checks (audit #94)', () => {
+  let ctx: TestApp;
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    ctx = await buildTestApp();
+    app = ctx.app;
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    ctx.conn.close();
+  });
+
+  it('PUT and DELETE on a nonexistent policy return 404', async () => {
+    const missing = crypto.randomUUID();
+    const put = await app.inject({ method: 'PUT', url: `/api/v1/egress/policies/${missing}`, payload: { enabled: false } });
+    expect(put.statusCode).toBe(404);
+    const del = await app.inject({ method: 'DELETE', url: `/api/v1/egress/policies/${missing}` });
+    expect(del.statusCode).toBe(404);
+  });
+});

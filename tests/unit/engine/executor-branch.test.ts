@@ -557,3 +557,46 @@ describe('connector instance selection (audit #44)', () => {
     expect(seenConfigs[0]!['base_url']).toBe('http://second.test');
   });
 });
+
+describe('connector header credential resolution (audit #19)', () => {
+  it('injects the resolved authorization header into the adapter config', async () => {
+    const ctx = await createStore();
+    contexts.push(ctx);
+    const connectors = new ConnectorRegistry();
+    const seenConfigs: Record<string, unknown>[] = [];
+    const adapter: ConnectorAdapter = {
+      type: 'svc',
+      async execute(params) {
+        seenConfigs.push(params.config as Record<string, unknown>);
+        return { output: { ok: true } };
+      },
+      async healthCheck() {
+        return true;
+      },
+      getCapabilities(): ConnectorCapabilities {
+        return { node_types: ['svc.op'], input_types: ['any'], output_types: ['any'] };
+      },
+    };
+    connectors.registerAdapter(adapter);
+    connectors.registerInstance('svc-1', 'svc', { base_url: 'http://sibling.test', headers: { 'x-keep': 'yes' } });
+
+    const definition: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [node('n1', 'svc.op')],
+      edges: [],
+      variables: {},
+    };
+    const execId = await seedExecution(ctx.store, definition);
+    const secretResolver = async (name: string, scope: string, scopeId?: string) => {
+      if (name === 'header.authorization' && scope === 'connector' && scopeId === 'svc-1') return 'Bearer resolved-token';
+      return null;
+    };
+    const executor = new ExecutionExecutor(
+      ctx.store, connectors, 10, 5_000, 30_000, undefined, undefined, undefined, undefined, secretResolver,
+    );
+    await executor.execute(execId, definition, {});
+    const headers = seenConfigs[0]!['headers'] as Record<string, unknown>;
+    expect(headers['authorization']).toBe('Bearer resolved-token');
+    expect(headers['x-keep']).toBe('yes');
+  });
+});

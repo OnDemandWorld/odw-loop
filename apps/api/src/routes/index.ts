@@ -24,14 +24,18 @@ import {
   type UpdateWorkflowRequest,
   type WorkflowDefinition,
 } from '@loop/types';
+import type {
+  TemplateRegistry} from '@loop/templates';
 import {
-  TemplateRegistry,
   INDUSTRIES,
   CATEGORIES,
   type TemplateFilters,
 } from '@loop/templates';
+
 import type { LoopConfig } from '../config.js';
 import { createAuthGuard, isProtectedPath, requireRole, type Role } from '../middleware/auth.js';
+
+import { issueExecutionTicket } from './ws.js';
 
 /** Extract the request ID attached by the requestIdHook middleware. */
 function getRequestId(request: FastifyRequest): string {
@@ -301,6 +305,13 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const { id } = request.params as { id: string };
     const body = request.body as { payload?: Record<string, unknown> };
     const actor = getActor(request);
+    // Audit #93: archived workflows must not run — mirror the cron/webhook
+    // fire-time guards (DELETE archives and disarms; execution defeats that).
+    const target = await deps.authoring.getById(id);
+    if (!target) throw new NotFoundError('workflow', id);
+    if (target.status === 'archived') {
+      throw new LoopError('VALIDATION_INVALID', 'Cannot execute an archived workflow', 409);
+    }
     const executionId = await deps.manualHandler.trigger(id, body?.payload ?? {}, actor.principal);
     // The manual trigger only persists a *pending* execution record; actually
     // run the workflow asynchronously. The executor transitions the execution
@@ -345,6 +356,16 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       { page: pagination.page, per_page: pagination.per_page },
     );
     return { success: true, data: result.data, meta: meta(request, { total: result.total, page: result.page, per_page: result.per_page, total_pages: result.total_pages }) };
+  });
+
+  // Audit #23: exchange REST credentials for a single-use, short-lived WS
+  // ticket so long-lived tokens never travel in the WebSocket URL.
+  app.post('/api/v1/executions/:id/ws-ticket', async (request) => {
+    const { id } = request.params as { id: string };
+    const execution = await deps.store.executions.getById(id);
+    if (!execution) throw new NotFoundError('execution', id);
+    const { ticket, expires_in } = issueExecutionTicket(id);
+    return { success: true, data: { ticket, expires_in }, meta: meta(request) };
   });
 
   app.get('/api/v1/executions/:id', async (request) => {
@@ -669,6 +690,24 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     } else {
       storedConfig = body.config ?? {};
     }
+    // Audit #19: header credentials (authorization) must not stay plaintext in
+    // the config JSON — move them into the encrypted secrets store; the
+    // executor resolves them at dispatch like api_key.
+    const headers = storedConfig['headers'];
+    if (headers !== null && typeof headers === 'object' && !Array.isArray(headers)) {
+      const authHeader = (headers as Record<string, unknown>)['authorization'];
+      if (typeof authHeader === 'string' && authHeader.length > 0) {
+        await deps.secretsManager.set({
+          name: 'header.authorization',
+          value: authHeader,
+          scope: 'connector',
+          scope_id: connectorId,
+          created_by: 'api',
+        });
+        const { authorization: _drop, ...restHeaders } = headers as Record<string, unknown>;
+        storedConfig = { ...storedConfig, headers: restHeaders };
+      }
+    }
     const connector = await deps.store.connectors.create({
       id: connectorId,
       connector_type: body.connector_type,
@@ -712,9 +751,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     if (body.target_type === 'region') {
       throw new LoopError('VALIDATION_INVALID', 'region policies are not enforceable yet (no GeoIP source); use domain or ip_range', 400);
     }
-    await deps.store.egressPolicies.create({ id: crypto.randomUUID(), ...body });
+    const id = crypto.randomUUID();
+    await deps.store.egressPolicies.create({ id, ...body });
     deps.egressEngine.invalidateCache();
-    return reply.status(201).send({ success: true, data: body, meta: meta(request) });
+    return reply.status(201).send({ success: true, data: { id, ...body }, meta: meta(request) });
   });
 
   const UpdateEgressPolicySchema = z.object({
@@ -729,6 +769,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.put('/api/v1/egress/policies/:id', { preHandler: [requireRole('admin')] }, async (request) => {
     const { id } = request.params as { id: string };
     const body = parseBody(UpdateEgressPolicySchema, request.body);
+    // Audit #94: report 404 for nonexistent ids instead of a phantom success.
+    if (!(await deps.store.egressPolicies.list()).some((p) => p.id === id)) {
+      throw new NotFoundError('egress_policy', id);
+    }
     // Audit #42: see POST — region policies cannot be enforced yet.
     if (body.target_type === 'region') {
       throw new LoopError('VALIDATION_INVALID', 'region policies are not enforceable yet (no GeoIP source); use domain or ip_range', 400);
@@ -740,6 +784,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   app.delete('/api/v1/egress/policies/:id', { preHandler: [requireRole('admin')] }, async (request) => {
     const { id } = request.params as { id: string };
+    // Audit #94: report 404 for nonexistent ids instead of a phantom success.
+    if (!(await deps.store.egressPolicies.list()).some((p) => p.id === id)) {
+      throw new NotFoundError('egress_policy', id);
+    }
     await deps.store.egressPolicies.delete(id);
     deps.egressEngine.invalidateCache();
     return { success: true, data: { id, deleted: true }, meta: meta(request) };

@@ -205,9 +205,18 @@ describe('WebSocket /ws/executions/:id — auth gate (LOOP_REQUIRE_AUTH)', () =>
     expect(closeInfo.code).toBe(4401);
   });
 
-  it('accepts an upgrade authenticated via ?token=<api-key>', async () => {
+  it('accepts an upgrade authenticated via a single-use WS ticket (audit #23)', async () => {
     const executionId = await seedExecution(ctx, ONE_NODE_DEFINITION);
-    const wsUrl = `${baseUrl.replace('http', 'ws')}/ws/executions/${executionId}?token=${API_KEY}`;
+    // Exchange REST credentials for a ticket — the JWT/key never enters the URL.
+    const ticketRes = await app.inject({
+      method: 'POST',
+      url: `/api/v1/executions/${executionId}/ws-ticket`,
+      headers: { 'x-api-key': API_KEY },
+    });
+    expect(ticketRes.statusCode).toBe(200);
+    const { ticket, expires_in } = ticketRes.json().data;
+    expect(expires_in).toBeGreaterThan(0);
+    const wsUrl = `${baseUrl.replace('http', 'ws')}/ws/executions/${executionId}?ticket=${ticket}`;
 
     const ws = await connect(wsUrl);
     try {
@@ -219,5 +228,32 @@ describe('WebSocket /ws/executions/:id — auth gate (LOOP_REQUIRE_AUTH)', () =>
     } finally {
       ws.close();
     }
+  });
+
+  it('rejects a reused ticket (single-use, audit #23)', async () => {
+    const executionId = await seedExecution(ctx, ONE_NODE_DEFINITION);
+    const ticketRes = await app.inject({
+      method: 'POST',
+      url: `/api/v1/executions/${executionId}/ws-ticket`,
+      headers: { 'x-api-key': API_KEY },
+    });
+    const { ticket } = ticketRes.json().data;
+    const wsUrl = `${baseUrl.replace('http', 'ws')}/ws/executions/${executionId}?ticket=${ticket}`;
+
+    const first = await connect(wsUrl);
+    first.close();
+
+    const closeInfo = await new Promise<{ code: number }>((resolve, reject) => {
+      const ws = new WebSocket(wsUrl);
+      const timer = setTimeout(() => reject(new Error('Timed out waiting for close')), 8_000);
+      ws.onclose = (ev: CloseEvent) => {
+        clearTimeout(timer);
+        resolve({ code: ev.code });
+      };
+      ws.onerror = () => {
+        /* rejection surfaces via onclose */
+      };
+    });
+    expect(closeInfo.code).toBe(4401);
   });
 });

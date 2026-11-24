@@ -137,17 +137,19 @@ export interface ExecutionStreamEvent {
   nodes?: SnapshotNode[];
 }
 
-/** Build the WS URL for an execution, carrying the token as a query param. */
-export function buildExecutionWsUrl(executionId: string, token?: string | null): string {
+/** Build the WS URL for an execution. Audit #23: only a single-use,
+ *  short-lived ticket (obtained over authenticated REST) travels in the URL —
+ *  never the long-lived JWT, which would leak into access logs. */
+export function buildExecutionWsUrl(executionId: string, ticket?: string | null): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const base = `${protocol}//${window.location.host}/ws/executions/${executionId}`;
-  return token ? `${base}?token=${encodeURIComponent(token)}` : base;
+  return ticket ? `${base}?ticket=${encodeURIComponent(ticket)}` : base;
 }
 
 export type SocketStatus = 'connecting' | 'open' | 'closed' | 'error';
 
 export interface ExecutionSocketOptions {
-  token?: string | null;
+  ticket?: string | null;
   onStatus?: (status: SocketStatus) => void;
 }
 
@@ -165,7 +167,7 @@ export function openExecutionSocket(
   onEvent: (event: ExecutionStreamEvent) => void,
   options: ExecutionSocketOptions = {},
 ): ExecutionSocketHandle {
-  const ws = new WebSocket(buildExecutionWsUrl(executionId, options.token ?? null));
+  const ws = new WebSocket(buildExecutionWsUrl(executionId, options.ticket ?? null));
 
   ws.onopen = () => options.onStatus?.('open');
   ws.onmessage = (ev: MessageEvent) => {
