@@ -130,6 +130,9 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     unconfiguredPolicy: cfg.LOOP_EGRESS_UNCONFIGURED_POLICY,
     allowPrivate: cfg.LOOP_EGRESS_ALLOW_PRIVATE,
   });
+  // Audit #39: readiness probes go through the same egress policy as workflow
+  // connector calls (airgap + private-range blocklist).
+  connectors.setEgressGate(egressGate);
   // V1.7 (L-2): encrypted secrets store — created early so the legacy
   // credential migration below and the executor's secretResolver share it.
   const secretsManager = new SecretsManager(store, cfg.LOOP_ENCRYPTION_KEY);

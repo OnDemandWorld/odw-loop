@@ -10,11 +10,20 @@ const logger = createLogger({ name: 'loop:connectors:notification', component: '
 
 // ─── Slack ────────────────────────────────────────────────────────────────────
 
+/** Minimal egress gate shape (audit #36) — same contract as ExecuteParams.egress. */
+export interface EgressCheck {
+  check(url: string): Promise<void>;
+}
+
 export class SlackNotifier {
-  constructor(private token: string) {}
+  constructor(private token: string, private egress?: EgressCheck) {}
 
   async send(channel: string, text: string): Promise<void> {
-    await request('https://slack.com/api/chat.postMessage', {
+    const url = 'https://slack.com/api/chat.postMessage';
+    // Audit #36: notifications must respect the egress policy (airgap blocks
+    // ALL outbound calls, including slack.com).
+    await this.egress?.check(url);
+    const response = await request(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -22,6 +31,21 @@ export class SlackNotifier {
       },
       body: JSON.stringify({ channel, text }),
     });
+    // Audit #35: Slack answers HTTP 200 with {ok:false,error:...} for invalid
+    // tokens/channels — drain, parse and throw so the queue can retry.
+    const raw = await response.body.text();
+    if (response.statusCode >= 400) {
+      throw new Error(`Slack notification failed: HTTP ${response.statusCode}: ${raw.slice(0, 200)}`);
+    }
+    let parsed: { ok?: boolean; error?: string };
+    try {
+      parsed = JSON.parse(raw) as { ok?: boolean; error?: string };
+    } catch {
+      throw new Error('Slack notification failed: non-JSON response');
+    }
+    if (!parsed.ok) {
+      throw new Error(`Slack notification failed: ${parsed.error ?? 'unknown error'}`);
+    }
   }
 }
 
@@ -39,14 +63,16 @@ export class EmailNotifier {
 // ─── Generic webhook ──────────────────────────────────────────────────────────
 
 export class WebhookNotifier {
-  constructor(private url: string, private secret: string) {}
+  constructor(private url: string, private secret: string, private egress?: EgressCheck) {}
 
   async send(payload: unknown): Promise<void> {
+    // Audit #36: respect the egress policy before calling the arbitrary URL.
+    await this.egress?.check(this.url);
     const body = JSON.stringify(payload);
     // HMAC-SHA256 over the raw body — must match the inbound verification in
     // @loop/triggers WebhookTriggerHandler (tsd §11.6).
     const signature = createHmac('sha256', this.secret).update(body).digest('hex');
-    await request(this.url, {
+    const response = await request(this.url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -54,6 +80,12 @@ export class WebhookNotifier {
       },
       body,
     });
+    // Audit #37: drain the body (release the socket) and surface HTTP failures
+    // so NotificationQueue retries them instead of reporting false success.
+    const raw = await response.body.text();
+    if (response.statusCode >= 400) {
+      throw new Error(`Webhook notification failed: HTTP ${response.statusCode}: ${raw.slice(0, 200)}`);
+    }
   }
 }
 

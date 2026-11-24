@@ -137,3 +137,45 @@ describe('ConnectorRegistry', () => {
     expect(results.get('hung')).toBe(false);
   });
 });
+
+describe('ConnectorRegistry — egress-gated readiness probes (audit #39)', () => {
+  it('a denying gate marks the instance unreachable without probing it', async () => {
+    const registry = new ConnectorRegistry();
+    const healthCheck = vi.fn().mockResolvedValue(true);
+    const adapter: ConnectorAdapter = {
+      type: 'svc',
+      execute: vi.fn(),
+      healthCheck,
+      getCapabilities: vi.fn().mockReturnValue({ node_types: [] }),
+    };
+    registry.registerAdapter(adapter);
+    registry.registerInstance('svc-1', 'svc', { base_url: 'http://169.254.169.254' });
+    registry.setEgressGate({
+      async check(): Promise<void> {
+        throw new Error('Egress blocked: private/reserved address');
+      },
+    });
+
+    const results = await registry.healthCheckAll();
+    expect(results.get('svc-1')).toBe(false);
+    expect(healthCheck).not.toHaveBeenCalled();
+  });
+
+  it('an allowing gate still probes normally', async () => {
+    const registry = new ConnectorRegistry();
+    const healthCheck = vi.fn().mockResolvedValue(true);
+    const adapter: ConnectorAdapter = {
+      type: 'svc',
+      execute: vi.fn(),
+      healthCheck,
+      getCapabilities: vi.fn().mockReturnValue({ node_types: [] }),
+    };
+    registry.registerAdapter(adapter);
+    registry.registerInstance('svc-1', 'svc', { base_url: 'http://sibling.test' });
+    registry.setEgressGate({ async check(): Promise<void> {} });
+
+    const results = await registry.healthCheckAll();
+    expect(results.get('svc-1')).toBe(true);
+    expect(healthCheck).toHaveBeenCalled();
+  });
+});

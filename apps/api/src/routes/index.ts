@@ -706,6 +706,12 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
   app.post('/api/v1/egress/policies', { preHandler: [requireRole('admin')] }, async (request, reply) => {
     const body = parseBody(EgressPolicyRequestSchema, request.body);
+    // Audit #42: lookupRegion is a permanent stub (no GeoIP source) — region
+    // policies can NEVER match. Reject them at configuration time instead of
+    // letting operators believe a data-residency deny rule is enforced.
+    if (body.target_type === 'region') {
+      throw new LoopError('VALIDATION_INVALID', 'region policies are not enforceable yet (no GeoIP source); use domain or ip_range', 400);
+    }
     await deps.store.egressPolicies.create({ id: crypto.randomUUID(), ...body });
     deps.egressEngine.invalidateCache();
     return reply.status(201).send({ success: true, data: body, meta: meta(request) });
@@ -723,6 +729,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.put('/api/v1/egress/policies/:id', { preHandler: [requireRole('admin')] }, async (request) => {
     const { id } = request.params as { id: string };
     const body = parseBody(UpdateEgressPolicySchema, request.body);
+    // Audit #42: see POST — region policies cannot be enforced yet.
+    if (body.target_type === 'region') {
+      throw new LoopError('VALIDATION_INVALID', 'region policies are not enforceable yet (no GeoIP source); use domain or ip_range', 400);
+    }
     await deps.store.egressPolicies.update(id, body);
     deps.egressEngine.invalidateCache();
     return { success: true, data: { id, updated: true }, meta: meta(request) };

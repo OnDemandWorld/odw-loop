@@ -479,7 +479,9 @@
     "root_cause": "SlackNotifier.send never reads response.statusCode or body. Slack returns HTTP 200 with {ok:false,error:...} for invalid tokens/channels; an unread undici body holds the socket (rest of repo explicitly drains bodies for this reason). Latent: notifiers exported but not yet wired into apps/api.",
     "suggested_fix": "Drain/parse JSON, throw on non-2xx or ok:false so NotificationQueue can retry.",
     "failure_scenario": "Misconfigured Slack token makes every notification silently 'succeed' while nothing is delivered; each send leaks a pooled socket.",
-    "id": 35
+    "id": 35,
+    "status": "fixed",
+    "verification_notes": "SlackNotifier.send drains the body, throws on non-2xx and on {ok:false,error} (HTTP 200 failures no longer report success). Regression: notification.test.ts audit #35 (invalid_auth throws; ok:true resolves). Verified: typecheck 0; unit 735/735; integration 179/180 (pre-existing only); e2e 30/30; eslint delta 0."
   },
   {
     "file": "packages/connectors/src/notification/index.ts",
@@ -491,7 +493,9 @@
     "root_cause": "Neither notifier accepts or calls the egress gate before dispatching to slack.com / an arbitrary webhook URL, unlike every ConnectorAdapter. Airgap mode is specified to block ALL outbound calls. Latent: not yet wired.",
     "suggested_fix": "Accept the same { check(url) } gate as ExecuteParams.egress and await it before each request; thread signal too.",
     "failure_scenario": "Once wired per TSD §9.6, notifications flow to external hosts even with LOOP_AIRGAP_MODE=true or default-deny — the sovereignty guarantee silently has a hole.",
-    "id": 36
+    "id": 36,
+    "status": "fixed",
+    "verification_notes": "Slack/Webhook notifiers accept an optional egress gate (EgressCheck) and await check(url) before dispatching — airgap/default-deny will cover notifications once wired. Regression: notification.test.ts audit #36 (denying gate -> no request for both notifiers). Latent until notifiers are wired into apps/api (TSD §9.6). Verified: typecheck 0; unit 735/735; integration 179/180 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/connectors/src/notification/index.ts",
@@ -503,7 +507,9 @@
     "root_cause": "WebhookNotifier.send discards the response without checking statusCode; NotificationQueue retries only thrown errors, so HTTP-level failures are never retried. Unread body holds the socket. Latent: not yet wired.",
     "suggested_fix": "Check statusCode>=400 and throw; drain the body on every path.",
     "failure_scenario": "Webhook receiver returning 500/401 treated as successful delivery; notification lost with no retry and no log.",
-    "id": 37
+    "id": 37,
+    "status": "fixed",
+    "verification_notes": "WebhookNotifier.send drains the body and throws on statusCode>=400 so NotificationQueue retries HTTP failures. Regression: notification.test.ts audit #37 (500 rejects). Verified: typecheck 0; unit 735/735; integration 179/180 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/connectors/src/recap/adapter.ts",
@@ -529,7 +535,9 @@
     "root_cause": "healthCheck issues undici request(baseUrl+'/health') with no egress.check and no signal/timeout; same in desk/adapter.ts:75-84 and recap/adapter.ts:57-66. interface.ts:43-44 gives healthCheck no egress/signal parameters. Connector instances (editor+ role) accept arbitrary config.base_url with no URL validation (routes/index.ts:625-662). /ready (server.ts:333-350) calls healthCheckAll() on every registered instance, so the private-address blocklist and LOOP_AIRGAP_MODE are not applied on this path.",
     "suggested_fix": "Route probes through the same EgressGate (or skip probing in airgap), validate base_url at instance creation, add a short abortable timeout.",
     "failure_scenario": "LOOP_AIRGAP_MODE=true yet /ready still makes outbound GETs to configured hosts. With allowPrivate=false an editor registers base_url=http://169.254.169.254/latest/meta-data: every /ready probe issues a blind GET into the metadata/internal network, bypassing the SSRF blocklist enforced on execute().",
-    "id": 39
+    "id": 39,
+    "status": "fixed",
+    "verification_notes": "ConnectorRegistry.setEgressGate wired in server.ts; healthCheckAll checks the gate per configured base_url before probing (denied -> unreachable, no network call). vault/desk/recap healthCheck requests gained a 3s AbortSignal timeout. Regression: registry.test.ts audit #39 (denying gate: no probe, false; allowing gate: probes). /ready SSRF oracle closed for editor-created instances. Verified: typecheck 0; unit 735/735; integration 179/180 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/connectors/src/vault/adapter.ts",
@@ -569,7 +577,9 @@
     "root_cause": "lookupRegion(_ip) returns '' unconditionally (no GeoIP source). Region allow/deny policies therefore never match in any real deployment. tests/unit/egress/engine.test.ts:18-24 mocks a fake lookupRegion (203.0.113.*->EU) and 'proves' region enforcement against the very function whose real implementation is dead — masking the gap.",
     "suggested_fix": "Implement GeoIP (e.g. MaxMind) or surface the limitation in the policy API/docs and reject region policies at creation until supported; add a test asserting the shipped resolver's actual behavior.",
     "failure_scenario": "Operator configures 'deny region RU' (data-residency requirement) alongside an allow policy: lookupRegion returns '' for every IP, the deny never matches, traffic flows to the blocked region — while the unit suite 'proves' region enforcement works.",
-    "id": 42
+    "id": 42,
+    "status": "fixed",
+    "verification_notes": "POST/PUT /api/v1/egress/policies reject target_type 'region' with 400 explaining no GeoIP source exists — operators can no longer configure unenforceable data-residency rules that silently never match. (Full fix = implement GeoIP; rejection is the honest interim.) Regression: admin-routes.test.ts audit #42 (POST+PUT 400). The mocked-geo unit test still documents intended engine semantics. Verified: typecheck 0; unit 735/735; integration 179/180 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/engine/src/executor.ts",

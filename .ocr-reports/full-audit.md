@@ -243,18 +243,21 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** response.body.text() buffers the entire upstream response with no size cap; target URL is arbitrary workflow input (egress-gated for destination, not size).
   - **Failure scenario:** rest_call node pointed at a large data-export/file URL buffers gigabytes into the heap; the modular-monolith API OOM-crashes, killing every in-flight execution.
   - **Suggested fix:** Stream the body with a byte cap (e.g. 10 MB) and throw a clear UpstreamError when exceeded; consider configurable limit.
-- [ ] **#35 — Slack send ignores {ok:false} and HTTP status; body never drained**
+- [x] **#35 — Slack send ignores {ok:false} and HTTP status; body never drained**
   - `packages/connectors/src/notification/index.ts:16-25` · category: bug
+  - **Status:** fixed — SlackNotifier.send drains the body, throws on non-2xx and on {ok:false,error} (HTTP 200 failures no longer report success). Regression: notification.test.ts audit #35 (invalid_auth throws; ok:true resolves). Verified: typecheck 0; unit 735/735; integration 179/180 (pre-existing only); e2e 30/30; eslint delta 0.
   - **Root cause:** SlackNotifier.send never reads response.statusCode or body. Slack returns HTTP 200 with {ok:false,error:...} for invalid tokens/channels; an unread undici body holds the socket (rest of repo explicitly drains bodies for this reason). Latent: notifiers exported but not yet wired into apps/api.
   - **Failure scenario:** Misconfigured Slack token makes every notification silently 'succeed' while nothing is delivered; each send leaks a pooled socket.
   - **Suggested fix:** Drain/parse JSON, throw on non-2xx or ok:false so NotificationQueue can retry.
-- [ ] **#36 — Slack/Webhook notifiers bypass the egress policy engine (latent)**
+- [x] **#36 — Slack/Webhook notifiers bypass the egress policy engine (latent)**
   - `packages/connectors/src/notification/index.ts:16-57` · category: security
+  - **Status:** fixed — Slack/Webhook notifiers accept an optional egress gate (EgressCheck) and await check(url) before dispatching — airgap/default-deny will cover notifications once wired. Regression: notification.test.ts audit #36 (denying gate -> no request for both notifiers). Latent until notifiers are wired into apps/api (TSD §9.6). Verified: typecheck 0; unit 735/735; integration 179/180 (pre-existing only); e2e 30/30.
   - **Root cause:** Neither notifier accepts or calls the egress gate before dispatching to slack.com / an arbitrary webhook URL, unlike every ConnectorAdapter. Airgap mode is specified to block ALL outbound calls. Latent: not yet wired.
   - **Failure scenario:** Once wired per TSD §9.6, notifications flow to external hosts even with LOOP_AIRGAP_MODE=true or default-deny — the sovereignty guarantee silently has a hole.
   - **Suggested fix:** Accept the same { check(url) } gate as ExecuteParams.egress and await it before each request; thread signal too.
-- [ ] **#37 — Webhook send ignores response status; body never drained**
+- [x] **#37 — Webhook send ignores response status; body never drained**
   - `packages/connectors/src/notification/index.ts:44-57` · category: bug
+  - **Status:** fixed — WebhookNotifier.send drains the body and throws on statusCode>=400 so NotificationQueue retries HTTP failures. Regression: notification.test.ts audit #37 (500 rejects). Verified: typecheck 0; unit 735/735; integration 179/180 (pre-existing only); e2e 30/30.
   - **Root cause:** WebhookNotifier.send discards the response without checking statusCode; NotificationQueue retries only thrown errors, so HTTP-level failures are never retried. Unread body holds the socket. Latent: not yet wired.
   - **Failure scenario:** Webhook receiver returning 500/401 treated as successful delivery; notification lost with no retry and no log.
   - **Suggested fix:** Check statusCode>=400 and throw; drain the body on every path.
@@ -264,8 +267,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** get_meeting interpolates String(params.input['id']) raw into the path; vault (45-49) and desk (45,57,68) use encodeURIComponent but recap does not. URL normalization resolves '..' segments before dispatch.
   - **Failure scenario:** Meeting id from a trigger payload like '../../sync' or 'x?foo=bar' changes the request path/query (GET /meetings/../../sync -> /sync), sending the instance Bearer JWT to an unintended Recap endpoint.
   - **Suggested fix:** encodeURIComponent(String(params.input['id'])) as in the sibling adapters.
-- [ ] **#39 — Connector healthCheck bypasses egress gate and has no timeout (/ready SSRF oracle)**
+- [x] **#39 — Connector healthCheck bypasses egress gate and has no timeout (/ready SSRF oracle)**
   - `packages/connectors/src/vault/adapter.ts:55-65` · category: security
+  - **Status:** fixed — ConnectorRegistry.setEgressGate wired in server.ts; healthCheckAll checks the gate per configured base_url before probing (denied -> unreachable, no network call). vault/desk/recap healthCheck requests gained a 3s AbortSignal timeout. Regression: registry.test.ts audit #39 (denying gate: no probe, false; allowing gate: probes). /ready SSRF oracle closed for editor-created instances. Verified: typecheck 0; unit 735/735; integration 179/180 (pre-existing only); e2e 30/30.
   - **Root cause:** healthCheck issues undici request(baseUrl+'/health') with no egress.check and no signal/timeout; same in desk/adapter.ts:75-84 and recap/adapter.ts:57-66. interface.ts:43-44 gives healthCheck no egress/signal parameters. Connector instances (editor+ role) accept arbitrary config.base_url with no URL validation (routes/index.ts:625-662). /ready (server.ts:333-350) calls healthCheckAll() on every registered instance, so the private-address blocklist and LOOP_AIRGAP_MODE are not applied on this path.
   - **Failure scenario:** LOOP_AIRGAP_MODE=true yet /ready still makes outbound GETs to configured hosts. With allowPrivate=false an editor registers base_url=http://169.254.169.254/latest/meta-data: every /ready probe issues a blind GET into the metadata/internal network, bypassing the SSRF blocklist enforced on execute().
   - **Suggested fix:** Route probes through the same EgressGate (or skip probing in airgap), validate base_url at instance creation, add a short abortable timeout.
@@ -281,8 +285,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** Catch-all wraps every non-UpstreamError — including the gate's LoopError('NODE_EGRESS_BLOCKED',403) thrown by egress.check — into UpstreamError('UPSTREAM_VAULT_UNAVAILABLE',502). Identical in desk/adapter.ts:135-139 and recap/adapter.ts:132-136. Generic adapter and LLM providers correctly let it propagate.
   - **Failure scenario:** In airgap or under a deny policy the node fails as 502 'Vault unavailable' and the executor's default retry (LOOP_DEFAULT_RETRY_COUNT=3) retries a permanently blocked call; operators see a phantom upstream outage instead of a policy block.
   - **Suggested fix:** Rethrow LoopError instances with code NODE_EGRESS_BLOCKED unchanged; wrap only transport errors.
-- [ ] **#42 — Region egress policies can never match: lookupRegion is a permanent stub**
+- [x] **#42 — Region egress policies can never match: lookupRegion is a permanent stub**
   - `packages/egress/src/resolver.ts:35-38` · category: security
+  - **Status:** fixed — POST/PUT /api/v1/egress/policies reject target_type 'region' with 400 explaining no GeoIP source exists — operators can no longer configure unenforceable data-residency rules that silently never match. (Full fix = implement GeoIP; rejection is the honest interim.) Regression: admin-routes.test.ts audit #42 (POST+PUT 400). The mocked-geo unit test still documents intended engine semantics. Verified: typecheck 0; unit 735/735; integration 179/180 (pre-existing only); e2e 30/30.
   - **Root cause:** lookupRegion(_ip) returns '' unconditionally (no GeoIP source). Region allow/deny policies therefore never match in any real deployment. tests/unit/egress/engine.test.ts:18-24 mocks a fake lookupRegion (203.0.113.*->EU) and 'proves' region enforcement against the very function whose real implementation is dead — masking the gap.
   - **Failure scenario:** Operator configures 'deny region RU' (data-residency requirement) alongside an allow policy: lookupRegion returns '' for every IP, the deny never matches, traffic flows to the blocked region — while the unit suite 'proves' region enforcement works.
   - **Suggested fix:** Implement GeoIP (e.g. MaxMind) or surface the limitation in the policy API/docs and reject region policies at creation until supported; add a test asserting the shipped resolver's actual behavior.

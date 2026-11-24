@@ -59,7 +59,7 @@ export class RecapAdapter implements ConnectorAdapter {
 
   async healthCheck(baseUrl: string = DEFAULT_BASE_URL): Promise<boolean> {
     try {
-      const response = await request(`${baseUrl}/health`, { method: 'GET' });
+      const response = await request(`${baseUrl}/health`, { method: 'GET', signal: AbortSignal.timeout(3000) });
       await response.body.text();
       return response.statusCode === 200;
     } catch (err) {

@@ -54,7 +54,7 @@ export class VaultAdapter implements ConnectorAdapter {
 
   async healthCheck(baseUrl: string = DEFAULT_BASE_URL): Promise<boolean> {
     try {
-      const response = await request(`${baseUrl}/health`, { method: 'GET' });
+      const response = await request(`${baseUrl}/health`, { method: 'GET', signal: AbortSignal.timeout(3000) });
       // Drain the body so the socket can be released.
       await response.body.text();
       return response.statusCode === 200;

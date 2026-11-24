@@ -343,3 +343,43 @@ describe('Cron schedule preservation on invalid PUT (audit #62)', () => {
     expect(execs.total).toBeGreaterThan(0);
   });
 });
+
+describe('Egress region policies rejected until GeoIP lands (audit #42)', () => {
+  let ctx: TestApp;
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    ctx = await buildTestApp();
+    app = ctx.app;
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    ctx.conn.close();
+  });
+
+  it('POST and PUT reject target_type region with a clear 400', async () => {
+    const post = await app.inject({
+      method: 'POST',
+      url: '/api/v1/egress/policies',
+      payload: { name: 'deny-ru', rule_type: 'deny', target_type: 'region', target_value: 'RU' },
+    });
+    expect(post.statusCode).toBe(400);
+    expect(post.json().error.message).toContain('GeoIP');
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/egress/policies',
+      payload: { name: 'allow-x', rule_type: 'allow', target_type: 'domain', target_value: 'x.test' },
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().data.id;
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/egress/policies/${id}`,
+      payload: { target_type: 'region', target_value: 'RU' },
+    });
+    expect(put.statusCode).toBe(400);
+  });
+});

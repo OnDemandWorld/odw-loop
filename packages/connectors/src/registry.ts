@@ -11,6 +11,12 @@ export class ConnectorRegistry {
   private adapters = new Map<string, ConnectorAdapter>();
   private instances = new Map<string, { adapterType: string; config: Record<string, unknown> }>();
   private capabilitiesCache = new Map<string, { caps: Awaited<ReturnType<ConnectorAdapter['getCapabilities']>>; expiresAt: number }>();
+  private egressGate?: { check(url: string): Promise<void> };
+
+  /** Audit #39: wire the egress gate so readiness probes respect policy. */
+  setEgressGate(gate: { check(url: string): Promise<void> }): void {
+    this.egressGate = gate;
+  }
 
   /** Register an adapter type. */
   registerAdapter(adapter: ConnectorAdapter): void {
@@ -76,6 +82,16 @@ export class ConnectorRegistry {
       if (!adapter) return [id, false] as const;
       const configured = inst.config?.['base_url'];
       const baseUrl = typeof configured === 'string' ? configured : undefined;
+      // Audit #39: readiness probes must respect the egress policy — an
+      // editor-created instance pointing at a private/metadata address must
+      // not turn /ready into an SSRF oracle, and airgap must stop probes too.
+      if (this.egressGate && baseUrl) {
+        try {
+          await this.egressGate.check(`${baseUrl}/health`);
+        } catch {
+          return [id, false] as const;
+        }
+      }
       const timeout = new Promise<boolean>((resolve) => {
         const t = setTimeout(() => resolve(false), timeoutMs);
         if (typeof t.unref === 'function') t.unref();
