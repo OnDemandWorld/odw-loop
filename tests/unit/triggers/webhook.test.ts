@@ -174,3 +174,47 @@ describe('WebhookTriggerHandler', () => {
     expect(mockStore.executions.create).toHaveBeenCalled();
   });
 });
+
+describe('WebhookTriggerHandler — raw-byte HMAC pin (audit #87)', () => {
+  function mockStore(triggerId: string, secret: string) {
+    return {
+      triggers: {
+        getById: vi.fn().mockResolvedValue({
+          id: triggerId,
+          workflow_id: 'workflow-1',
+          enabled: true,
+          config: { secret },
+        }),
+      },
+      executions: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+    } as unknown as ConstructorParameters<typeof WebhookTriggerHandler>[0];
+  }
+
+  it('accepts a signature over received bytes that differ from JSON.stringify(body)', async () => {
+    const triggerId = uniqueTriggerId();
+    const secret = 'test-secret';
+    const body = { data: 'test' };
+    // Same semantics, different serialization (extra whitespace) — exactly
+    // what non-V8 senders (e.g. Python json.dumps) produce.
+    const rawBody = '{ "data" : "test" }';
+    const signature = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
+
+    const handler = new WebhookTriggerHandler(mockStore(triggerId, secret));
+    const result = await handler.handle({ triggerId, signature, body, rawBody });
+    expect(result.execution_id).toBeDefined();
+  });
+
+  it('rejects a signature computed over re-serialized JSON when the bytes differ', async () => {
+    const triggerId = uniqueTriggerId();
+    const secret = 'test-secret';
+    const body = { data: 'test' };
+    const rawBody = '{ "data" : "test" }';
+    // WRONG: signing JSON.stringify(body) instead of the received bytes.
+    const signature = `sha256=${createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex')}`;
+
+    const handler = new WebhookTriggerHandler(mockStore(triggerId, secret));
+    await expect(handler.handle({ triggerId, signature, body, rawBody })).rejects.toThrow('Invalid webhook signature');
+  });
+});

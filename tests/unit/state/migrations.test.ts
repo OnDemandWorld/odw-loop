@@ -26,13 +26,18 @@ describe('Migration Runner', () => {
 
   it('should be idempotent (no errors on second run)', async () => {
     await runMigrations(conn);
+    const first = conn.db.select().from(schema.schemaMigrations).all();
+    expect(first.length).toBeGreaterThan(0);
 
     // Run again - should not throw
     await expect(runMigrations(conn)).resolves.not.toThrow();
 
-    // Should still have same number of migrations
-    const migrations = conn.db.select().from(schema.schemaMigrations).all();
-    expect(migrations.length).toBeGreaterThan(0);
+    // Audit #84: the applied version set must be UNCHANGED — a runner bug
+    // that re-inserts/re-applies migrations on every boot must fail here
+    // (the old >0 assertion passed for duplicate rows too).
+    const second = conn.db.select().from(schema.schemaMigrations).all();
+    expect(second.map((m) => m.version).sort()).toEqual(first.map((m) => m.version).sort());
+    expect(second.map((m) => m.checksum).sort()).toEqual(first.map((m) => m.checksum).sort());
   });
 
   it('should track applied versions in schema_migrations table', async () => {

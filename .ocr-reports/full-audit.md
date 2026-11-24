@@ -493,18 +493,21 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** Auth unit tests cover issuance happy path, scrypt helpers, lockout, pure RBAC helpers. createAuthGuard's negative JWT paths (expired token — issuance sets 12h exp at routes/auth.ts:118; tampered signature; wrong secret) and the static LOOP_API_KEY / x-api-key path (middleware/auth.ts:170) have no unit test.
   - **Failure scenario:** Refactor adds generous clockTolerance or drops exp verification (stolen tokens valid forever), or breaks constant-time API-key compare: issuance tests stay green.
   - **Suggested fix:** Add guard tests: SignJWT with past exp -> 401; different-secret signature -> 401; valid x-api-key -> principal 'system' with LOOP_API_KEY_ROLE; wrong key -> 401.
-- [ ] **#79 — Issued-token check uses .not.toBe(401); 403/500 also pass**
+- [x] **#79 — Issued-token check uses .not.toBe(401); 403/500 also pass**
   - `tests/unit/api/auth-login.test.ts:100-107` · category: test
+  - **Status:** fixed — auth-login issued-token check now asserts toBe(404) (guard passed, route absent) — 403/500 on a valid token now fail the test. Verified: unit 738/738; integration 179/180 (pre-existing only); eslint delta 0.
   - **Root cause:** Guarded request hits an unregistered route, so the meaningful outcome is 404. .not.toBe(401) passes on 403 (RBAC misclassification of a valid admin token) or 500 (guard crash on a valid token), not just success.
   - **Failure scenario:** roleFromClaims/requiredRoleFor regression rejects valid admin JWTs with 403, or guard throws 500 on well-formed tokens: login still 'issues a working token' per this test.
   - **Suggested fix:** Assert expect(guarded.statusCode).toBe(404) (guard passed, route absent), or register a real protected route and assert 200 plus resolved authRole.
-- [ ] **#80 — node:dns mock returns wrong shape for {all:true}; private check no-ops**
+- [x] **#80 — node:dns mock returns wrong shape for {all:true}; private check no-ops**
   - `tests/unit/egress/gate.test.ts:21-27` · category: test
+  - **Status:** fixed — gate.test node:dns mock honours opts.all (array of {address,family}); added private.example.com resolution and a test that a hostname resolving to 10.0.0.5 is blocked even under an allow-all policy — the hostname private-address branch is now actually exercised. Verified: unit 738/738; eslint delta 0.
   - **Root cause:** Mock lookup calls cb(null, '93.184.216.34') regardless of options. interceptor.ts calls promisified lookup with {all:true}, which really returns an ARRAY of {address,family}. With the mock it resolves to a string; firstPrivateAddress for-of's the string's characters, isPrivateIp(undefined) throws inside try, catch returns null. The hostname private-address branch is silently disabled in this whole file.
   - **Failure scenario:** A regression in firstPrivateAddress's DNS path makes hostname-based SSRF blocking fail open; gate.test.ts stays green because its mock already forces that path to null.
   - **Suggested fix:** Make mock honor opts.all: cb(null,[{address:'93.184.216.34',family:4}]) when all:true. Add a gate test where a hostname resolves to a private address and assert check() rejects even with an allow policy.
-- [ ] **#81 — isAvailable .resolves assertions are never awaited**
+- [x] **#81 — isAvailable .resolves assertions are never awaited**
   - `tests/unit/llm/providers.test.ts:84-88` · category: test
+  - **Status:** fixed — providers.test isAvailable assertions are now awaited (async test) — failures can no longer float as unattributed rejections. Verified: unit 738/738; eslint delta 0.
   - **Root cause:** Three expect(provider.isAvailable()).resolves.toBe(...) calls neither awaited nor returned. Test completes synchronously and reports passed; a failing assertion becomes a floating promise rejection with unreliable attribution.
   - **Failure scenario:** Regression makes isAvailable() return true for a keyless remote vendor (or false for a local server): test green; router/factory then skips or misroutes providers.
   - **Suggested fix:** await each expect(...).resolves chain (or Promise.all).
@@ -518,8 +521,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** .catch(() => undefined) discards any execute() failure, then asserts on seen[seen.length-1]. If the adapter throws BEFORE dispatching (or no-ops), no new request is recorded and last is the previous test's '/error' request — containing neither '../' nor '/etc/passwd', so both assertions pass without any traversal request being made.
   - **Failure scenario:** GenericAdapter regression drops the request entirely on '..' paths (or crashes pre-dispatch): test still passes, giving false confidence that traversal is 'encoded and sent'.
   - **Suggested fix:** Capture seen.length before the call; assert a new request was recorded (or the specific rejection code if fail-closed is intended) and that its URL contains the percent-encoded form (%2e%2e%2f).
-- [ ] **#84 — Migration idempotency test asserts >0 rows, not unchanged count**
+- [x] **#84 — Migration idempotency test asserts >0 rows, not unchanged count**
   - `tests/unit/state/migrations.test.ts:27-36` · category: test
+  - **Status:** fixed — migrations idempotency test asserts the applied version AND checksum sets are unchanged after the second run (was >0 rows) — re-insertion/re-application regressions now fail. Verified: unit 738/738; eslint delta 0.
   - **Root cause:** Comment says 'Should still have same number of migrations' but assertion is only migrations.length > 0 after the second run. A runner bug re-inserting schema_migrations rows (or re-applying migrations) every startup passes. Checksum-mismatch handling also untested.
   - **Failure scenario:** migrate.ts regression loses the version check and re-applies/re-records migrations each boot: duplicate rows accumulate, future version gating misbehaves, 'idempotent' test green.
   - **Suggested fix:** Capture row count/version set after run 1, assert deep-equality after run 2; add a test that tampering with an applied migration's checksum fails loudly.
@@ -533,8 +537,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** Mock listEnabled returns [] — identical to 'no triggers exist'. Disabled-trigger filtering lives in store.triggers.listEnabled (SQL), which the mock bypasses. Mock has no workflows entity, so dispatch()'s version-snapshot call throws into catch and always defaults to 1; objectContaining assertion omits workflow_version, leaving the M5 stale-version fix unpinned.
   - **Failure scenario:** Store regression makes listEnabled return disabled rows (or dispatch regresses to hardcoded version 1, resolving stale definitions during replay): both pass this suite.
   - **Suggested fix:** Test enablement against real SQLite store (enabled+disabled triggers, assert only enabled fires). Add workflows.getById returning version 3; assert executions.create receives workflow_version: 3.
-- [ ] **#87 — HMAC tests use rawBody === JSON.stringify(body); raw-byte pin is vacuous**
+- [x] **#87 — HMAC tests use rawBody === JSON.stringify(body); raw-byte pin is vacuous**
   - `tests/unit/triggers/webhook.test.ts:12-38` · category: test
+  - **Status:** fixed — webhook.test adds raw-byte differentiation: a signature over whitespace-different rawBody is accepted, and a signature over JSON.stringify(body) is rejected when bytes differ — pins the exact-received-bytes HMAC contract. Verified: unit 738/738; integration 179/180 (pre-existing only); eslint delta 0.
   - **Root cause:** Every test sets rawBody = JSON.stringify(body), so a handler regression verifying HMAC over JSON.stringify(params.body) instead of params.rawBody produces identical signatures and passes — precisely the bug class the 'raw-body HMAC' commit fixed (senders with different key order/whitespace would all be rejected).
   - **Failure scenario:** Someone 'simplifies' webhook.ts to re-serialize the parsed body for HMAC: all unit tests pass; in production every webhook from a sender whose serialization differs from V8's JSON.stringify gets 401.
   - **Suggested fix:** Sign a rawBody differing from JSON.stringify(body) (spaces/reversed key order), pass parsed object as body, assert acceptance. Add negative case where signature matches JSON.stringify(body) but NOT rawBody, assert rejection.

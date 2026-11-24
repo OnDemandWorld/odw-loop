@@ -1067,7 +1067,9 @@
     "root_cause": "Guarded request hits an unregistered route, so the meaningful outcome is 404. .not.toBe(401) passes on 403 (RBAC misclassification of a valid admin token) or 500 (guard crash on a valid token), not just success.",
     "suggested_fix": "Assert expect(guarded.statusCode).toBe(404) (guard passed, route absent), or register a real protected route and assert 200 plus resolved authRole.",
     "failure_scenario": "roleFromClaims/requiredRoleFor regression rejects valid admin JWTs with 403, or guard throws 500 on well-formed tokens: login still 'issues a working token' per this test.",
-    "id": 79
+    "id": 79,
+    "status": "fixed",
+    "verification_notes": "auth-login issued-token check now asserts toBe(404) (guard passed, route absent) — 403/500 on a valid token now fail the test. Verified: unit 738/738; integration 179/180 (pre-existing only); eslint delta 0."
   },
   {
     "file": "tests/unit/egress/gate.test.ts",
@@ -1079,7 +1081,9 @@
     "root_cause": "Mock lookup calls cb(null, '93.184.216.34') regardless of options. interceptor.ts calls promisified lookup with {all:true}, which really returns an ARRAY of {address,family}. With the mock it resolves to a string; firstPrivateAddress for-of's the string's characters, isPrivateIp(undefined) throws inside try, catch returns null. The hostname private-address branch is silently disabled in this whole file.",
     "suggested_fix": "Make mock honor opts.all: cb(null,[{address:'93.184.216.34',family:4}]) when all:true. Add a gate test where a hostname resolves to a private address and assert check() rejects even with an allow policy.",
     "failure_scenario": "A regression in firstPrivateAddress's DNS path makes hostname-based SSRF blocking fail open; gate.test.ts stays green because its mock already forces that path to null.",
-    "id": 80
+    "id": 80,
+    "status": "fixed",
+    "verification_notes": "gate.test node:dns mock honours opts.all (array of {address,family}); added private.example.com resolution and a test that a hostname resolving to 10.0.0.5 is blocked even under an allow-all policy — the hostname private-address branch is now actually exercised. Verified: unit 738/738; eslint delta 0."
   },
   {
     "file": "tests/unit/llm/providers.test.ts",
@@ -1091,7 +1095,9 @@
     "root_cause": "Three expect(provider.isAvailable()).resolves.toBe(...) calls neither awaited nor returned. Test completes synchronously and reports passed; a failing assertion becomes a floating promise rejection with unreliable attribution.",
     "suggested_fix": "await each expect(...).resolves chain (or Promise.all).",
     "failure_scenario": "Regression makes isAvailable() return true for a keyless remote vendor (or false for a local server): test green; router/factory then skips or misroutes providers.",
-    "id": 81
+    "id": 81,
+    "status": "fixed",
+    "verification_notes": "providers.test isAvailable assertions are now awaited (async test) — failures can no longer float as unattributed rejections. Verified: unit 738/738; eslint delta 0."
   },
   {
     "file": "tests/unit/review-round4.test.ts",
@@ -1127,7 +1133,9 @@
     "root_cause": "Comment says 'Should still have same number of migrations' but assertion is only migrations.length > 0 after the second run. A runner bug re-inserting schema_migrations rows (or re-applying migrations) every startup passes. Checksum-mismatch handling also untested.",
     "suggested_fix": "Capture row count/version set after run 1, assert deep-equality after run 2; add a test that tampering with an applied migration's checksum fails loudly.",
     "failure_scenario": "migrate.ts regression loses the version check and re-applies/re-records migrations each boot: duplicate rows accumulate, future version gating misbehaves, 'idempotent' test green.",
-    "id": 84
+    "id": 84,
+    "status": "fixed",
+    "verification_notes": "migrations idempotency test asserts the applied version AND checksum sets are unchanged after the second run (was >0 rows) — re-insertion/re-application regressions now fail. Verified: unit 738/738; eslint delta 0."
   },
   {
     "file": "tests/unit/state/postgres.test.ts",
@@ -1163,7 +1171,9 @@
     "root_cause": "Every test sets rawBody = JSON.stringify(body), so a handler regression verifying HMAC over JSON.stringify(params.body) instead of params.rawBody produces identical signatures and passes — precisely the bug class the 'raw-body HMAC' commit fixed (senders with different key order/whitespace would all be rejected).",
     "suggested_fix": "Sign a rawBody differing from JSON.stringify(body) (spaces/reversed key order), pass parsed object as body, assert acceptance. Add negative case where signature matches JSON.stringify(body) but NOT rawBody, assert rejection.",
     "failure_scenario": "Someone 'simplifies' webhook.ts to re-serialize the parsed body for HMAC: all unit tests pass; in production every webhook from a sender whose serialization differs from V8's JSON.stringify gets 401.",
-    "id": 87
+    "id": 87,
+    "status": "fixed",
+    "verification_notes": "webhook.test adds raw-byte differentiation: a signature over whitespace-different rawBody is accepted, and a signature over JSON.stringify(body) is rejected when bytes differ — pins the exact-received-bytes HMAC contract. Verified: unit 738/738; integration 179/180 (pre-existing only); eslint delta 0."
   },
   {
     "file": ".eslintrc.js",

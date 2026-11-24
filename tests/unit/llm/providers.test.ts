@@ -81,10 +81,10 @@ describe('OpenAICompatibleProvider', () => {
     expect(requestMock).not.toHaveBeenCalled();
   });
 
-  it('isAvailable requires a key for remote URLs, none for local', () => {
-    expect(new OpenAICompatibleProvider('openai', 'sk-x').isAvailable()).resolves.toBe(true);
-    expect(new OpenAICompatibleProvider('openai', undefined, 'https://api.openai.com/v1').isAvailable()).resolves.toBe(false);
-    expect(new OpenAICompatibleProvider('lmstudio', undefined, 'http://localhost:1234/v1').isAvailable()).resolves.toBe(true);
+  it('isAvailable requires a key for remote URLs, none for local', async () => {
+    await expect(new OpenAICompatibleProvider('openai', 'sk-x').isAvailable()).resolves.toBe(true);
+    await expect(new OpenAICompatibleProvider('openai', undefined, 'https://api.openai.com/v1').isAvailable()).resolves.toBe(false);
+    await expect(new OpenAICompatibleProvider('lmstudio', undefined, 'http://localhost:1234/v1').isAvailable()).resolves.toBe(true);
   });
 });
 

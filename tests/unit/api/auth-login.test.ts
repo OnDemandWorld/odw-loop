@@ -103,7 +103,7 @@ describe('POST /api/v1/auth/login', () => {
       url: '/api/v1/workflows',
       headers: { authorization: `Bearer ${body.data.token}` },
     });
-    expect(guarded.statusCode).not.toBe(401);
+    expect(guarded.statusCode).toBe(404); // audit #79: guard passed, route absent (403/500 must fail)
     await app.close();
   });
 

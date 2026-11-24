@@ -19,10 +19,19 @@ vi.mock('@loop/observability', () => ({
 }));
 
 vi.mock('node:dns', () => ({
-  lookup: (hostname: string, _opts: unknown, cb: (err: Error | null, address?: string) => void) => {
-    // "Resolve" only our test domain; anything else fails like real DNS.
-    if (hostname === 'api.example.com') cb(null, '93.184.216.34');
-    else cb(new Error('NXDOMAIN'));
+  // Audit #80: honour opts.all — the interceptor calls lookup with {all:true},
+  // which really returns an ARRAY of {address,family}. The old string-only
+  // mock made firstPrivateAddress iterate characters and silently no-op the
+  // hostname private-address branch.
+  lookup: (hostname: string, opts: unknown, cb: (err: Error | null, address?: unknown) => void) => {
+    const all = typeof opts === 'object' && opts !== null && (opts as { all?: boolean }).all === true;
+    if (hostname === 'api.example.com') {
+      cb(null, all ? [{ address: '93.184.216.34', family: 4 }] : '93.184.216.34');
+    } else if (hostname === 'private.example.com') {
+      cb(null, all ? [{ address: '10.0.0.5', family: 4 }] : '10.0.0.5');
+    } else {
+      cb(new Error('NXDOMAIN'));
+    }
   },
 }));
 
@@ -80,5 +89,15 @@ describe('EgressGate', () => {
     const gate = new EgressGate(engine, { airgap: false, unconfiguredPolicy: 'allow' });
     await expect(gate.check('https://api.example.com/x')).resolves.toBeUndefined();
     await expect(gate.check('https://other.test/x')).rejects.toMatchObject({ code: 'NODE_EGRESS_BLOCKED' });
+  });
+});
+
+describe('EgressGate — hostname private-address resolution (audit #80)', () => {
+  it('blocks hostnames that resolve to private addresses even under an allow policy', async () => {
+    const engine = new EgressEngine(async () => [
+      { id: 'p1', name: 'allow all', rule_type: 'allow', target_type: 'domain', target_value: '*', priority: 10, enabled: true },
+    ]);
+    const gate = new EgressGate(engine, { airgap: false, unconfiguredPolicy: 'allow' });
+    await expect(gate.check('http://private.example.com/')).rejects.toThrow(/private\/reserved/);
   });
 });
