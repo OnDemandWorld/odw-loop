@@ -28,13 +28,20 @@ describe('WebhookTriggerHandler', () => {
       executions: {
         create: vi.fn().mockResolvedValue({}),
       },
+      // Audit #151: provide workflows so the version-snapshot path runs for
+      // real (it previously always fell into the catch and defaulted to 1).
+      workflows: {
+        getById: vi.fn().mockResolvedValue({ id: 'workflow-1', version: 3, status: 'active' }),
+      },
     } as any;
 
     const handler = new WebhookTriggerHandler(mockStore);
     const result = await handler.handle({ triggerId, signature, body, rawBody });
 
     expect(result.execution_id).toBeDefined();
-    expect(mockStore.executions.create).toHaveBeenCalled();
+    expect(mockStore.executions.create).toHaveBeenCalledWith(
+      expect.objectContaining({ workflow_version: 3 }),
+    );
   });
 
   it('rejects invalid signature with 401', async () => {

@@ -7,7 +7,10 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { createSqliteConnection, SqliteStateStore, type SqliteConnection } from '../../../packages/state/src';
+
+import { createEngineTestStore, seedEngineExecution } from '../../helpers/testStore.js';
+import type { SqliteStateStore} from '../../../packages/state/src';
+import { type SqliteConnection } from '../../../packages/state/src';
 import { ConnectorRegistry, type ConnectorAdapter } from '../../../packages/connectors/src';
 import { ExecutionExecutor } from '../../../packages/engine/src/executor';
 import { EventBus, type ExecutionBusEvent } from '../../../packages/engine/src/eventBus';
@@ -49,38 +52,11 @@ interface Ctx {
 }
 
 async function createStore(): Promise<Ctx> {
-  const conn = createSqliteConnection({ path: ':memory:', wal: false });
-  const store = new SqliteStateStore(conn);
-  await store.initialise();
-  await store.users.create({
-    id: 'system',
-    username: 'system',
-    password_hash: '',
-    email: 'system@loop.internal',
-    role: 'admin',
-    display_name: 'System',
-  });
-  return { conn, store };
+  return createEngineTestStore();
 }
 
 async function seedExecution(store: SqliteStateStore, definition: WorkflowDefinition): Promise<string> {
-  const workflowId = `wf-${crypto.randomUUID()}`;
-  await store.workflows.create({
-    id: workflowId,
-    name: 'EventBus executor test',
-    description: '',
-    definition,
-    created_by: 'system',
-  });
-  const executionId = `exec-${crypto.randomUUID()}`;
-  await store.executions.create({
-    id: executionId,
-    workflow_id: workflowId,
-    workflow_version: 1,
-    trigger_type: 'manual',
-    trigger_payload: {},
-  });
-  return executionId;
+  return seedEngineExecution(store, definition);
 }
 
 function node(id: string, type: string) {

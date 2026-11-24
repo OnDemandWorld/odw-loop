@@ -9,6 +9,9 @@ describe('CronTriggerHandler', () => {
     expect(() => {
       cronHandler.register('trigger-1', 'workflow-1', { expression: '* * * * *' });
     }).not.toThrow();
+    // Audit #150: stop the live job — it otherwise fires after 60s against an
+    // empty mock store in long/watch runs (unhandled rejection).
+    cronHandler.shutdown();
   });
 
   it('throws on invalid cron expression', () => {

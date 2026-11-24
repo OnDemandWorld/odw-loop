@@ -7,9 +7,11 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
+
+import { createEngineTestStore } from '../../helpers/testStore.js';
+import type {
+  SqliteStateStore} from '../../../packages/state/src';
 import {
-  createSqliteConnection,
-  SqliteStateStore,
   type SqliteConnection,
 } from '../../../packages/state/src';
 import { ExecutionRecovery } from '../../../packages/engine/src/recovery';
@@ -24,17 +26,7 @@ const DEFINITION: WorkflowDefinition = {
 };
 
 async function createStore(): Promise<{ conn: SqliteConnection; store: SqliteStateStore }> {
-  const conn = createSqliteConnection({ path: ':memory:', wal: false });
-  const store = new SqliteStateStore(conn);
-  await store.initialise();
-  await store.users.create({
-    id: 'system',
-    username: 'system',
-    password_hash: '',
-    email: 'system@loop.internal',
-    role: 'admin',
-  });
-  return { conn, store };
+  return createEngineTestStore();
 }
 
 async function seedRunningExecution(store: SqliteStateStore): Promise<string> {

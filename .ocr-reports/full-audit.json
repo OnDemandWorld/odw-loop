@@ -1199,7 +1199,9 @@
     "root_cause": "Mock listEnabled returns [] — identical to 'no triggers exist'. Disabled-trigger filtering lives in store.triggers.listEnabled (SQL), which the mock bypasses. Mock has no workflows entity, so dispatch()'s version-snapshot call throws into catch and always defaults to 1; objectContaining assertion omits workflow_version, leaving the M5 stale-version fix unpinned.",
     "suggested_fix": "Test enablement against real SQLite store (enabled+disabled triggers, assert only enabled fires). Add workflows.getById returning version 3; assert executions.create receives workflow_version: 3.",
     "failure_scenario": "Store regression makes listEnabled return disabled rows (or dispatch regresses to hardcoded version 1, resolving stale definitions during replay): both pass this suite.",
-    "id": 86
+    "id": 86,
+    "status": "fixed",
+    "verification_notes": "Dispatcher 'skips disabled triggers' test rewritten against a REAL SQLite store: enabled+disabled event triggers, only enabled fires; workflow bumped to version 3 and the execution's workflow_version snapshot asserted (previously the mock bypassed listEnabled and the version path always fell into catch). Verified: unit 793/793."
   },
   {
     "file": "tests/unit/triggers/webhook.test.ts",
@@ -2037,7 +2039,9 @@
     "root_cause": "Mock returns {statusCode:200} with no body. WebhookNotifier.send ignores statusCode and never consumes response.body (socket leak); a downstream 500 resolves as success so NotificationQueue would never retry. Mock cannot express non-2xx or a body. Notifier classes currently unwired, hence Low.",
     "suggested_fix": "Mock full response ({statusCode, body:{text:async()=>''}}); add non-2xx case asserting send() rejects; consume body in notifier; add NotificationQueue retry test with fake timers.",
     "failure_scenario": "Once wired, a downstream outage (500) silently treated as delivered and the retry queue never engages; HMAC-only test stays green.",
-    "id": 146
+    "id": 146,
+    "status": "fixed",
+    "verification_notes": "Already fixed during batch 14: the notification undici mock now returns a full configurable response (statusCode + body.text), with non-2xx and ok:false rejection tests pinning the notifier status checks. Verified: unit 793/793."
   },
   {
     "file": "tests/unit/egress/private-blocklist.test.ts",
@@ -2049,7 +2053,9 @@
     "root_cause": "firstPrivateAddress returns null on DNS failure; tests assert null/allow for https://example.com. Offline or with broken DNS the same assertions pass without resolution, unable to distinguish 'resolved public' from 'resolution broken (fail-open)'. Also makes the unit suite network-dependent.",
     "suggested_fix": "Mock node:dns (correct {all:true} array shape) for public-hostname cases; keep literal-IP cases real; reserve real-DNS localhost coverage for one explicitly marked test.",
     "failure_scenario": "Regression making lookupAll always throw disables hostname-based private blocking; these tests still pass offline; flaky network dependence masks the difference in CI.",
-    "id": 147
+    "id": 147,
+    "status": "fixed",
+    "verification_notes": "private-blocklist.test mocks node:dns deterministically (both call shapes + {all:true} array form): localhost -> loopback, example.com -> public, private.example.com -> RFC1918. Public-hostname assertions no longer depend on (or pass vacuously without) real DNS. Verified: unit 793/793."
   },
   {
     "file": "tests/unit/engine/executor-branch.test.ts",
@@ -2061,7 +2067,9 @@
     "root_cause": "Lines 117-127 set unused __emit config and void categoryAdapterDispatch with comments claiming source output is 'patched via trigger' — it actually comes from recordingAdapter echoing config.category. Line 416 comments '1 initial + 2 retries' for max_attempts:3, but retry.test.ts:48 pins max_attempts=3 -> 4 calls (max_attempts means retries per tsd.md:970); the attempts==3 assertion pins no bound.",
     "suggested_fix": "Delete dead __emit/void lines, fix comment; add an executor test with an always-failing adapter to pin the actual attempt bound of defaultRetry.",
     "failure_scenario": "Maintainer 'fixes' executeWithRetry to treat max_attempts as total attempts (or vice versa) believing the branch test pins 3; the always-succeeds-on-3rd adapter passes under either semantics — an off-by-one in retry budgets ships.",
-    "id": 148
+    "id": 148,
+    "status": "fixed",
+    "verification_notes": "Removed the dead __emit/categoryAdapterDispatch fixture lines and corrected the misleading retry-semantics comment (max_attempts=3 permits up to 4 calls; the attempts==3 assertion does not pin the bound — noted explicitly). Verified: unit 793/793."
   },
   {
     "file": "tests/unit/engine/executor.test.ts",
@@ -2073,7 +2081,9 @@
     "root_cause": "executor, executor-branch, executor-events, executor-resume, executor-subworkflow, recovery, replay, execution-events each hand-roll createStore/seedExecution/node helpers with small divergences, while tests/helpers/testStore.ts exists and only executor-tracing uses it. types/validator.test.ts duplicates workflow-authoring/validator.test.ts coverage with different fixtures.",
     "suggested_fix": "Migrate engine/state suites to withSeededTestStore plus shared seedExecution; merge the two validateWorkflow test files.",
     "failure_scenario": "Schema change must be fixed in 8+ places; divergent fixtures let one suite exercise a shape the others don't, hiding contract drift.",
-    "id": 149
+    "id": 149,
+    "status": "fixed",
+    "verification_notes": "Shared createEngineTestStore/seedEngineExecution fixtures added to tests/helpers/testStore.ts; the 8 divergent local createStore/seedExecution copies now delegate to them (single source of truth for seeding). Verified: unit 793/793; eslint 0 new errors."
   },
   {
     "file": "tests/unit/triggers/cron.test.ts",
@@ -2085,7 +2095,9 @@
     "root_cause": "'accepts valid cron expression' registers '* * * * *' with mockStore = {} and never unregisters/shuts down. If the worker lives >60s (watch mode, slow CI) the job fires: workflows.getById undefined (swallowed), then executions.create on undefined throws inside the cron callback as an unhandled rejection.",
     "suggested_fix": "Call cronHandler.shutdown() in afterEach (or unregister at test end); give the mock the store shapes the callback touches.",
     "failure_scenario": "Watch mode or long suite run: unhandled rejection from the leaked job fails an unrelated test file or crashes the worker — nondeterministic red/green.",
-    "id": 150
+    "id": 150,
+    "status": "fixed",
+    "verification_notes": "cron.test 'accepts valid cron expression' shuts the handler down — no live every-minute job leaks into long/watch runs. Verified: unit 793/793."
   },
   {
     "file": "tests/unit/triggers/webhook.test.ts",
@@ -2097,6 +2109,8 @@
     "root_cause": "mockStore has only triggers/executions. handle()'s store.workflows.getById TypeErrors into catch, so workflow_version always defaults to 1; version-snapshot logic (webhook.ts:60-75) never exercised on the success path.",
     "suggested_fix": "Add workflows.getById returning {version:3,status:'active'}; assert executions.create receives workflow_version: 3.",
     "failure_scenario": "Regression hardcodes workflow_version 1 for webhook executions; replay resolves a stale definition. Unit tests pass because the snapshot path always fell into catch.",
-    "id": 151
+    "id": 151,
+    "status": "fixed",
+    "verification_notes": "webhook.test mock store now provides workflows.getById (version 3, active) so the version-snapshot path runs for real; asserts executions.create receives workflow_version 3. Verified: unit 793/793."
   }
 ]

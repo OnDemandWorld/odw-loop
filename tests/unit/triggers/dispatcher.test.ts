@@ -89,24 +89,35 @@ describe('TriggerDispatcher', () => {
     expect(mockStore.executions.create).toHaveBeenCalledTimes(2);
   });
 
-  it('skips disabled triggers', async () => {
-    const mockStore = {
-      triggers: {
-        listEnabled: vi.fn().mockResolvedValue([]), // listEnabled returns only enabled
-      },
-      executions: {
-        create: vi.fn().mockResolvedValue({}),
-      },
-    } as any;
+  it('audit #86: only ENABLED triggers fire (real store), and the workflow version is snapshotted', async () => {
+    const { createSqliteConnection, SqliteStateStore } = await import('../../../packages/state/src');
+    const conn = createSqliteConnection({ path: ':memory:', wal: false });
+    try {
+      const store = new SqliteStateStore(conn);
+      await store.initialise();
+      await store.users.create({ id: 'system', username: 'system', password_hash: '', email: 's@loop.test', role: 'admin' });
+      const workflowId = crypto.randomUUID();
+      const def = { version: '1.0', nodes: [], edges: [], variables: {}, metadata: { name: 'disp' } };
+      await store.workflows.create({ id: workflowId, name: 'disp', description: '', definition: def as never, created_by: 'system' });
+      // Bump to version 3 so the snapshot assertion is meaningful.
+      await store.workflows.update(workflowId, { definition: def as never, updated_by: 'system' });
+      await store.workflows.update(workflowId, { definition: def as never, updated_by: 'system' });
 
-    const dispatcher = new TriggerDispatcher(mockStore);
-    const event = { source: 'odw', event_type: 'test.event', payload: { data: 'test' } };
-    const executionIds = await dispatcher.dispatch(event);
+      await store.triggers.create({ id: 't-enabled', workflow_id: workflowId, trigger_type: 'event', config: { source: 'odw', event_type: 'test.event' } });
+      await store.triggers.create({ id: 't-disabled', workflow_id: workflowId, trigger_type: 'event', config: { source: 'odw', event_type: 'test.event' } });
+      await store.triggers.update('t-disabled', { enabled: false });
 
-    expect(executionIds).toHaveLength(0);
-    expect(mockStore.executions.create).not.toHaveBeenCalled();
+      const dispatcher = new TriggerDispatcher(store);
+      const ids = await dispatcher.dispatch({ source: 'odw', event_type: 'test.event', payload: { data: 'test' } });
+
+      expect(ids).toHaveLength(1);
+      const execs = await store.executions.list({ workflow_id: workflowId }, { page: 1, per_page: 10 });
+      expect(execs.total).toBe(1);
+      expect(execs.data[0]!.workflow_version).toBe(3);
+    } finally {
+      conn.close();
+    }
   });
-
   it('audit #64: event triggers do not fire for archived workflows', async () => {
     const mockStore = {
       triggers: {

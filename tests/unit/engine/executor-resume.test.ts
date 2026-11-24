@@ -6,9 +6,11 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
+
+import { createEngineTestStore, seedEngineExecution } from '../../helpers/testStore.js';
+import type {
+  SqliteStateStore} from '../../../packages/state/src';
 import {
-  createSqliteConnection,
-  SqliteStateStore,
   type SqliteConnection,
 } from '../../../packages/state/src';
 import { ConnectorRegistry, type ConnectorAdapter } from '../../../packages/connectors/src';
@@ -40,36 +42,11 @@ function createCountingAdapter(type: string, hang = false): { adapter: Connector
 }
 
 async function createStore(): Promise<{ conn: SqliteConnection; store: SqliteStateStore }> {
-  const conn = createSqliteConnection({ path: ':memory:', wal: false });
-  const store = new SqliteStateStore(conn);
-  await store.initialise();
-  await store.users.create({
-    id: 'system',
-    username: 'system',
-    password_hash: '',
-    email: 'system@loop.internal',
-    role: 'admin',
-  });
-  return { conn, store };
+  return createEngineTestStore();
 }
 
 async function seedExecution(store: SqliteStateStore, definition: WorkflowDefinition): Promise<string> {
-  const workflowId = crypto.randomUUID();
-  await store.workflows.create({
-    id: workflowId,
-    name: 'Resume test',
-    description: '',
-    definition,
-    created_by: 'system',
-  });
-  const executionId = crypto.randomUUID();
-  await store.executions.create({
-    id: executionId,
-    workflow_id: workflowId,
-    workflow_version: 1,
-    trigger_type: 'manual',
-  });
-  return executionId;
+  return seedEngineExecution(store, definition);
 }
 
 function node(id: string, type: string) {

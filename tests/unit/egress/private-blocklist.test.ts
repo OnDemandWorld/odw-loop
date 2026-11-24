@@ -7,9 +7,34 @@
  * and cloud metadata endpoints.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { EgressGate, isPrivateIp, firstPrivateAddress } from '../../../packages/egress/src/interceptor';
 import type { EgressEngine } from '../../../packages/egress/src/engine';
+
+// Audit #147: deterministic DNS — the public-hostname assertions previously
+// did real lookups and passed vacuously when DNS failed (fail-open looked
+// identical to 'resolved public'). Handles both (host, cb) and (host, opts, cb)
+// call shapes and the {all:true} array form.
+vi.mock('node:dns', () => ({
+  lookup: (hostname: string, optsOrCb: unknown, maybeCb?: (err: Error | null, address?: unknown) => void) => {
+    const opts = typeof optsOrCb === 'function' ? {} : (optsOrCb as { all?: boolean });
+    const cb = (typeof optsOrCb === 'function' ? optsOrCb : maybeCb) as (err: Error | null, address?: unknown) => void;
+    const answers: Record<string, Array<{ address: string; family: number }>> = {
+      localhost: [
+        { address: '127.0.0.1', family: 4 },
+        { address: '::1', family: 6 },
+      ],
+      'example.com': [{ address: '93.184.216.34', family: 4 }],
+      'private.example.com': [{ address: '10.0.0.5', family: 4 }],
+    };
+    const records = answers[hostname];
+    if (!records) {
+      cb(new Error('NXDOMAIN'));
+      return;
+    }
+    cb(null, opts.all ? records : records[0]!.address);
+  },
+}));
 
 const unconfiguredEngine = {
   async isConfigured() {

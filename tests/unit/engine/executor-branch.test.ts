@@ -4,7 +4,10 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { createSqliteConnection, SqliteStateStore, type SqliteConnection } from '../../../packages/state/src';
+
+import { createEngineTestStore, seedEngineExecution } from '../../helpers/testStore.js';
+import type { SqliteStateStore} from '../../../packages/state/src';
+import { type SqliteConnection } from '../../../packages/state/src';
 import { ConnectorRegistry, type ConnectorAdapter } from '../../../packages/connectors/src';
 import { ExecutionExecutor } from '../../../packages/engine/src/executor';
 import type { WorkflowDefinition, ConnectorCapabilities } from '../../../packages/types/src';
@@ -16,18 +19,7 @@ interface Ctx {
 }
 
 async function createStore(): Promise<Ctx> {
-  const conn = createSqliteConnection({ path: ':memory:', wal: false });
-  const store = new SqliteStateStore(conn);
-  await store.initialise();
-  await store.users.create({
-    id: 'system',
-    username: 'system',
-    password_hash: '',
-    email: 'system@loop.internal',
-    role: 'admin',
-    display_name: 'System',
-  });
-  return { conn, store };
+  return createEngineTestStore();
 }
 
 const contexts: Ctx[] = [];
@@ -36,23 +28,7 @@ afterEach(async () => {
 });
 
 async function seedExecution(store: SqliteStateStore, definition: WorkflowDefinition): Promise<string> {
-  const workflowId = `wf-${crypto.randomUUID()}`;
-  await store.workflows.create({
-    id: workflowId,
-    name: 'Branch wiring test',
-    description: '',
-    definition,
-    created_by: 'system',
-  });
-  const executionId = `exec-${crypto.randomUUID()}`;
-  await store.executions.create({
-    id: executionId,
-    workflow_id: workflowId,
-    workflow_version: 1,
-    trigger_type: 'manual',
-    trigger_payload: {},
-  });
-  return executionId;
+  return seedEngineExecution(store, definition);
 }
 
 /** Adapter that records every dispatch and returns a canned output. */
@@ -115,16 +91,9 @@ describe('control.branch wiring (L-1)', () => {
       ],
       variables: {},
     };
-    // Source node emits category=critical → the true arm runs, false arm is skipped.
-    (definition.nodes[0]!.config as Record<string, unknown>).__emit = 'critical';
-    // recordingAdapter returns the same output for both nodes; make it category-aware:
-    const categoryAdapterDispatch = dispatches;
-    void categoryAdapterDispatch;
-
     const execId = await seedExecution(ctx.store, definition);
     const executor = new ExecutionExecutor(ctx.store, connectors, 10, 5_000, 30_000);
-    // Make the source node return the category the condition compares against.
-    // (The recording adapter returns {ok:true} — patch via trigger instead.)
+    // The trigger payload carries the category the source node echoes.
     await expect(executor.execute(execId, definition, { category: 'critical' })).resolves.toBeTruthy();
 
     // n_src returned category=critical → the true arm dispatched, false arm
@@ -414,7 +383,7 @@ describe('defaultRetry (L-9)', () => {
       { max_attempts: 3, backoff: 'fixed', initial_delay_ms: 1 },
     );
     await executor.execute(execId, definition, {});
-    expect(attempts).toBe(3); // 1 initial + 2 retries from the default
+    expect(attempts).toBe(3); // adapter succeeds on attempt 3; max_attempts=3 permits up to 4 calls (retries semantics, tsd §6.4) — this assertion does not pin the bound
   });
 
   it('audit #9: resume after a failed run reuses pruned-node rows (no UNIQUE collision)', async () => {
