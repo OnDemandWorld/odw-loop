@@ -54,3 +54,26 @@ describe('SecretsManager — scoped uniqueness (audit #12)', () => {
     expect(await manager.get('token', 'workflow', 'wf-1')).toBe('w1');
   });
 });
+
+describe('SecretsManager — exact scope matching (audit #55)', () => {
+  const conns: SqliteConnection[] = [];
+  afterEach(() => {
+    while (conns.length > 0) conns.pop()!.close();
+  });
+
+  it('a scope-less lookup never matches another scope_id row', async () => {
+    const conn = createSqliteConnection({ path: ':memory:', wal: false });
+    conns.push(conn);
+    const store = new SqliteStateStore(conn);
+    await store.initialise();
+    const manager = new SecretsManager(store, KEY);
+
+    await manager.set({ name: 'api_key', value: 'key-A', scope: 'connector', scope_id: 'conn-a', created_by: 'api' });
+    // No NULL-scope connector row exists yet — must NOT return conn-a's key.
+    expect(await manager.get('api_key', 'connector')).toBeNull();
+
+    await manager.set({ name: 'api_key', value: 'null-scope-value', scope: 'connector', created_by: 'api' });
+    expect(await manager.get('api_key', 'connector')).toBe('null-scope-value');
+    expect(await manager.get('api_key', 'connector', 'conn-a')).toBe('key-A');
+  });
+});

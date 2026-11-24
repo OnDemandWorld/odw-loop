@@ -695,7 +695,9 @@
     "root_cause": "store.secrets.getByName omits the scope_id condition when scopeId is undefined (sqlite/index.ts:542, postgres/index.ts:619), so getByName(name, scope, undefined) matches the FIRST row with that name+scope regardless of scope_id; set() then updates that row. POST /api/v1/secrets allows scope 'connector'/'workflow' with scope_id optional (routes/index.ts:795-800).",
     "suggested_fix": "Treat undefined scope_id as NULL and match exactly (scope_id IS NULL) in getByName; require scope_id for connector/workflow scopes in the route schema.",
     "failure_scenario": "Admin POSTs /api/v1/secrets {name:'api_key',scope:'connector',value:'X'} without scope_id -> matches connector A's encrypted key row -> overwrites with X -> connector A's upstream calls fail/authenticate wrong, no conflict error. Same-scope duplicate POSTs silently upsert instead of the 409 the route comment promises.",
-    "id": 55
+    "id": 55,
+    "status": "fixed",
+    "verification_notes": "getByName in both stores now matches scope_id exactly (IS NULL when undefined) instead of ignoring it; POST /api/v1/secrets requires scope_id for connector/workflow scopes (400 otherwise). Regression: manager.test.ts audit #55 (scope-less lookup never matches another scope_id row), postgres.test.ts (scope_id IS NULL SQL), admin-routes secrets API (400 without scope_id). Verified: typecheck 0; unit 691/691; integration 176/177 (pre-existing vault failure only); e2e 30/30; eslint 0 new errors."
   },
   {
     "file": "packages/state/src/postgres/index.ts",
@@ -707,7 +709,9 @@
     "root_cause": "node-postgres parses TIMESTAMP to Date. Inline workflow mappers in create (156), getById (163), list (184) cast created_at/updated_at 'as string' without toIsoString, unlike mapTrigger/mapConnector/users/audit mappers which call toIsoString. SQLite returns ISO strings.",
     "suggested_fix": "Wrap workflow created_at/updated_at with toIsoString(...) in all three inline mappers.",
     "failure_scenario": "String operations on workflow.updated_at (.slice, lexicographic compare, === ISO string) throw or return false on PG while working on SQLite; masked only at the HTTP boundary where JSON.stringify coerces Date.",
-    "id": 56
+    "id": 56,
+    "status": "fixed",
+    "verification_notes": "PG workflows create/getById/list mappers wrap created_at/updated_at with toIsoString (parity with other PG mappers and SQLite). Regression: postgres.test.ts audit #56 (Date row -> ISO string). Verified: typecheck 0; unit 691/691; integration 176/177 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/state/src/postgres/index.ts",
@@ -719,7 +723,9 @@
     "root_cause": "SQLite workflows.list (sqlite/index.ts:133-139) uses substring LIKE for tag (on JSON text) and search (name/description). PG uses tags @> '[tag]' (exact element) and to_tsvector @@ plainto_tsquery (lexeme/stem full-text). Different matching semantics for the same WorkflowFilter contract.",
     "suggested_fix": "Pick one semantics for both tiers (exact tag membership + defined search behavior) and implement identically; document search behavior.",
     "failure_scenario": "Search 'work' matches 'workflow' on Core (LIKE %work%) but nothing on Scale (FTS lexeme). Tag 'prod' matches 'production' on Core but not Scale. Same API query, different result sets per tier.",
-    "id": 57
+    "id": 57,
+    "status": "fixed",
+    "verification_notes": "Aligned both tiers to substring semantics: PG search now LIKE on name/description (was FTS lexeme), PG tag now tags::text LIKE (was exact @>), matching SQLite's existing substring behavior; LIKE metacharacters escaped. Exact-element tag matching on both tiers is blocked by #60 (double-encoded SQLite JSON) — noted in code. Regression: egress-and-filter.test.ts (tag+search substring on SQLite). PG SQL verified statically (no local PG). Verified: typecheck 0; unit 691/691; integration 176/177 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/state/src/postgres/index.ts",
@@ -731,7 +737,9 @@
     "root_cause": "migrations-pg.ts:125 defines encrypted_value BYTEA while interface/SQLite use TEXT/string. create/update bind the JSON ciphertext string into BYTEA (bytea escape-format input); getByName casts r.encrypted_value 'as string' (line 623) but node-postgres returns BYTEA as Buffer. Contract violated; diverges from SQLite.",
     "suggested_fix": "Store encrypted_value as TEXT in PG (matches SQLite/interface), or bind Buffer.from(value,'utf8') on write and return .toString('utf8') on read.",
     "failure_scenario": "SecretsManager.get survives only because JSON.parse(Buffer) coerces via toString. Any direct string use gets a Buffer; bytea escape-format input parsing corrupts payloads containing backslashes. SQLite returns a real string for the same call.",
-    "id": 58
+    "id": 58,
+    "status": "fixed",
+    "verification_notes": "PG secrets create/update bind Buffer.from(value,'utf8') (bytea hex format — avoids escape-format backslash corruption); getByName converts Buffer back to string, honouring the interface contract. Regression: postgres.test.ts audit #58 (Buffer param on write; string on read). Verified: typecheck 0; unit 691/691; integration 176/177 (pre-existing only); e2e 30/30. Column stays BYTEA (no migration needed)."
   },
   {
     "file": "packages/state/src/postgres/migrations.ts",
@@ -767,7 +775,9 @@
     "root_cause": "update passes all six optional fields straight into drizzle .set(); an empty patch leaves every value undefined and drizzle 0.29.5 mapUpdateSet throws Error('No values to set'). PG adapter (postgres/index.ts:688) returns early when setClauses is empty.",
     "suggested_fix": "Mirror PG: build the set conditionally and return early when no field is provided.",
     "failure_scenario": "PUT /api/v1/egress/policies/:id with body {} passes the all-optional schema and reaches store.egressPolicies.update(id,{}): Core (SQLite) throws -> 500; Scale (PG) no-ops -> 200.",
-    "id": 61
+    "id": 61,
+    "status": "fixed",
+    "verification_notes": "SQLite egressPolicies.update builds the set conditionally and returns early on an empty patch (PG parity) — drizzle no longer throws 'No values to set'. Regression: egress-and-filter.test.ts audit #61 (empty patch resolves; partial patch applies). Verified: typecheck 0; unit 691/691; integration 176/177 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/triggers/src/cron.ts",

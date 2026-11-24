@@ -814,6 +814,12 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.post('/api/v1/secrets', { preHandler: [requireRole('admin')] }, async (request, reply) => {
     const body = parseBody(CreateSecretRequestSchema, request.body);
     const actor = getActor(request);
+    // Audit #55: scoped secrets must name their scope target — a scope-less
+    // connector/workflow secret would land in the NULL-scope row and shadow
+    // same-named secrets unpredictably.
+    if (body.scope !== 'global' && body.scope_id === undefined) {
+      throw new LoopError('VALIDATION_REQUIRED', `scope '${body.scope}' requires scope_id`, 400);
+    }
     try {
       const result = await deps.secretsManager.set({
         name: body.name,
@@ -824,7 +830,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       });
       return reply.status(201).send({ success: true, data: result, meta: meta(request) });
     } catch (err) {
-      // Names are globally unique (schema constraint): surface a 409, not a 500.
+      // Composite uniqueness (name, scope, scope_id): a same-scope duplicate
+      // surfaces as 409, not 500 (audit #12/#55).
       if (String(err).includes('UNIQUE')) {
         throw new LoopError('SECRET_CONFLICT', `A secret named '${body.name}' already exists`, 409);
       }

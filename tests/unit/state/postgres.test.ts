@@ -429,3 +429,40 @@ describe('PostgresStateStore — remaining entities reach parity (PG3)', () => {
     expect(mock.calls[0]!.sql).toContain('INSERT INTO audit_events');
   });
 });
+
+describe('PostgresStateStore — row contract parity (audit #56, #58)', () => {
+  let mock: MockConn;
+  let store: PostgresStateStore;
+
+  beforeEach(() => {
+    mock = createMockConn();
+    store = new PostgresStateStore(mock.conn);
+  });
+
+  it('workflows.getById normalizes TIMESTAMP Date objects to ISO strings', async () => {
+    mock.enqueueRows([{
+      id: 'wf-1', name: 'n', description: '', definition: '{"nodes":[]}', version: 1,
+      status: 'draft', tags: '[]', created_by: 'system', updated_by: 'system',
+      created_at: new Date('2026-01-02T03:04:05.000Z'), updated_at: new Date('2026-01-02T03:04:05.000Z'),
+    }]);
+    const wf = await store.workflows.getById('wf-1');
+    expect(wf?.created_at).toBe('2026-01-02T03:04:05.000Z');
+    expect(wf?.updated_at).toBe('2026-01-02T03:04:05.000Z');
+  });
+
+  it('secrets.create binds a Buffer and getByName returns a string', async () => {
+    mock.enqueueRows([]);
+    await store.secrets.create({ id: 's-1', name: 'api_key', encrypted_value: '{"iv":"x"}', scope: 'connector', scope_id: 'conn-a', created_by: 'system' });
+    expect(mock.calls[0]!.params[2]).toBeInstanceOf(Buffer);
+    mock.enqueueRows([{ id: 's-1', name: 'api_key', encrypted_value: Buffer.from('{"iv":"x"}', 'utf8'), scope: 'connector', scope_id: 'conn-a' }]);
+    const row = await store.secrets.getByName('api_key', 'connector', 'conn-a');
+    expect(typeof row?.encrypted_value).toBe('string');
+    expect(row?.encrypted_value).toBe('{"iv":"x"}');
+  });
+
+  it('secrets.getByName without scope_id matches only the NULL-scope row', async () => {
+    mock.enqueueRows([]);
+    await store.secrets.getByName('token', 'global');
+    expect(lastCall(mock.calls).sql).toContain('scope_id IS NULL');
+  });
+});

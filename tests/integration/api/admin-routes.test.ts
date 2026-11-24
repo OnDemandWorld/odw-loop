@@ -257,3 +257,44 @@ describe('Readiness probe (audit #22)', () => {
     spy.mockRestore();
   });
 });
+
+describe('Secrets API (audit #12, #55)', () => {
+  let ctx: TestApp;
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    ctx = await buildTestApp();
+    app = ctx.app;
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    ctx.conn.close();
+  });
+
+  it('rejects scoped secrets without scope_id (400)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/secrets',
+      payload: { name: 'k', value: 'v', scope: 'connector' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_REQUIRED');
+  });
+
+  it('two connectors can each store an api_key (composite uniqueness)', async () => {
+    const a = await app.inject({
+      method: 'POST',
+      url: '/api/v1/secrets',
+      payload: { name: 'api_key', value: 'key-A', scope: 'connector', scope_id: crypto.randomUUID() },
+    });
+    expect(a.statusCode).toBe(201);
+    const b = await app.inject({
+      method: 'POST',
+      url: '/api/v1/secrets',
+      payload: { name: 'api_key', value: 'key-B', scope: 'connector', scope_id: crypto.randomUUID() },
+    });
+    expect(b.statusCode).toBe(201);
+  });
+});

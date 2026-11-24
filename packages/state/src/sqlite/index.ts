@@ -2,7 +2,7 @@
  * SQLite implementation of the StateStore interface.
  */
 
-import { eq, and, desc, asc, or, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, or, sql, inArray, isNull } from 'drizzle-orm';
 import { createLogger } from '@loop/observability';
 import type { WorkflowDefinition } from '@loop/types';
 import type {
@@ -130,6 +130,9 @@ export class SqliteStateStore implements StateStore {
     list: async (filter: WorkflowFilter, pagination: PaginationParams): Promise<PaginatedResult<ReturnType<typeof mapWorkflow>>> => {
       const conditions = [];
       if (filter.status) conditions.push(eq(schema.workflows.status, filter.status));
+      // Audit #57: substring tag match — the PG tier now uses the same
+      // semantics (tags::text LIKE). Exact-element matching on both tiers is
+      // blocked by the SQLite double-encoded JSON columns (audit #60).
       if (filter.tag) conditions.push(sql`${schema.workflows.tags} LIKE ${`%${escapeLike(filter.tag)}%`} ESCAPE ${'\\'}`);
       if (filter.search) {
         const pattern = `%${escapeLike(filter.search)}%`;
@@ -539,7 +542,10 @@ export class SqliteStateStore implements StateStore {
     getByName: async (name: string, scope?: string, scopeId?: string) => {
       const conditions = [eq(schema.secrets.name, name)];
       if (scope) conditions.push(eq(schema.secrets.scope, scope as typeof schema.secrets.scope.enumValues[number]));
-      if (scopeId) conditions.push(eq(schema.secrets.scope_id, scopeId));
+      // Audit #55: match scope_id exactly — undefined means the NULL-scope row,
+      // not "any row with this name+scope" (which let SecretsManager.set
+      // silently overwrite another scope's secret). Mirrors the PG adapter.
+      conditions.push(scopeId === undefined ? isNull(schema.secrets.scope_id) : eq(schema.secrets.scope_id, scopeId));
       const row = this.db.select().from(schema.secrets).where(and(...conditions)).get();
       return row ? { id: row.id, name: row.name, encrypted_value: row.encrypted_value, scope: row.scope, scope_id: row.scope_id } : null;
     },
@@ -583,10 +589,17 @@ export class SqliteStateStore implements StateStore {
     },
 
     update: async (id: string, data: { name?: string; rule_type?: 'allow' | 'deny'; target_type?: 'domain' | 'ip_range' | 'region'; target_value?: string; priority?: number; enabled?: boolean }) => {
-      this.db.update(schema.egressPolicies).set({
-        name: data.name, rule_type: data.rule_type, target_type: data.target_type,
-        target_value: data.target_value, priority: data.priority, enabled: data.enabled,
-      }).where(eq(schema.egressPolicies.id, id)).run();
+      // Audit #61: an empty patch must no-op (PG parity). Passing all-undefined
+      // values to drizzle .set() throws 'No values to set' -> 500 on Core.
+      const set: Record<string, unknown> = {};
+      if (data.name !== undefined) set.name = data.name;
+      if (data.rule_type !== undefined) set.rule_type = data.rule_type;
+      if (data.target_type !== undefined) set.target_type = data.target_type;
+      if (data.target_value !== undefined) set.target_value = data.target_value;
+      if (data.priority !== undefined) set.priority = data.priority;
+      if (data.enabled !== undefined) set.enabled = data.enabled;
+      if (Object.keys(set).length === 0) return;
+      this.db.update(schema.egressPolicies).set(set).where(eq(schema.egressPolicies.id, id)).run();
     },
 
     delete: async (id: string) => {

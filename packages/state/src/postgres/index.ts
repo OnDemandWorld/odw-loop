@@ -153,14 +153,14 @@ export class PostgresStateStore implements StateStore {
       const result = await this.conn.pool.query('SELECT * FROM workflows WHERE id = $1', [data.id]);
       if (result.rows.length === 0) throw new Error('Failed to create workflow');
       const row = result.rows[0] as Record<string, unknown>;
-      return { id: row.id as string, name: row.name as string, description: row.description as string, definition: safeJsonParse(row.definition) as unknown as WorkflowDefinition, version: row.version as number, status: row.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(row.tags) as unknown as string[], created_by: row.created_by as string, updated_by: row.updated_by as string, created_at: row.created_at as string, updated_at: row.updated_at as string };
+      return { id: row.id as string, name: row.name as string, description: row.description as string, definition: safeJsonParse(row.definition) as unknown as WorkflowDefinition, version: row.version as number, status: row.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(row.tags) as unknown as string[], created_by: row.created_by as string, updated_by: row.updated_by as string, created_at: toIsoString(row.created_at), updated_at: toIsoString(row.updated_at) };
     },
 
     getById: async (id: string) => {
       const result = await this.conn.pool.query('SELECT * FROM workflows WHERE id = $1', [id]);
       if (result.rows.length === 0) return null;
       const row = result.rows[0] as Record<string, unknown>;
-      return { id: row.id as string, name: row.name as string, description: row.description as string, definition: safeJsonParse(row.definition) as unknown as WorkflowDefinition, version: row.version as number, status: row.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(row.tags) as unknown as string[], created_by: row.created_by as string, updated_by: row.updated_by as string, created_at: row.created_at as string, updated_at: row.updated_at as string };
+      return { id: row.id as string, name: row.name as string, description: row.description as string, definition: safeJsonParse(row.definition) as unknown as WorkflowDefinition, version: row.version as number, status: row.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(row.tags) as unknown as string[], created_by: row.created_by as string, updated_by: row.updated_by as string, created_at: toIsoString(row.created_at), updated_at: toIsoString(row.updated_at) };
     },
 
     list: async (filter: WorkflowFilter, pagination: PaginationParams) => {
@@ -168,8 +168,21 @@ export class PostgresStateStore implements StateStore {
       const params: unknown[] = [];
       let paramIdx = 1;
       if (filter.status) { conditions.push(`status = $${paramIdx}`); params.push(filter.status); paramIdx++; }
-      if (filter.tag) { conditions.push(`tags @> $${paramIdx}`); params.push(JSON.stringify([filter.tag])); paramIdx++; }
-      if (filter.search) { conditions.push(`to_tsvector('english', name || ' ' || description) @@ plainto_tsquery('english', $${paramIdx})`); params.push(filter.search); paramIdx++; }
+      // Audit #57: substring tag match, identical to the SQLite tier (LIKE on
+      // the JSON text). Previously tags @> exact-element matching diverged
+      // from Core's substring semantics.
+      if (filter.tag) {
+        const tagPattern = `%${filter.tag.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+        conditions.push(`tags::text LIKE $${paramIdx}`); params.push(tagPattern); paramIdx++;
+      }
+      if (filter.search) {
+        // Audit #57: substring search, identical semantics to the SQLite tier
+        // (previously FTS lexeme matching, so 'work' found 'workflow' on Core
+        // but not on Scale). Escape LIKE metacharacters; backslash is PG's
+        // default LIKE escape character.
+        const pattern = `%${filter.search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+        conditions.push(`(name LIKE $${paramIdx} OR description LIKE $${paramIdx})`); params.push(pattern); paramIdx++;
+      }
       const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       const countResult = await this.conn.pool.query(`SELECT count(*)::int AS count FROM workflows ${whereClause}`, params);
       const total = (countResult.rows[0] as { count: number }).count ?? 0;
@@ -181,7 +194,7 @@ export class PostgresStateStore implements StateStore {
         `SELECT * FROM workflows ${whereClause} ORDER BY ${sortCol} ${orderDir} LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
         [...params, pagination.per_page, offset],
       );
-      const data = dataResult.rows.map((r: Record<string, unknown>) => ({ id: r.id as string, name: r.name as string, description: r.description as string, definition: safeJsonParse(r.definition) as unknown as WorkflowDefinition, version: r.version as number, status: r.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(r.tags) as unknown as string[], created_by: r.created_by as string, updated_by: r.updated_by as string, created_at: r.created_at as string, updated_at: r.updated_at as string }));
+      const data = dataResult.rows.map((r: Record<string, unknown>) => ({ id: r.id as string, name: r.name as string, description: r.description as string, definition: safeJsonParse(r.definition) as unknown as WorkflowDefinition, version: r.version as number, status: r.status as 'draft' | 'active' | 'archived', tags: safeJsonParse(r.tags) as unknown as string[], created_by: r.created_by as string, updated_by: r.updated_by as string, created_at: toIsoString(r.created_at), updated_at: toIsoString(r.updated_at) }));
       return { data, total, page: pagination.page, per_page: pagination.per_page, total_pages: Math.ceil(total / pagination.per_page) };
     },
 
@@ -607,7 +620,10 @@ export class PostgresStateStore implements StateStore {
       await this.conn.pool.query(
         `INSERT INTO secrets (id, name, encrypted_value, scope, scope_id, created_by, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
-        [data.id, data.name, data.encrypted_value, data.scope, data.scope_id ?? null, data.created_by, now],
+        // Audit #58: encrypted_value is BYTEA — bind a Buffer so node-postgres
+        // uses hex format (string binding goes through bytea escape-format
+        // input, which corrupts backslashes).
+        [data.id, data.name, Buffer.from(data.encrypted_value, 'utf8'), data.scope, data.scope_id ?? null, data.created_by, now],
       );
     },
 
@@ -616,11 +632,17 @@ export class PostgresStateStore implements StateStore {
       const params: unknown[] = [name];
       let paramIdx = 2;
       if (scope) { conditions.push(`scope = $${paramIdx}`); params.push(scope); paramIdx++; }
-      if (scopeId) { conditions.push(`scope_id = $${paramIdx}`); params.push(scopeId); paramIdx++; }
+      // Audit #55: match scope_id exactly — undefined means the NULL-scope row,
+      // not "any row with this name+scope" (which silently overwrote other
+      // scopes' secrets in SecretsManager.set).
+      if (scopeId === undefined) { conditions.push('scope_id IS NULL'); }
+      else { conditions.push(`scope_id = $${paramIdx}`); params.push(scopeId); paramIdx++; }
       const result = await this.conn.pool.query(`SELECT * FROM secrets WHERE ${conditions.join(' AND ')}`, params);
       if (result.rows.length === 0) return null;
       const r = result.rows[0] as Record<string, unknown>;
-      return { id: r.id as string, name: r.name as string, encrypted_value: r.encrypted_value as string, scope: r.scope as string, scope_id: (r.scope_id as string | null) ?? null };
+      // Audit #58: BYTEA comes back as a Buffer — honour the string contract.
+      const encrypted = Buffer.isBuffer(r.encrypted_value) ? r.encrypted_value.toString('utf8') : (r.encrypted_value as string);
+      return { id: r.id as string, name: r.name as string, encrypted_value: encrypted, scope: r.scope as string, scope_id: (r.scope_id as string | null) ?? null };
     },
 
     list: async (scope?: string, scopeId?: string) => {
@@ -638,7 +660,7 @@ export class PostgresStateStore implements StateStore {
     },
 
     update: async (id: string, encrypted_value: string) => {
-      await this.conn.pool.query('UPDATE secrets SET encrypted_value = $2, updated_at = $3 WHERE id = $1', [id, encrypted_value, new Date().toISOString()]);
+      await this.conn.pool.query('UPDATE secrets SET encrypted_value = $2, updated_at = $3 WHERE id = $1', [id, Buffer.from(encrypted_value, 'utf8'), new Date().toISOString()]);
     },
 
     delete: async (id: string) => {
