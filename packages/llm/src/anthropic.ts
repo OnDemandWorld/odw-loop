@@ -42,7 +42,7 @@ export class AnthropicProvider implements LLMProvider {
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
         messages: nonSystemMsg,
       }),
-      signal: io?.signal ?? AbortSignal.timeout(this.timeoutMs),
+      signal: io?.signal ? AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) : AbortSignal.timeout(this.timeoutMs),
     });
 
     if (response.statusCode >= 400) {

@@ -138,13 +138,20 @@ export function createLLMRouter(cfg: LLMFactoryConfig): LLMRouter {
       const extras = JSON.parse(cfg.LOOP_LLM_EXTRA_PROVIDERS) as Array<{ name?: string; base_url?: string; api_key?: string; model?: string }>;
       for (const extra of Array.isArray(extras) ? extras : []) {
         if (!extra?.name || !extra?.base_url) {
-          logger.warn({ extra }, 'LOOP_LLM_EXTRA_PROVIDERS entry missing name/base_url — skipped');
+          // Audit #48: never log the raw entry — it carries api_key. Report
+          // only the name and which fields are missing.
+          logger.warn(
+            { name: extra?.name, missing: [!extra?.name ? 'name' : null, !extra?.base_url ? 'base_url' : null].filter(Boolean) },
+            'LOOP_LLM_EXTRA_PROVIDERS entry missing name/base_url — skipped',
+          );
           continue;
         }
         providers.push(new OpenAICompatibleProvider(extra.name, extra.api_key, extra.base_url, extra.model ?? 'default', timeoutMs));
       }
     } catch (err) {
-      logger.error({ error: String(err) }, 'LOOP_LLM_EXTRA_PROVIDERS is not valid JSON — ignored');
+      // Audit #48: JSON.parse error messages can echo a snippet of the raw
+      // string (which contains api_key) — log the error class only.
+      logger.error({ error: err instanceof Error ? err.name : 'unknown' }, 'LOOP_LLM_EXTRA_PROVIDERS is not valid JSON — ignored');
     }
   }
 

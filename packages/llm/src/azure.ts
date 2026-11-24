@@ -33,7 +33,7 @@ export class AzureOpenAIProvider implements LLMProvider {
         'api-key': this.apiKey ?? '',
       },
       body: JSON.stringify({ messages: req.messages, temperature: req.temperature, max_tokens: req.max_tokens }),
-      signal: io?.signal ?? AbortSignal.timeout(this.timeoutMs),
+      signal: io?.signal ? AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) : AbortSignal.timeout(this.timeoutMs),
     });
 
     if (response.statusCode >= 400) {

@@ -184,3 +184,45 @@ describe('LLMRouter', () => {
     expect(cloudProvider.complete).not.toHaveBeenCalled();
   });
 });
+
+describe('LLMRouter — failure classification (audit #52)', () => {
+  it('egress policy denials do not open the circuit', async () => {
+    const { LoopError } = await import('../../../packages/types/src/errors');
+    const blocked: LLMProvider = {
+      name: 'blocked',
+      complete: vi.fn().mockRejectedValue(new LoopError('NODE_EGRESS_BLOCKED', 'Egress blocked: airgap', 403)),
+      isAvailable: vi.fn().mockResolvedValue(true),
+    };
+    const router = new LLMRouter([blocked]);
+    const req: CompletionRequest = { model: 'test', messages: [{ role: 'user', content: 'x' }] };
+
+    // More than the threshold (5) denials must NOT open the circuit.
+    for (let i = 0; i < 7; i++) {
+      await expect(router.complete(req)).rejects.toThrow(/Egress blocked/);
+    }
+    // The error surfaces as the policy denial, not 'No LLM providers available'.
+    await expect(router.complete(req)).rejects.toMatchObject({ code: 'NODE_EGRESS_BLOCKED' });
+  });
+
+  it('an aborted signal stops the chain instead of failing every provider', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const first: LLMProvider = {
+      name: 'first',
+      complete: vi.fn().mockRejectedValue(new Error('aborted')),
+      isAvailable: vi.fn().mockResolvedValue(true),
+    };
+    const second: LLMProvider = {
+      name: 'second',
+      complete: vi.fn().mockResolvedValue({
+        content: 'should not run', model: 'm',
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }, finish_reason: 'stop',
+      }),
+      isAvailable: vi.fn().mockResolvedValue(true),
+    };
+    const router = new LLMRouter([first, second]);
+    const req: CompletionRequest = { model: 'test', messages: [{ role: 'user', content: 'x' }] };
+    await expect(router.complete(req, undefined, { signal: controller.signal })).rejects.toThrow('aborted');
+    expect(second.complete).not.toHaveBeenCalled();
+  });
+});

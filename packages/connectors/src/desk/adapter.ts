@@ -16,7 +16,7 @@
 import { request } from 'undici';
 import type { ConnectorAdapter, ExecuteParams, ExecuteResult } from '../interface.js';
 import type { ConnectorCapabilities } from '@loop/types';
-import { UpstreamError } from '@loop/types';
+import { UpstreamError, LoopError } from '@loop/types';
 import { createLogger } from '@loop/observability';
 import { traceHeaders } from '../trace.js';
 
@@ -134,6 +134,8 @@ export class DeskAdapter implements ConnectorAdapter {
       }
     } catch (err) {
       if (err instanceof UpstreamError) throw err;
+      // Audit #41: propagate product errors (e.g. NODE_EGRESS_BLOCKED) unchanged.
+      if (err instanceof LoopError) throw err;
       logger.error({ error: String(err) }, 'Desk call failed');
       throw new UpstreamError('UPSTREAM_DESK_UNAVAILABLE', String(err));
     }

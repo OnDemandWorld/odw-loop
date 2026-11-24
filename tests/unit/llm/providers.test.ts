@@ -193,3 +193,39 @@ describe('presets', () => {
     expect(isLocalUrl('https://api.openai.com/v1')).toBe(false);
   });
 });
+
+describe('Provider deadlines — combined signals (audit #50)', () => {
+  beforeEach(() => {
+    requestMock.mockReset();
+  });
+
+  it('the provider timeout still applies when an executor signal is present', async () => {
+    // undici mock: reject when the passed signal aborts (like real undici).
+    requestMock.mockImplementation((_url: string, opts: { signal?: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        if (opts.signal?.aborted) { reject(new Error('request aborted')); return; }
+        opts.signal?.addEventListener('abort', () => reject(new Error('request aborted')));
+      }),
+    );
+    const provider = new OpenAICompatibleProvider('test', 'sk', 'https://api.test.example/v1', 'm', 30);
+    const executorController = new AbortController(); // never aborts during the test
+    await expect(
+      provider.complete(baseReq, { signal: executorController.signal }),
+    ).rejects.toThrow('request aborted');
+    expect(executorController.signal.aborted).toBe(false);
+  });
+
+  it('an executor abort still cancels the request', async () => {
+    requestMock.mockImplementation((_url: string, opts: { signal?: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        if (opts.signal?.aborted) { reject(new Error('request aborted')); return; }
+        opts.signal?.addEventListener('abort', () => reject(new Error('request aborted')));
+      }),
+    );
+    const provider = new OpenAICompatibleProvider('test', 'sk', 'https://api.test.example/v1', 'm', 60_000);
+    const executorController = new AbortController();
+    const pending = provider.complete(baseReq, { signal: executorController.signal });
+    executorController.abort();
+    await expect(pending).rejects.toThrow('request aborted');
+  });
+});

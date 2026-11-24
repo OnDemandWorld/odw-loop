@@ -16,7 +16,7 @@
 import { request, FormData, File } from 'undici';
 import type { ConnectorAdapter, ExecuteParams, ExecuteResult } from '../interface.js';
 import type { ConnectorCapabilities } from '@loop/types';
-import { UpstreamError } from '@loop/types';
+import { UpstreamError, LoopError } from '@loop/types';
 import { createLogger } from '@loop/observability';
 import { traceHeaders } from '../trace.js';
 
@@ -222,6 +222,10 @@ export class VaultAdapter implements ConnectorAdapter {
       }
     } catch (err) {
       if (err instanceof UpstreamError) throw err;
+      // Audit #41: product errors (e.g. the egress gate's NODE_EGRESS_BLOCKED)
+      // must propagate unchanged — wrapping them as UPSTREAM_VAULT_UNAVAILABLE
+      // masked policy blocks as outages and made the executor retry them.
+      if (err instanceof LoopError) throw err;
       // Include the target URL and underlying cause — bare "AggregateError"
       // gave no clue which host was unreachable (found via combo testing).
       const detail =

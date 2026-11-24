@@ -33,7 +33,7 @@ export class OllamaProvider implements LLMProvider {
         stream: false,
         options: { temperature: req.temperature, num_predict: req.max_tokens },
       }),
-      signal: io?.signal ?? AbortSignal.timeout(this.timeoutMs),
+      signal: io?.signal ? AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) : AbortSignal.timeout(this.timeoutMs),
     });
 
     if (response.statusCode >= 400) {
@@ -71,7 +71,7 @@ export class OllamaProvider implements LLMProvider {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model: req.model, input: inputs }),
-      signal: io?.signal ?? AbortSignal.timeout(this.timeoutMs),
+      signal: io?.signal ? AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) : AbortSignal.timeout(this.timeoutMs),
     });
     if (response.statusCode >= 400) {
       const detail = await response.body.text().catch(() => '');

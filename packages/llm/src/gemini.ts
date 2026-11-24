@@ -57,7 +57,7 @@ export class GeminiProvider implements LLMProvider {
           ...(req.max_tokens !== undefined ? { maxOutputTokens: req.max_tokens } : {}),
         },
       }),
-      signal: io?.signal ?? AbortSignal.timeout(this.timeoutMs),
+      signal: io?.signal ? AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) : AbortSignal.timeout(this.timeoutMs),
     });
 
     if (response.statusCode >= 400) {

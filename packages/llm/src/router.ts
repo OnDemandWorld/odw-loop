@@ -4,6 +4,7 @@
  */
 
 import { createLogger } from '@loop/observability';
+import { LoopError } from '@loop/types';
 import type { LLMProvider, CompletionRequest, CompletionResponse, EmbeddingRequest, EmbeddingResponse, ProviderIO } from './interface.js';
 
 const logger = createLogger({ name: 'loop:llm:router', component: 'llm' });
@@ -64,11 +65,21 @@ export class LLMRouter {
         return result;
       } catch (err) {
         lastError = err as Error;
-        circuit.failures++;
-        circuit.lastFailure = Date.now();
-        if (circuit.failures >= this.threshold) {
-          circuit.state = 'open';
-          logger.warn({ provider: provider.name, failures: circuit.failures }, 'Circuit opened');
+        // Audit #52: a node/workflow deadline abort is not a provider outage —
+        // stop walking the chain (every remaining provider would be tried with
+        // the dead signal and counted as another failure).
+        if (io?.signal?.aborted) break;
+        // Egress policy denials are permanent product decisions, not outages;
+        // counting them opened every circuit in airgap mode and masked
+        // NODE_EGRESS_BLOCKED behind 'No LLM providers available'.
+        const isPolicyDenial = err instanceof LoopError && err.code === 'NODE_EGRESS_BLOCKED';
+        if (!isPolicyDenial) {
+          circuit.failures++;
+          circuit.lastFailure = Date.now();
+          if (circuit.failures >= this.threshold) {
+            circuit.state = 'open';
+            logger.warn({ provider: provider.name, failures: circuit.failures }, 'Circuit opened');
+          }
         }
       }
     }

@@ -491,7 +491,9 @@
     "root_cause": "get_meeting interpolates String(params.input['id']) raw into the path; vault (45-49) and desk (45,57,68) use encodeURIComponent but recap does not. URL normalization resolves '..' segments before dispatch.",
     "suggested_fix": "encodeURIComponent(String(params.input['id'])) as in the sibling adapters.",
     "failure_scenario": "Meeting id from a trigger payload like '../../sync' or 'x?foo=bar' changes the request path/query (GET /meetings/../../sync -> /sync), sending the instance Bearer JWT to an unintended Recap endpoint.",
-    "id": 38
+    "id": 38,
+    "status": "fixed",
+    "verification_notes": "recap get_meeting now encodeURIComponent's the id (parity with vault/desk). Regression: recap-adapter.test.ts audit #38 (id '../../sync' arrives as /meetings/..%2F..%2Fsync on a capture server). Verified: typecheck 0; unit 710/710 (56 files); integration 177/178 (pre-existing vault failure only); e2e 30/30; eslint 0 new errors."
   },
   {
     "file": "packages/connectors/src/vault/adapter.ts",
@@ -527,7 +529,9 @@
     "root_cause": "Catch-all wraps every non-UpstreamError — including the gate's LoopError('NODE_EGRESS_BLOCKED',403) thrown by egress.check — into UpstreamError('UPSTREAM_VAULT_UNAVAILABLE',502). Identical in desk/adapter.ts:135-139 and recap/adapter.ts:132-136. Generic adapter and LLM providers correctly let it propagate.",
     "suggested_fix": "Rethrow LoopError instances with code NODE_EGRESS_BLOCKED unchanged; wrap only transport errors.",
     "failure_scenario": "In airgap or under a deny policy the node fails as 502 'Vault unavailable' and the executor's default retry (LOOP_DEFAULT_RETRY_COUNT=3) retries a permanently blocked call; operators see a phantom upstream outage instead of a policy block.",
-    "id": 41
+    "id": 41,
+    "status": "fixed",
+    "verification_notes": "vault/desk/recap catch blocks rethrow LoopError instances unchanged (NODE_EGRESS_BLOCKED no longer wrapped as UPSTREAM_*_UNAVAILABLE; executor will not retry policy denials as outages). Regression: tests/unit/connectors/egress-propagation.test.ts (all three adapters preserve the LoopError code, not UpstreamError). Verified: typecheck 0; unit 710/710; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/egress/src/resolver.ts",
@@ -613,7 +617,9 @@
     "root_cause": "logger.warn({ extra }, ...) serializes the whole parsed entry — including api_key — when name/base_url validation fails. Line 147's JSON-parse error log can also echo a snippet of the raw string.",
     "suggested_fix": "Log only the entry name and which fields are missing; never the raw object.",
     "failure_scenario": "LOOP_LLM_EXTRA_PROVIDERS='[{\"name\":\"gw\",\"api_key\":\"sk-live-...\"}]' (base_url typo/omitted) writes the live vendor key into server logs on every startup.",
-    "id": 48
+    "id": 48,
+    "status": "fixed",
+    "verification_notes": "factory logs only entry name + missing fields for malformed extra providers; JSON-parse failure logs the error class only (Node parse messages can echo raw snippets containing api_key). Regression: factory.test.ts audit #48 (warn/error spies never contain the key). Verified: typecheck 0; unit 710/710; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/llm/src/gemini.ts",
@@ -637,7 +643,9 @@
     "root_cause": "signal: io?.signal ?? AbortSignal.timeout(this.timeoutMs) — the executor always passes a fused node-timeout signal (executor.ts:675-697,837), so the configured provider timeout never applies on the workflow path. Identical at anthropic.ts:45, azure.ts:36, gemini.ts:60, ollama.ts:36 and 74.",
     "suggested_fix": "Combine deadlines: AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) (Node 20+), or race whichever fires first.",
     "failure_scenario": "Admin sets LOOP_LLM_TIMEOUT_MS=15000 to fail fast; a node with timeout_ms=600000 against a blackholed provider hangs 10 minutes instead of 15s, stalling the workflow past the intended LLM budget.",
-    "id": 50
+    "id": 50,
+    "status": "fixed",
+    "verification_notes": "All providers (openai/anthropic/azure/gemini/ollama x2) now combine deadlines: AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) when an executor signal is present — LOOP_LLM_TIMEOUT_MS applies on the workflow path again. Regression: providers.test.ts audit #50 (provider timeout fires despite a live executor signal; executor abort still cancels). Verified: typecheck 0; unit 710/710; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/llm/src/openai.ts",
@@ -661,7 +669,9 @@
     "root_cause": "Every catch increments circuit.failures with no error classification, and the loop keeps walking the chain after io.signal aborts — each remaining provider tried with the dead signal and counted as a failure. NODE_EGRESS_BLOCKED and 4xx client errors count the same as outages.",
     "suggested_fix": "Break when io?.signal?.aborted; exclude abort/cancellation, egress denials, and permanent 4xx (except 429) from failure counting.",
     "failure_scenario": "Default node timeout 30s while ollama cold starts exceed it: each timed-out LLM node increments EVERY provider's failure counter; five such nodes open all circuits and subsequent llm.complete calls fail 'No LLM providers available' for 30s. In airgap, five blocked calls likewise mask NODE_EGRESS_BLOCKED behind that generic error.",
-    "id": 52
+    "id": 52,
+    "status": "fixed",
+    "verification_notes": "Router complete(): breaks the chain when io.signal aborted; NODE_EGRESS_BLOCKED denials no longer increment circuit failures (4xx classification deferred — UpstreamError carries no status field; noted as follow-up). Regression: router.test.ts audit #52 (7 denials keep circuit closed and surface the policy code; aborted signal stops the chain). Verified: typecheck 0; unit 710/710; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/observability/src/exporters.ts",

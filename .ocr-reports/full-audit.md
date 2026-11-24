@@ -246,8 +246,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** WebhookNotifier.send discards the response without checking statusCode; NotificationQueue retries only thrown errors, so HTTP-level failures are never retried. Unread body holds the socket. Latent: not yet wired.
   - **Failure scenario:** Webhook receiver returning 500/401 treated as successful delivery; notification lost with no retry and no log.
   - **Suggested fix:** Check statusCode>=400 and throw; drain the body on every path.
-- [ ] **#38 — Recap get_meeting id not URL-encoded — path traversal with JWT**
+- [x] **#38 — Recap get_meeting id not URL-encoded — path traversal with JWT**
   - `packages/connectors/src/recap/adapter.ts:47-47` · category: security
+  - **Status:** fixed — recap get_meeting now encodeURIComponent's the id (parity with vault/desk). Regression: recap-adapter.test.ts audit #38 (id '../../sync' arrives as /meetings/..%2F..%2Fsync on a capture server). Verified: typecheck 0; unit 710/710 (56 files); integration 177/178 (pre-existing vault failure only); e2e 30/30; eslint 0 new errors.
   - **Root cause:** get_meeting interpolates String(params.input['id']) raw into the path; vault (45-49) and desk (45,57,68) use encodeURIComponent but recap does not. URL normalization resolves '..' segments before dispatch.
   - **Failure scenario:** Meeting id from a trigger payload like '../../sync' or 'x?foo=bar' changes the request path/query (GET /meetings/../../sync -> /sync), sending the instance Bearer JWT to an unintended Recap endpoint.
   - **Suggested fix:** encodeURIComponent(String(params.input['id'])) as in the sibling adapters.
@@ -261,8 +262,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** postQuery builds the Vault body from input['query']/top_k/top_k_chunks/folder_filter, but canvas FIELD_SPECS for vault.rag_query use question/context/output_format (WorkflowEditor.tsx:133-137); vault.search offers limit/filters while the adapter reads top_k/folder_filter; create_document offers tags/folder which uploadDocument (143-148) never sends. Executor passes node.config through verbatim — no mapping layer.
   - **Failure scenario:** User builds a RAG node and types a question: node POSTs /query with {query:'',top_k_chunks:8}; Vault answers an empty query and the workflow silently continues with irrelevant/empty results.
   - **Suggested fix:** Accept canvas keys as aliases (question->query, limit->top_k_chunks, filters->folder_filter) or align canvas field keys; forward tags/folder in the upload form.
-- [ ] **#41 — Egress denial rewrapped as UPSTREAM_*_UNAVAILABLE (vault/desk/recap)**
+- [x] **#41 — Egress denial rewrapped as UPSTREAM_*_UNAVAILABLE (vault/desk/recap)**
   - `packages/connectors/src/vault/adapter.ts:223-235` · category: error-handling
+  - **Status:** fixed — vault/desk/recap catch blocks rethrow LoopError instances unchanged (NODE_EGRESS_BLOCKED no longer wrapped as UPSTREAM_*_UNAVAILABLE; executor will not retry policy denials as outages). Regression: tests/unit/connectors/egress-propagation.test.ts (all three adapters preserve the LoopError code, not UpstreamError). Verified: typecheck 0; unit 710/710; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** Catch-all wraps every non-UpstreamError — including the gate's LoopError('NODE_EGRESS_BLOCKED',403) thrown by egress.check — into UpstreamError('UPSTREAM_VAULT_UNAVAILABLE',502). Identical in desk/adapter.ts:135-139 and recap/adapter.ts:132-136. Generic adapter and LLM providers correctly let it propagate.
   - **Failure scenario:** In airgap or under a deny policy the node fails as 502 'Vault unavailable' and the executor's default retry (LOOP_DEFAULT_RETRY_COUNT=3) retries a permanently blocked call; operators see a phantom upstream outage instead of a policy block.
   - **Suggested fix:** Rethrow LoopError instances with code NODE_EGRESS_BLOCKED unchanged; wrap only transport errors.
@@ -297,8 +299,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** recover() marks a 'running' execution failed when zero nodes completed ('in-flight node's side effects are ambiguous') but resumes when >=1 completed — re-dispatching the same ambiguous in-flight node (executeNodeInner resets a 'running' row and dispatches again). Idempotency-key mitigation is best-effort: GenericAdapter never forwards an Idempotency-Key header, so generic REST side effects have no dedup vector.
   - **Failure scenario:** Node A succeeds; node B (generic POST /charge) in flight when process crashes after upstream applied the charge. Restart -> recovery resumes (lastCompleted=A) -> B re-dispatched -> second charge. Identical crash with zero completed nodes deliberately failed instead — policy inconsistent.
   - **Suggested fix:** Apply the ambiguity policy per node: on resume settle crash-interrupted 'running' node rows to failed (or require explicit confirmation) instead of silently re-dispatching; alternatively make idempotency-key forwarding mandatory for mutating connector operations.
-- [ ] **#48 — Malformed extra-provider entry logged with api_key intact**
+- [x] **#48 — Malformed extra-provider entry logged with api_key intact**
   - `packages/llm/src/factory.ts:140-142` · category: security
+  - **Status:** fixed — factory logs only entry name + missing fields for malformed extra providers; JSON-parse failure logs the error class only (Node parse messages can echo raw snippets containing api_key). Regression: factory.test.ts audit #48 (warn/error spies never contain the key). Verified: typecheck 0; unit 710/710; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** logger.warn({ extra }, ...) serializes the whole parsed entry — including api_key — when name/base_url validation fails. Line 147's JSON-parse error log can also echo a snippet of the raw string.
   - **Failure scenario:** LOOP_LLM_EXTRA_PROVIDERS='[{"name":"gw","api_key":"sk-live-..."}]' (base_url typo/omitted) writes the live vendor key into server logs on every startup.
   - **Suggested fix:** Log only the entry name and which fields are missing; never the raw object.
@@ -307,8 +310,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** promptFeedback.blockReason never inspected; a blocked prompt yields no candidates so content='' and finish_reason defaults to 'STOP' — indistinguishable from a legitimate empty completion. Candidate-level SAFETY at least visible via finishReason.
   - **Failure scenario:** Prompt hits Gemini's blocklist: API returns {promptFeedback:{blockReason:'SAFETY'}} and the workflow proceeds with an empty string as a successful answer, silently corrupting downstream steps.
   - **Suggested fix:** When promptFeedback.blockReason set, throw UpstreamError or map to a distinct finish_reason.
-- [ ] **#50 — LOOP_LLM_TIMEOUT_MS discarded when executor signal present**
+- [x] **#50 — LOOP_LLM_TIMEOUT_MS discarded when executor signal present**
   - `packages/llm/src/openai.ts:51-51` · category: bug
+  - **Status:** fixed — All providers (openai/anthropic/azure/gemini/ollama x2) now combine deadlines: AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) when an executor signal is present — LOOP_LLM_TIMEOUT_MS applies on the workflow path again. Regression: providers.test.ts audit #50 (provider timeout fires despite a live executor signal; executor abort still cancels). Verified: typecheck 0; unit 710/710; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** signal: io?.signal ?? AbortSignal.timeout(this.timeoutMs) — the executor always passes a fused node-timeout signal (executor.ts:675-697,837), so the configured provider timeout never applies on the workflow path. Identical at anthropic.ts:45, azure.ts:36, gemini.ts:60, ollama.ts:36 and 74.
   - **Failure scenario:** Admin sets LOOP_LLM_TIMEOUT_MS=15000 to fail fast; a node with timeout_ms=600000 against a blackholed provider hangs 10 minutes instead of 15s, stalling the workflow past the intended LLM budget.
   - **Suggested fix:** Combine deadlines: AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) (Node 20+), or race whichever fires first.
@@ -317,8 +321,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** response.body.json() on a 200 HTML page (proxy/captive portal/wrong port) throws bare SyntaxError — not UpstreamError — losing upstream context; body left undrained (socket held). Same at anthropic.ts:53, azure.ts:44, gemini.ts:68, ollama.ts:44 and 80. Generic connector already fixed this pattern (generic/adapter.ts:74-92).
   - **Failure scenario:** Corporate proxy returns a 200 login page for api.openai.com: node fails with "Unexpected token '<'...", circuit counts an unclassifiable failure, socket leaks.
   - **Suggested fix:** Read text first, attempt JSON.parse, throw UpstreamError with short snippet on failure; drain on every path.
-- [ ] **#52 — Circuit breaker counts aborts/egress denials as provider failures**
+- [x] **#52 — Circuit breaker counts aborts/egress denials as provider failures**
   - `packages/llm/src/router.ts:41-76` · category: bug
+  - **Status:** fixed — Router complete(): breaks the chain when io.signal aborted; NODE_EGRESS_BLOCKED denials no longer increment circuit failures (4xx classification deferred — UpstreamError carries no status field; noted as follow-up). Regression: router.test.ts audit #52 (7 denials keep circuit closed and surface the policy code; aborted signal stops the chain). Verified: typecheck 0; unit 710/710; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** Every catch increments circuit.failures with no error classification, and the loop keeps walking the chain after io.signal aborts — each remaining provider tried with the dead signal and counted as a failure. NODE_EGRESS_BLOCKED and 4xx client errors count the same as outages.
   - **Failure scenario:** Default node timeout 30s while ollama cold starts exceed it: each timed-out LLM node increments EVERY provider's failure counter; five such nodes open all circuits and subsequent llm.complete calls fail 'No LLM providers available' for 30s. In airgap, five blocked calls likewise mask NODE_EGRESS_BLOCKED behind that generic error.
   - **Suggested fix:** Break when io?.signal?.aborted; exclude abort/cancellation, egress denials, and permanent 4xx (except 429) from failure counting.

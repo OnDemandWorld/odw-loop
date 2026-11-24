@@ -4,8 +4,10 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+const warnSpy = vi.hoisted(() => vi.fn());
+const errorSpy = vi.hoisted(() => vi.fn());
 vi.mock('@loop/observability', () => ({
-  createLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
+  createLogger: () => ({ debug: () => {}, info: () => {}, warn: warnSpy, error: errorSpy }),
 }));
 
 import { createLLMRouter } from '../../../packages/llm/src/factory';
@@ -80,5 +82,30 @@ describe('createLLMRouter', () => {
     const names = createLLMRouter(cfg()).listProviders().map((p) => p.name);
     expect(names).not.toContain('bedrock');
     expect(names).not.toContain('vertex');
+  });
+});
+
+describe('createLLMRouter — extra-provider log redaction (audit #48)', () => {
+  it('never logs the api_key of a malformed extra-provider entry', () => {
+    warnSpy.mockClear();
+    errorSpy.mockClear();
+    createLLMRouter(cfg({
+      LOOP_LLM_EXTRA_PROVIDERS: '[{"name":"gw","api_key":"sk-live-DO-NOT-LOG"}]',
+    }));
+    expect(warnSpy).toHaveBeenCalled();
+    const logged = JSON.stringify(warnSpy.mock.calls);
+    expect(logged).not.toContain('sk-live-DO-NOT-LOG');
+    expect(logged).toContain('gw');
+  });
+
+  it('does not echo raw JSON snippets on parse failure', () => {
+    warnSpy.mockClear();
+    errorSpy.mockClear();
+    createLLMRouter(cfg({
+      LOOP_LLM_EXTRA_PROVIDERS: '[{"name":"gw","api_key":"sk-live-DO-NOT-LOG",',
+    }));
+    expect(errorSpy).toHaveBeenCalled();
+    const logged = JSON.stringify(errorSpy.mock.calls);
+    expect(logged).not.toContain('sk-live-DO-NOT-LOG');
   });
 });

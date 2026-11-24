@@ -48,7 +48,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
         max_tokens: req.max_tokens,
         stream: false,
       }),
-      signal: io?.signal ?? AbortSignal.timeout(this.timeoutMs),
+      signal: io?.signal ? AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) : AbortSignal.timeout(this.timeoutMs),
     });
 
     if (response.statusCode >= 400) {

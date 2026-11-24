@@ -17,7 +17,7 @@
 import { request } from 'undici';
 import type { ConnectorAdapter, ExecuteParams, ExecuteResult } from '../interface.js';
 import type { ConnectorCapabilities } from '@loop/types';
-import { UpstreamError } from '@loop/types';
+import { UpstreamError, LoopError } from '@loop/types';
 import { createLogger } from '@loop/observability';
 import { traceHeaders } from '../trace.js';
 
@@ -44,7 +44,10 @@ export class RecapAdapter implements ConnectorAdapter {
       case 'list_meetings':
         return this.callRecap(baseUrl, token, 'GET', '/meetings/', undefined, idemKey, params);
       case 'get_meeting':
-        return this.callRecap(baseUrl, token, 'GET', `/meetings/${String(params.input['id'])}`, undefined, idemKey, params);
+        // Audit #38: encode the id like the sibling adapters — a raw '..' or
+        // '?' in a trigger-supplied id redirected the request (with the
+        // instance JWT) to an unintended Recap endpoint.
+        return this.callRecap(baseUrl, token, 'GET', `/meetings/${encodeURIComponent(String(params.input['id']))}`, undefined, idemKey, params);
       case 'create_meeting':
         return this.callRecap(baseUrl, token, 'POST', '/meetings/', params.input, idemKey, params);
       case 'sync':
@@ -131,6 +134,8 @@ export class RecapAdapter implements ConnectorAdapter {
       }
     } catch (err) {
       if (err instanceof UpstreamError) throw err;
+      // Audit #41: propagate product errors (e.g. NODE_EGRESS_BLOCKED) unchanged.
+      if (err instanceof LoopError) throw err;
       logger.error({ error: String(err) }, 'Recap call failed');
       throw new UpstreamError('UPSTREAM_RECAP_UNAVAILABLE', String(err));
     }

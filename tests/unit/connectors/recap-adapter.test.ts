@@ -30,3 +30,31 @@ describe('RecapAdapter — non-JSON response handling', () => {
     await expect(promise).rejects.toMatchObject({ code: 'UPSTREAM_RECAP_BAD_RESPONSE' });
   });
 });
+
+describe('RecapAdapter — meeting id encoding (audit #38)', () => {
+  const urls: string[] = [];
+  const captureServer = http.createServer((req, res) => {
+    urls.push(req.url ?? '');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{"id":"m1"}');
+  });
+  beforeAll(async () => {
+    await new Promise<void>((resolve) => captureServer.listen(0, '127.0.0.1', resolve));
+  });
+  afterAll(async () => {
+    captureServer.closeAllConnections();
+    await new Promise<void>((resolve) => captureServer.close(() => resolve()));
+  });
+
+  it('percent-encodes traversal-shaped ids instead of redirecting the request', async () => {
+    const address = captureServer.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    const adapter = new RecapAdapter();
+    await adapter.execute({
+      operation: 'get_meeting',
+      input: { id: '../../sync' },
+      config: { base_url: `http://127.0.0.1:${port}` },
+    } as never);
+    expect(urls[0]).toBe('/meetings/..%2F..%2Fsync');
+  });
+});
