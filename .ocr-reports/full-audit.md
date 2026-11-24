@@ -263,8 +263,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** TemplateRegistry.resolveDir looks for <moduleRoot>/templates (= /app/templates in image) and cwd walk-ups; the repo-root templates/ directory with marketplace JSON is never COPYed into the runtime layout.
   - **Failure scenario:** Docker deployments load 0 templates with 0 load errors — silent feature loss; POST /api/v1/templates/:id/instantiate 404s for every shipped template.
   - **Suggested fix:** COPY templates/ ./templates/ in the runtime stage (after fixing the @loop/templates package copy).
-- [ ] **#31 — Helm chart points at PostgreSQL/Redis services it never creates**
+- [x] **#31 — Helm chart points at PostgreSQL/Redis services it never creates**
   - `helm/loop/templates/api-deployment.yaml:38-52` · category: bug
+  - **Status:** fixed — Chart.yaml declares bitnami postgresql/redis dependencies (condition-gated on the existing values sections); LOOP_REDIS_URL now includes the password from the bitnami redis secret via $(LOOP_REDIS_PASSWORD) env expansion. Verified statically (helm CLI not available on this machine; CI/release should run helm dependency update + lint). typecheck 0; unit 782/782; integration 179/180 (pre-existing only); e2e 29/29.
   - **Status:** skipped — Deferred for packaging decision: adding bitnami postgresql/redis as chart dependencies vs documenting external endpoints (and fixing the Redis password in LOOP_REDIS_URL) is a Scale-tier deployment choice for Jack. Chart remains unusable with default values until decided. NOT fixed.
   - **Root cause:** values.yaml enables postgresql/redis (87-121) and deployments reference {{ .Release.Name }}-postgresql and -redis-master, but Chart.yaml declares no dependencies and templates/ contains no postgres/redis resources. LOOP_REDIS_URL also omits the password despite redis.auth.enabled=true.
   - **Failure scenario:** helm install with default values deploys an API configured for LOOP_DB_TYPE=postgres against a nonexistent host; every pod crash-loops on DB connection. Scale-tier chart unusable as shipped.
@@ -471,8 +472,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** TriggerDispatcher.dispatch matches enabled event triggers and creates executions without checking workflow.status. Cron (cron.ts:69) and webhook (webhook.ts:66) have fire-time archived guards because registered triggers outlive archiving; the event path lacks it. Archiving via PUT /workflows/:id {status:'archived'} does not disarm triggers (only DELETE does, best-effort). The version read at 50-51 already fetches the row.
   - **Failure scenario:** Workflow with event trigger archived via PUT (triggers stay enabled): POST /api/v1/events with matching source/event_type creates an execution and runExecution executes the archived definition — real side effects for a 'deleted' flow.
   - **Suggested fix:** Load the workflow in dispatch() and skip (or disable the trigger) when status==='archived', mirroring cron/webhook.
-- [ ] **#65 — Spec-mandated webhook timestamp replay protection is missing**
+- [x] **#65 — Spec-mandated webhook timestamp replay protection is missing**
   - `packages/triggers/src/webhook.ts:36-49` · category: security
+  - **Status:** fixed — Opt-in replay protection per TSD §11.6: webhook config.require_timestamp makes the handler require x-loop-timestamp, verify HMAC over `${ts}.${rawBody}`, and reject timestamps outside ±5 min; route forwards the header; schema gained require_timestamp. Legacy senders unaffected (opt-in). Regression: webhook.test.ts audit #65 (fresh accepted, stale rejected, missing rejected, legacy unchanged). Verified: typecheck 0; unit 782/782; integration 179/180 (pre-existing only).
   - **Status:** skipped — Deferred for protocol decision: adding a signed timestamp (TSD §11.6) breaks existing webhook senders unless versioned/negotiated. Needs a signature-scheme migration plan. HMAC itself is correct and mandatory when a secret is set; secret-less creation is now blocked (#66). NOT fixed.
   - **Root cause:** File header claims 'HMAC-SHA256 signature verification + replay protection (§11.6)' but TSD §11.6 requires 'timestamp in signature payload; reject if > 5 minutes old'. handle() verifies only HMAC over the raw body; no timestamp/nonce check. The 60/min rate limit is not replay protection.
   - **Failure scenario:** Attacker capturing one valid signed webhook request (log, proxy, browser history) replays it indefinitely at up to 60/min; each replay passes HMAC and creates a new execution, re-firing side effects with no expiry.
@@ -727,8 +729,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** host:'0.0.0.0' exposes the Vite dev server to the whole LAN while proxying to an API possibly bound to localhost only, bypassing the API's network isolation; /metrics also exposed without auth.
   - **Failure scenario:** pnpm dev on shared Wi-Fi with API on 127.0.0.1: anyone on the network reaches http://laptop:5173/api/v1/workflows and /metrics through the proxy.
   - **Suggested fix:** Bind to localhost by default (opt-in host flag); drop /metrics proxy unless needed.
-- [ ] **#109 — Helm 'required' secrets render empty without validation**
+- [x] **#109 — Helm 'required' secrets render empty without validation**
   - `helm/loop/templates/secrets.yaml:9-11` · category: bug
+  - **Status:** fixed — helm secrets.yaml uses required() for global.encryptionKey, global.jwtSecret and postgresql.auth.password — install fails fast with a clear message instead of deploying empty secrets that crash-loop the API. Verified statically (no helm CLI).
   - **Root cause:** global.encryptionKey/jwtSecret default to '' and are b64enc'd without Helm's required function; install succeeds creating empty secrets; API config loader rejects the empty/short key at boot.
   - **Failure scenario:** helm install without --set values installs 'successfully', then every API pod crash-loops on encryption-key validation — failure surfaces late and opaquely.
   - **Suggested fix:** Use {{ required "global.encryptionKey is required" .Values.global.encryptionKey | b64enc }} (same for jwtSecret and postgres password).
@@ -871,13 +874,15 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** workflows.update SELECTs current.version (162) and writes version+1 computed in JS (163), not in a transaction. PG (postgres/index.ts:197) uses atomic 'version = version + 1'. Within single-process Core the synchronous better-sqlite3 block cannot interleave; only bites across processes sharing the file.
   - **Failure scenario:** Two processes sharing the SQLite file both read version N and write N+1 (lost update); duplicated version trips UNIQUE(workflow_id,version) on snapshot.
   - **Suggested fix:** Use SQL increment (version = sql`version + 1`) or wrap read+write in a transaction.
-- [ ] **#135 — Registry validates only zod shape, not topology or node types**
+- [x] **#135 — Registry validates only zod shape, not topology or node types**
   - `packages/templates/src/registry.ts:147-159` · category: bug
+  - **Status:** fixed — TemplateRegistry.load runs topology validation (duplicate ids, dangling edges, cycles — mirrors authoring hard rules) and records failures in loadErrors instead of serving unusable templates. Node-type checks remain at instantiation (need the connector registry). Regression: registry.test.ts audit #135 (dangling edge -> loadErrors, not served). Verified: typecheck 0; unit 782/782.
   - **Root cause:** load() runs WorkflowDefinitionSchema.safeParse but never validateWorkflow (dangling edges, cycles, duplicate ids) nor the node-type check the API applies at creation. All 30 bundled templates statically scanned clean; only bites custom LOOP_TEMPLATES_DIR content.
   - **Failure scenario:** Customer drops a template with a dangling edge into LOOP_TEMPLATES_DIR: appears in gallery but every instantiate 400s ('Invalid workflow topology') — broken surface with no load-time diagnostic.
   - **Suggested fix:** Run validateWorkflow and known-node-type checks at load; record failures in loadErrors instead of serving unusable templates.
-- [ ] **#136 — Template id-collision suffix can overwrite an existing template**
+- [x] **#136 — Template id-collision suffix can overwrite an existing template**
   - `packages/templates/src/registry.ts:159-159` · category: bug
+  - **Status:** fixed — Collision keys now loop until genuinely free (id-2, id-3, ...) — the old size-based suffix could equal an existing id and silently overwrite it. Regression: registry.test.ts audit #136 (x-2/x/x load order keeps all three templates). Verified: typecheck 0; unit 782/782.
   - **Root cause:** On duplicate id the key is `${id}-${this.templates.size}` with no uniqueness check; the suffix can equal an id already loaded from an earlier file. Comment ('later file wins but keeps a unique key') misdescribes behavior.
   - **Failure scenario:** Files sorted a.json(id 'x-2'), b.json(id 'x'), c.json(id 'x'): c gets key 'x-2' (size=2), Map.set silently replaces a's template — a shipped template disappears with no load error.
   - **Suggested fix:** Loop incrementing a counter until the key is unused (while templates.has(key)).

@@ -14,3 +14,14 @@ sources:
   - https://github.com/OnDemandWorld/odw-loop
 maintainers:
   - name: ODW.ai Team
+# Audit #31: the deployments reference <release>-postgresql and
+# <release>-redis-master — actually ship them as chart dependencies.
+dependencies:
+  - name: postgresql
+    version: "12.12.10"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "17.17.1"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

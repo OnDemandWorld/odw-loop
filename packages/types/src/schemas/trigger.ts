@@ -14,6 +14,9 @@ export const WebhookTriggerConfigSchema = z.object({
   // route additionally enforces this branch (the union has a catch-all).
   secret: z.string().min(16),
   method: z.enum(['POST', 'PUT']).default('POST'),
+  // Audit #65: opt-in replay protection — sign `${unixSeconds}.${rawBody}`
+  // and send x-loop-timestamp; requests older than 5 minutes are rejected.
+  require_timestamp: z.boolean().optional(),
 });
 
 export const EventTriggerConfigSchema = z.object({

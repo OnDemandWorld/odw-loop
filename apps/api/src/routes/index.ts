@@ -626,6 +626,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       signature: request.headers['x-loop-signature'] as string | null,
       body: request.body,
       rawBody: raw ? raw.toString('utf8') : JSON.stringify(request.body),
+      timestamp: (request.headers['x-loop-timestamp'] as string | undefined) ?? null,
     });
     // The handler only persists a *pending* execution record — actually run
     // the workflow asynchronously, mirroring the manual /execute route.

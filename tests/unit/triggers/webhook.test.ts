@@ -218,3 +218,54 @@ describe('WebhookTriggerHandler — raw-byte HMAC pin (audit #87)', () => {
     await expect(handler.handle({ triggerId, signature, body, rawBody })).rejects.toThrow('Invalid webhook signature');
   });
 });
+
+describe('WebhookTriggerHandler — timestamp replay protection (audit #65)', () => {
+  function storeWithConfig(triggerId: string, config: Record<string, unknown>) {
+    return {
+      triggers: {
+        getById: vi.fn().mockResolvedValue({ id: triggerId, workflow_id: 'workflow-1', enabled: true, config }),
+      },
+      executions: { create: vi.fn().mockResolvedValue({}) },
+    } as unknown as ConstructorParameters<typeof WebhookTriggerHandler>[0];
+  }
+
+  it('accepts a fresh timestamp signed into the HMAC', async () => {
+    const triggerId = uniqueTriggerId();
+    const secret = 'test-secret';
+    const rawBody = '{"event":"x"}';
+    const ts = String(Math.floor(Date.now() / 1000));
+    const signature = `sha256=${createHmac('sha256', secret).update(`${ts}.${rawBody}`).digest('hex')}`;
+    const handler = new WebhookTriggerHandler(storeWithConfig(triggerId, { secret, require_timestamp: true }));
+    const result = await handler.handle({ triggerId, signature, body: { event: 'x' }, rawBody, timestamp: ts });
+    expect(result.execution_id).toBeDefined();
+  });
+
+  it('rejects a stale timestamp (>5 min) even with a valid signature', async () => {
+    const triggerId = uniqueTriggerId();
+    const secret = 'test-secret';
+    const rawBody = '{"event":"x"}';
+    const ts = String(Math.floor(Date.now() / 1000) - 600);
+    const signature = `sha256=${createHmac('sha256', secret).update(`${ts}.${rawBody}`).digest('hex')}`;
+    const handler = new WebhookTriggerHandler(storeWithConfig(triggerId, { secret, require_timestamp: true }));
+    await expect(handler.handle({ triggerId, signature, body: {}, rawBody, timestamp: ts })).rejects.toThrow(/5-minute window/);
+  });
+
+  it('rejects a missing timestamp when required', async () => {
+    const triggerId = uniqueTriggerId();
+    const secret = 'test-secret';
+    const rawBody = '{"event":"x"}';
+    const signature = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
+    const handler = new WebhookTriggerHandler(storeWithConfig(triggerId, { secret, require_timestamp: true }));
+    await expect(handler.handle({ triggerId, signature, body: {}, rawBody, timestamp: null })).rejects.toThrow(/Missing webhook timestamp/);
+  });
+
+  it('legacy triggers without require_timestamp keep working unchanged', async () => {
+    const triggerId = uniqueTriggerId();
+    const secret = 'test-secret';
+    const rawBody = '{"event":"x"}';
+    const signature = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
+    const handler = new WebhookTriggerHandler(storeWithConfig(triggerId, { secret }));
+    const result = await handler.handle({ triggerId, signature, body: {}, rawBody });
+    expect(result.execution_id).toBeDefined();
+  });
+});

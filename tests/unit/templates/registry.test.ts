@@ -182,3 +182,54 @@ describe('TemplateRegistry', () => {
     }
   });
 });
+
+describe('TemplateRegistry — load-time topology & collision safety (audit #135, #136)', () => {
+  it('rejects templates with dangling edges at load (recorded in loadErrors)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'loop-tpl-topo-'));
+    try {
+      const broken = {
+        id: 'broken-flow',
+        name: 'Broken',
+        description: 'dangling edge',
+        definition: {
+          version: '1.0',
+          nodes: [{ id: 'n1', type: 'vault.search', position: { x: 0, y: 0 }, config: {} }],
+          edges: [{ id: 'e1', source: 'n1', target: 'ghost' }],
+          variables: {},
+          metadata: { name: 'Broken', description: '', tags: [] },
+        },
+      };
+      writeFileSync(join(dir, 'broken.json'), JSON.stringify(broken));
+      const registry = new TemplateRegistry(dir);
+      expect(registry.get('broken-flow')).toBeUndefined();
+      expect(registry.getLoadErrors().some((e) => e.file === 'broken.json' && /unknown target/.test(e.error))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('id collisions never overwrite an existing template', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'loop-tpl-coll-'));
+    try {
+      const mk = (id: string, name: string) => ({
+        id,
+        name,
+        description: name,
+        definition: definition(['x'], name),
+      });
+      // Sorted load order: a.json (id 'x-2'), b.json (id 'x'), c.json (id 'x').
+      // The old `${id}-${size}` suffix produced 'x-2' for c.json and silently
+      // replaced a.json's template.
+      writeFileSync(join(dir, 'a.json'), JSON.stringify(mk('x-2', 'First')));
+      writeFileSync(join(dir, 'b.json'), JSON.stringify(mk('x', 'Second')));
+      writeFileSync(join(dir, 'c.json'), JSON.stringify(mk('x', 'Third')));
+      const registry = new TemplateRegistry(dir);
+      expect(registry.get('x-2')?.name).toBe('First');
+      expect(registry.get('x')?.name).toBe('Second');
+      expect(registry.get('x-3')?.name).toBe('Third');
+      expect(registry.getLoadErrors()).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

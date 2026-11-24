@@ -24,13 +24,15 @@ export class WebhookTriggerHandler {
     signature: string | null;
     body: unknown;
     rawBody: string;
+    /** Unix seconds from x-loop-timestamp (audit #65 replay protection). */
+    timestamp?: string | null;
   }): Promise<{ execution_id: string; workflow_id: string }> {
     // Find the trigger. Disabled triggers report the same 404 as missing ones
     // so unauthenticated callers cannot enumerate valid trigger ids.
     const trigger = await this.store.triggers.getById(params.triggerId);
     if (!trigger || !trigger.enabled) throw new NotFoundError('trigger', params.triggerId);
 
-    const config = trigger.config as { secret?: string };
+    const config = trigger.config as { secret?: string; require_timestamp?: boolean };
 
     // Verify HMAC signature. Mandatory when the trigger has a secret —
     // omitting the header must not bypass verification (tsd §11.6).
@@ -39,8 +41,24 @@ export class WebhookTriggerHandler {
       if (!params.signature) {
         throw new AuthenticationError('AUTH_INVALID_TOKEN', 'Missing webhook signature');
       }
+      // Audit #65 (TSD §11.6 replay protection): triggers opted into
+      // require_timestamp sign `${unixSeconds}.${rawBody}` and must present a
+      // fresh x-loop-timestamp (±5 min). Opt-in keeps existing senders working;
+      // captured requests can no longer be replayed indefinitely on opted-in
+      // triggers.
+      let signedPayload = params.rawBody;
+      if (config.require_timestamp) {
+        if (!params.timestamp) {
+          throw new AuthenticationError('AUTH_INVALID_TOKEN', 'Missing webhook timestamp (x-loop-timestamp)');
+        }
+        const ts = Number(params.timestamp);
+        if (!Number.isFinite(ts) || Math.abs(Date.now() - ts * 1000) > 5 * 60_000) {
+          throw new AuthenticationError('AUTH_INVALID_TOKEN', 'Webhook timestamp outside the 5-minute window');
+        }
+        signedPayload = `${params.timestamp}.${params.rawBody}`;
+      }
       const expected = Buffer.from(
-        `sha256=${createHmac('sha256', config.secret).update(params.rawBody).digest('hex')}`,
+        `sha256=${createHmac('sha256', config.secret).update(signedPayload).digest('hex')}`,
       );
       const provided = Buffer.from(params.signature);
       if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {

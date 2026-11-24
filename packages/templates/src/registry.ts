@@ -153,10 +153,24 @@ export class TemplateRegistry {
           });
           continue;
         }
+        // Audit #135: shape validation alone let broken graphs into the
+        // gallery (every instantiate then 400s). Reject topology errors at
+        // load time — mirrors the authoring validator's core rules.
+        const topologyError = validateTemplateTopology(parsed.data);
+        if (topologyError) {
+          this.loadErrors.push({ file, error: topologyError });
+          continue;
+        }
         const id = raw.id ? toKebabId(`${raw.id}`) : toKebabId(file);
         const template = this.toTemplate(raw, parsed.data, id);
-        // On id collision the later file wins but keeps a unique key.
-        this.templates.set(this.templates.has(id) ? `${id}-${this.templates.size}` : id, template);
+        // Audit #136: find a genuinely free key — `${id}-${size}` could equal
+        // an existing id and silently overwrite that template.
+        let key = id;
+        let suffix = 2;
+        while (this.templates.has(key)) {
+          key = `${id}-${suffix++}`;
+        }
+        this.templates.set(key, template);
       } catch (err) {
         this.loadErrors.push({ file, error: err instanceof Error ? err.message : String(err) });
       }
@@ -253,4 +267,44 @@ export class TemplateRegistry {
   getLoadErrors(): readonly TemplateLoadError[] {
     return this.loadErrors;
   }
+}
+
+/**
+ * Audit #135: minimal topology validation for template definitions — mirrors
+ * the authoring validator's hard rules (duplicate ids, dangling edges, cycles)
+ * so broken custom templates are rejected at load with a diagnostic instead
+ * of failing every instantiate call. Node-type checks need the connector
+ * registry and remain at instantiation time.
+ */
+function validateTemplateTopology(def: { nodes: Array<{ id: string }>; edges?: Array<{ source: string; target: string }> }): string | null {
+  const ids = new Set<string>();
+  for (const n of def.nodes) {
+    if (ids.has(n.id)) return `duplicate node id '${n.id}'`;
+    ids.add(n.id);
+  }
+  const adjacency = new Map<string, string[]>();
+  for (const e of def.edges ?? []) {
+    if (!ids.has(e.source)) return `edge references unknown source '${e.source}'`;
+    if (!ids.has(e.target)) return `edge references unknown target '${e.target}'`;
+    const list = adjacency.get(e.source) ?? [];
+    list.push(e.target);
+    adjacency.set(e.source, list);
+  }
+  // Cycle detection (DFS with coloring).
+  const state = new Map<string, 1 | 2>();
+  const visit = (id: string): boolean => {
+    const s = state.get(id);
+    if (s === 1) return true; // back edge → cycle
+    if (s === 2) return false;
+    state.set(id, 1);
+    for (const next of adjacency.get(id) ?? []) {
+      if (visit(next)) return true;
+    }
+    state.set(id, 2);
+    return false;
+  };
+  for (const id of ids) {
+    if (visit(id)) return 'definition contains a dependency cycle';
+  }
+  return null;
 }

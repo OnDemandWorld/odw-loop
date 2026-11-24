@@ -48,8 +48,15 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-db-secret
                   key: password
+            # Audit #31: include the Redis password (bitnami subchart secret)
+            # — the URL previously omitted it despite redis.auth.enabled=true.
+            - name: LOOP_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-redis
+                  key: redis-password
             - name: LOOP_REDIS_URL
-              value: "redis://{{ .Release.Name }}-redis-master:6379"
+              value: "redis://:$(LOOP_REDIS_PASSWORD)@{{ .Release.Name }}-redis-master:6379"
             - name: LOOP_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
