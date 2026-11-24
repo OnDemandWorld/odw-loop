@@ -33,7 +33,9 @@ function createMockConn(): MockConn {
     const normalized = params ?? [];
     calls.push({ sql, params: normalized });
     const rows = queue.shift() ?? [];
-    return { rows };
+    // Audit #85: expose rowCount so completeIfActive's race guard is testable
+    // (node-postgres reports affected rows; the old mock returned only rows).
+    return { rows, rowCount: rows.length };
   });
   const conn = {
     pool: { query },
@@ -492,5 +494,28 @@ describe('PostgresStateStore — migration locking (audit #59)', () => {
     expect(calls[1]!.sql).toContain('SELECT version FROM schema_migrations');
     expect(calls[calls.length - 1]!.sql).toContain('pg_advisory_unlock');
     expect(client.release).toHaveBeenCalled();
+  });
+});
+
+describe('PostgresStateStore — completeIfActive race guard (audit #85)', () => {
+  let mock: MockConn;
+  let store: PostgresStateStore;
+
+  beforeEach(() => {
+    mock = createMockConn();
+    store = new PostgresStateStore(mock.conn);
+  });
+
+  it('returns true when an active row was updated, and guards on status', async () => {
+    mock.enqueueRows([{ id: 'exec-1' }]); // UPDATE matched an active row
+    const applied = await store.executions.completeIfActive('exec-1', { status: 'succeeded' });
+    expect(applied).toBe(true);
+    expect(lastCall(mock.calls).sql).toContain("AND status IN ('pending', 'running')");
+  });
+
+  it('returns false when the row is already terminal (rowCount 0)', async () => {
+    mock.enqueueRows([]); // no active row matched
+    const applied = await store.executions.completeIfActive('exec-1', { status: 'failed' });
+    expect(applied).toBe(false);
   });
 });

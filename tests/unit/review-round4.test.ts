@@ -101,6 +101,7 @@ describe('Archived workflows no longer trigger', () => {
     handler.register('t-1', 'wf-1', { expression: '* * * * * *' }); // every second
     await new Promise((r) => setTimeout(r, 2200));
     handler.shutdown();
+    expect(store.workflows.getById).toHaveBeenCalled(); // audit #82: positive control — a tick actually ran
     expect(created).toEqual([]);
   });
 
@@ -296,17 +297,27 @@ describe('Connector hardening', () => {
 
   it('Generic adapter encodes path segments so "../" cannot escape', async () => {
     const adapter = new GenericAdapter();
-    await adapter
+    // Audit #83: capture the log length first — the old test asserted on
+    // seen[last] even when execute() failed BEFORE dispatch, silently reusing
+    // the previous test's '/error' entry (vacuous pass).
+    const before = seen.length;
+    const outcome = await adapter
       .execute({
         operation: 'rest_call',
         input: { path: '/files/../../../etc/passwd', method: 'GET', body: {} },
         config: { base_url: `http://127.0.0.1:${port}` },
       } as never)
-      .catch(() => undefined);
-    const last = seen[seen.length - 1];
-    // The traversal must arrive percent-encoded, never as literal ../
-    expect(last.url).not.toContain('../');
-    expect(last.url).not.toContain('/etc/passwd');
+      .catch((e: unknown) => e);
+    if (seen.length > before) {
+      // A request was dispatched: it must carry no literal traversal.
+      const last = seen[seen.length - 1]!;
+      expect(last.url).not.toContain('../');
+      expect(last.url).not.toContain('/etc/passwd');
+    } else {
+      // Fail-closed before dispatch is acceptable — but it must be a real
+      // error, never a silent no-op.
+      expect(outcome).toBeInstanceOf(Error);
+    }
   });
 });
 

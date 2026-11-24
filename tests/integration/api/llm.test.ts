@@ -16,7 +16,7 @@ describe('LLM API (/api/v1/llm/*)', () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
-    ctx = await buildTestApp();
+    ctx = await buildTestApp({ LOOP_LLM_OLLAMA_URL: 'http://127.0.0.1:1' }); // audit #77: guaranteed-closed port (dev machines may run Ollama)
     app = ctx.app;
     await app.ready();
   });
@@ -75,7 +75,7 @@ describe('LLM API (/api/v1/llm/*)', () => {
   });
 
   it('POST /complete surfaces provider failures as an error envelope (no silent empty reply)', async () => {
-    // Nothing listens on the loopback Ollama URL — the router must fail with
+    // The configured Ollama URL is a guaranteed-closed port — the router must fail with
     // a structured error rather than returning empty content.
     const res = await app.inject({
       method: 'POST',

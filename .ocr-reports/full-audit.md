@@ -473,8 +473,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** isAllowed (18-25) is a permission map defined in the test using legacy read/write/admin roles, divergent from production requireRole's admin/editor/viewer model. Tests assert only this local table; no HTTP request is made. Meanwhile the admin gates on POST/GET/DELETE /api/v1/secrets and /api/v1/egress/policies (routes/index.ts:686-720,802-833) have zero test coverage repo-wide (no test file contains 'api/v1/secrets').
   - **Failure scenario:** Removing preHandler:[requireRole('admin')] from the secrets routes lets any editor create/read secret metadata ship green — the 'RBAC enforcement (E2E)' suite still passes checking its own map.
   - **Suggested fix:** Delete the local table; drive real HTTP requests with viewer/editor JWTs against /api/v1/secrets, /api/v1/egress/policies, /api/v1/audit asserting 403 FORBIDDEN_INSUFFICIENT_ROLE.
-- [ ] **#75 — Cron handler lacks dispatcher and shutdown; leaked node-cron timers**
+- [x] **#75 — Cron handler lacks dispatcher and shutdown; leaked node-cron timers**
   - `tests/integration/_helpers/app.ts:159-161` · category: bug
+  - **Status:** fixed — buildTestApp cron handler now receives a dispatcher (stamped-version resolution shared with recovery) and an onClose hook calls cronHandler.shutdown() — cron-fired executions actually run in tests and no node-cron timers leak past app close. Verified: typecheck 0; unit 740/740; integration 179/180 (pre-existing only); e2e 30/30; eslint delta 0.
   - **Root cause:** buildTestApp creates CronTriggerHandler(store) with no dispatcher (production server.ts:251-253 passes dispatchToExecutor — the bug-14 fix) and registers no onClose hook calling cronHandler.shutdown() (production server.ts:358-368). trigger-to-execution.test.ts:191-213 registers a '*/5 * * * *' cron trigger never unregistered; node-cron@3.0.3 timers are not unref'd; afterAll closes app/conn but the task survives.
   - **Failure scenario:** (1) Cron-fired executions staying 'pending' forever (production bug 14) cannot be caught by any integration test; (2) the leaked */5 task fires after conn.close() in a reused vitest worker, throwing 'database connection is not open' — unhandled rejection flaking sibling files.
   - **Suggested fix:** Pass a dispatcher mirroring server.ts and add app.addHook('onClose', () => cronHandler.shutdown()); add an integration test that a cron tick runs the workflow to terminal state.
@@ -483,8 +484,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** The 'login returns access and refresh tokens' test (36-72) never calls POST /api/v1/auth/login — it hand-signs/verifies a JWT with jose and issues no refresh token. RBAC tests (118-153) assert a locally computed boolean; deactivated-user test asserts canLogin = user.is_active. Header comment about unwired routes is stale (routes/auth.ts + createAuthGuard exist). buildTestApp never registers registerAuthRoutes: zero HTTP login coverage in the integration suite.
   - **Failure scenario:** A regression in the login route's is_active check, role mapping, or token TTL passes this 'Authentication & RBAC' integration suite because it only tests the jose library and boolean algebra.
   - **Suggested fix:** Register auth routes in buildTestApp and rewrite as HTTP tests (login, wrong password, deactivated user, lockout); delete tautological role checks (real guard coverage lives in api/rbac.test.ts).
-- [ ] **#77 — Provider-failure test depends on nothing listening on localhost:11434**
+- [x] **#77 — Provider-failure test depends on nothing listening on localhost:11434**
   - `tests/integration/api/llm.test.ts:77-87` · category: test
+  - **Status:** fixed — llm.test provider-failure case builds the app with LOOP_LLM_OLLAMA_URL=http://127.0.0.1:1 (guaranteed-closed port) — no longer depends on the dev machine not running Ollama. Verified: integration 179/180 (pre-existing only); eslint delta 0.
   - **Root cause:** Test assumes the default Ollama URL is unreachable and accepts any of 500/502/503. On developer machines running Ollama (the project's default local LLM) the call succeeds with 200 and the test fails; another service on 11434 can produce arbitrary statuses.
   - **Failure scenario:** Local verification flakes red for any developer running Ollama; the broad [500,502,503] acceptance hides which error path fired.
   - **Suggested fix:** Override LOOP_LLM_OLLAMA_URL to a guaranteed-closed port (http://127.0.0.1:1) or a mock server returning 500; assert the specific error envelope/code.
@@ -511,13 +513,15 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** Three expect(provider.isAvailable()).resolves.toBe(...) calls neither awaited nor returned. Test completes synchronously and reports passed; a failing assertion becomes a floating promise rejection with unreliable attribution.
   - **Failure scenario:** Regression makes isAvailable() return true for a keyless remote vendor (or false for a local server): test green; router/factory then skips or misroutes providers.
   - **Suggested fix:** await each expect(...).resolves chain (or Promise.all).
-- [ ] **#82 — Archived-cron test passes vacuously if the scheduler never fires**
+- [x] **#82 — Archived-cron test passes vacuously if the scheduler never fires**
   - `tests/unit/review-round4.test.ts:87-105` · category: test
+  - **Status:** fixed — Archived-cron test asserts store.workflows.getById was called (positive control that a tick ran) before asserting no execution was created — a scheduler that never fires can no longer pass vacuously. Verified: unit 740/740; eslint delta 0.
   - **Root cause:** Test registers an every-second job, sleeps 2.2s real time, asserts created == []. No positive control that a tick happened (store.workflows.getById is a vi.fn but never asserted). If node-cron never fires — scheduler regression, timezone bug, blocked event loop under CI load — the assertion passes for the wrong reason.
   - **Failure scenario:** A node-cron upgrade or register() regression stops jobs firing at all: this 'archived workflows no longer trigger' test stays green while the same regression silently disables ALL cron triggers in production.
   - **Suggested fix:** Assert expect(store.workflows.getById).toHaveBeenCalled() before asserting created == []; better, drive node-cron with vi.useFakeTimers + advanceTimersByTimeAsync.
-- [ ] **#83 — Path-traversal test swallows rejection and asserts on stale request log**
+- [x] **#83 — Path-traversal test swallows rejection and asserts on stale request log**
   - `tests/unit/review-round4.test.ts:297-310` · category: test
+  - **Status:** fixed — Traversal test captures seen.length before execute; asserts either a NEW request with no literal traversal, or a real Error when failing closed pre-dispatch — the stale-log vacuous pass is eliminated. Verified: unit 740/740; eslint delta 0.
   - **Root cause:** .catch(() => undefined) discards any execute() failure, then asserts on seen[seen.length-1]. If the adapter throws BEFORE dispatching (or no-ops), no new request is recorded and last is the previous test's '/error' request — containing neither '../' nor '/etc/passwd', so both assertions pass without any traversal request being made.
   - **Failure scenario:** GenericAdapter regression drops the request entirely on '..' paths (or crashes pre-dispatch): test still passes, giving false confidence that traversal is 'encoded and sent'.
   - **Suggested fix:** Capture seen.length before the call; assert a new request was recorded (or the specific rejection code if fail-closed is intended) and that its URL contains the percent-encoded form (%2e%2e%2f).
@@ -527,8 +531,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** Comment says 'Should still have same number of migrations' but assertion is only migrations.length > 0 after the second run. A runner bug re-inserting schema_migrations rows (or re-applying migrations) every startup passes. Checksum-mismatch handling also untested.
   - **Failure scenario:** migrate.ts regression loses the version check and re-applies/re-records migrations each boot: duplicate rows accumulate, future version gating misbehaves, 'idempotent' test green.
   - **Suggested fix:** Capture row count/version set after run 1, assert deep-equality after run 2; add a test that tampering with an applied migration's checksum fails loudly.
-- [ ] **#85 — Mock pg client lacks rowCount: PG completeIfActive race guard untested**
+- [x] **#85 — Mock pg client lacks rowCount: PG completeIfActive race guard untested**
   - `tests/unit/state/postgres.test.ts:29-50` · category: test
+  - **Status:** fixed — PG mock now returns rowCount; added completeIfActive tests mirroring the SQLite suite: active row -> true with AND status IN ('pending','running') guard; terminal row (rowCount 0) -> false. Verified: typecheck 0; unit 740/740; eslint delta 0.
   - **Root cause:** createMockConn's query returns only { rows } — no rowCount — and the file never calls executions.completeIfActive. PG implementation (postgres/index.ts:348-363) decides the cancel-vs-completion race via (result.rowCount ?? 0) > 0 plus AND status IN ('pending','running'). SQLite equivalent well tested (complete-if-active.test.ts); Scale-tier copy pinned by nothing.
   - **Failure scenario:** PG refactor drops AND status IN (...) or mis-maps rowCount: on Scale a late executor completion overwrites a user cancel (or vice versa) — the exact race M3 fixed for SQLite — and all unit tests pass.
   - **Suggested fix:** Extend mock to return programmable rowCount; add PG tests mirroring complete-if-active.test.ts (terminal -> rowCount 0 -> false; active -> rowCount 1 -> true; assert SQL contains status guard).

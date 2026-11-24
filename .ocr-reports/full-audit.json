@@ -1019,7 +1019,9 @@
     "root_cause": "buildTestApp creates CronTriggerHandler(store) with no dispatcher (production server.ts:251-253 passes dispatchToExecutor — the bug-14 fix) and registers no onClose hook calling cronHandler.shutdown() (production server.ts:358-368). trigger-to-execution.test.ts:191-213 registers a '*/5 * * * *' cron trigger never unregistered; node-cron@3.0.3 timers are not unref'd; afterAll closes app/conn but the task survives.",
     "suggested_fix": "Pass a dispatcher mirroring server.ts and add app.addHook('onClose', () => cronHandler.shutdown()); add an integration test that a cron tick runs the workflow to terminal state.",
     "failure_scenario": "(1) Cron-fired executions staying 'pending' forever (production bug 14) cannot be caught by any integration test; (2) the leaked */5 task fires after conn.close() in a reused vitest worker, throwing 'database connection is not open' — unhandled rejection flaking sibling files.",
-    "id": 75
+    "id": 75,
+    "status": "fixed",
+    "verification_notes": "buildTestApp cron handler now receives a dispatcher (stamped-version resolution shared with recovery) and an onClose hook calls cronHandler.shutdown() — cron-fired executions actually run in tests and no node-cron timers leak past app close. Verified: typecheck 0; unit 740/740; integration 179/180 (pre-existing only); e2e 30/30; eslint delta 0."
   },
   {
     "file": "tests/integration/api/auth.test.ts",
@@ -1043,7 +1045,9 @@
     "root_cause": "Test assumes the default Ollama URL is unreachable and accepts any of 500/502/503. On developer machines running Ollama (the project's default local LLM) the call succeeds with 200 and the test fails; another service on 11434 can produce arbitrary statuses.",
     "suggested_fix": "Override LOOP_LLM_OLLAMA_URL to a guaranteed-closed port (http://127.0.0.1:1) or a mock server returning 500; assert the specific error envelope/code.",
     "failure_scenario": "Local verification flakes red for any developer running Ollama; the broad [500,502,503] acceptance hides which error path fired.",
-    "id": 77
+    "id": 77,
+    "status": "fixed",
+    "verification_notes": "llm.test provider-failure case builds the app with LOOP_LLM_OLLAMA_URL=http://127.0.0.1:1 (guaranteed-closed port) — no longer depends on the dev machine not running Ollama. Verified: integration 179/180 (pre-existing only); eslint delta 0."
   },
   {
     "file": "tests/unit/api/auth-login.test.ts",
@@ -1109,7 +1113,9 @@
     "root_cause": "Test registers an every-second job, sleeps 2.2s real time, asserts created == []. No positive control that a tick happened (store.workflows.getById is a vi.fn but never asserted). If node-cron never fires — scheduler regression, timezone bug, blocked event loop under CI load — the assertion passes for the wrong reason.",
     "suggested_fix": "Assert expect(store.workflows.getById).toHaveBeenCalled() before asserting created == []; better, drive node-cron with vi.useFakeTimers + advanceTimersByTimeAsync.",
     "failure_scenario": "A node-cron upgrade or register() regression stops jobs firing at all: this 'archived workflows no longer trigger' test stays green while the same regression silently disables ALL cron triggers in production.",
-    "id": 82
+    "id": 82,
+    "status": "fixed",
+    "verification_notes": "Archived-cron test asserts store.workflows.getById was called (positive control that a tick ran) before asserting no execution was created — a scheduler that never fires can no longer pass vacuously. Verified: unit 740/740; eslint delta 0."
   },
   {
     "file": "tests/unit/review-round4.test.ts",
@@ -1121,7 +1127,9 @@
     "root_cause": ".catch(() => undefined) discards any execute() failure, then asserts on seen[seen.length-1]. If the adapter throws BEFORE dispatching (or no-ops), no new request is recorded and last is the previous test's '/error' request — containing neither '../' nor '/etc/passwd', so both assertions pass without any traversal request being made.",
     "suggested_fix": "Capture seen.length before the call; assert a new request was recorded (or the specific rejection code if fail-closed is intended) and that its URL contains the percent-encoded form (%2e%2e%2f).",
     "failure_scenario": "GenericAdapter regression drops the request entirely on '..' paths (or crashes pre-dispatch): test still passes, giving false confidence that traversal is 'encoded and sent'.",
-    "id": 83
+    "id": 83,
+    "status": "fixed",
+    "verification_notes": "Traversal test captures seen.length before execute; asserts either a NEW request with no literal traversal, or a real Error when failing closed pre-dispatch — the stale-log vacuous pass is eliminated. Verified: unit 740/740; eslint delta 0."
   },
   {
     "file": "tests/unit/state/migrations.test.ts",
@@ -1147,7 +1155,9 @@
     "root_cause": "createMockConn's query returns only { rows } — no rowCount — and the file never calls executions.completeIfActive. PG implementation (postgres/index.ts:348-363) decides the cancel-vs-completion race via (result.rowCount ?? 0) > 0 plus AND status IN ('pending','running'). SQLite equivalent well tested (complete-if-active.test.ts); Scale-tier copy pinned by nothing.",
     "suggested_fix": "Extend mock to return programmable rowCount; add PG tests mirroring complete-if-active.test.ts (terminal -> rowCount 0 -> false; active -> rowCount 1 -> true; assert SQL contains status guard).",
     "failure_scenario": "PG refactor drops AND status IN (...) or mis-maps rowCount: on Scale a late executor completion overwrites a user cancel (or vice versa) — the exact race M3 fixed for SQLite — and all unit tests pass.",
-    "id": 85
+    "id": 85,
+    "status": "fixed",
+    "verification_notes": "PG mock now returns rowCount; added completeIfActive tests mirroring the SQLite suite: active row -> true with AND status IN ('pending','running') guard; terminal row (rowCount 0) -> false. Verified: typecheck 0; unit 740/740; eslint delta 0."
   },
   {
     "file": "tests/unit/triggers/dispatcher.test.ts",

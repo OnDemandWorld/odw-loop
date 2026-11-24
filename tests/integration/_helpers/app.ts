@@ -158,7 +158,6 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
 
   // ── Triggers ────────────────────────────────────────────────────────────
   const triggerDispatcher = new TriggerDispatcher(store);
-  const cronHandler = new CronTriggerHandler(store);
   const webhookHandler = new WebhookTriggerHandler(store);
   const manualHandler = new ManualTriggerHandler(store);
 
@@ -195,15 +194,25 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     },
   );
 
-  // ── Recovery (audit #21 parity with server.ts) ─────────────────────
-  // Re-dispatch recovered executions against their STAMPED version snapshot.
+  // ── Dispatch (audit #21 parity with server.ts) ─────────────────────
+  // Re-dispatch executions against their STAMPED version snapshot.
+  const dispatchExecution = async (executionId: string, workflowId: string, payload: Record<string, unknown>): Promise<void> => {
+    const execution = await store.executions.getById(executionId);
+    const snapshot = execution
+      ? await store.workflowDefinitions.getByWorkflowAndVersion(workflowId, execution.workflow_version)
+      : null;
+    const definition = snapshot?.definition ?? (await authoring.getById(workflowId)).definition;
+    await executor.execute(executionId, definition, payload);
+  };
+
+  // Audit #75: cron handler gets the dispatcher (production bug-14 parity) —
+  // without it, cron-fired executions stay 'pending' forever in tests.
+  const cronHandler = new CronTriggerHandler(store, async ({ executionId, workflowId, payload }) => {
+    await dispatchExecution(executionId, workflowId, payload);
+  });
+
   const recovery = new ExecutionRecovery(store, async (execution) => {
-    const snapshot = await store.workflowDefinitions.getByWorkflowAndVersion(
-      execution.workflow_id,
-      execution.workflow_version,
-    );
-    const definition = snapshot?.definition ?? (await authoring.getById(execution.workflow_id)).definition;
-    await executor.execute(execution.id, definition, (execution.trigger_payload ?? {}) as Record<string, unknown>);
+    await dispatchExecution(execution.id, execution.workflow_id, (execution.trigger_payload ?? {}) as Record<string, unknown>);
   });
 
   // ── Templates ──────────────────────────────────────────────────────
@@ -226,6 +235,12 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     templates,
     llmRouter,
     config,
+  });
+
+  // Audit #75: stop cron tasks on close — leaked node-cron timers otherwise
+  // fire against a closed store in reused vitest workers.
+  app.addHook('onClose', () => {
+    cronHandler.shutdown();
   });
 
   // Health endpoints
