@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 import Fastify, { type FastifyInstance } from 'fastify';
 import { createLogger } from '@loop/observability';
-import { collectMetrics } from '@loop/observability';
+import { collectMetrics, configureTracing } from '@loop/observability';
 import { createSqliteConnection, createPostgresConnection } from '@loop/state';
 import { SqliteStateStore, PostgresStateStore } from '@loop/state';
 import type { StateStore } from '@loop/state';
@@ -139,6 +139,9 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   // Audit #8: validate the private-range blocklist at CONNECT time for every
   // outbound undici call in the process (closes the DNS-rebinding TOCTOU).
   installEgressDispatcher(egressGate);
+  // Audit #128: OTLP span export is subject to egress policy too (span attrs
+  // can carry customer-data fragments; the collector may be external).
+  configureTracing({ egress: egressGate });
   // V1.7 (L-2): encrypted secrets store — created early so the legacy
   // credential migration below and the executor's secretResolver share it.
   const secretsManager = new SecretsManager(store, cfg.LOOP_ENCRYPTION_KEY);

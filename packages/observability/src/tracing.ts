@@ -77,6 +77,8 @@ export interface TracingOverrides {
   otlpEndpoint?: string;
   /** Exporter instance override — wins over `exporterKind` (used by tests). */
   exporter?: SpanExporter;
+  /** Audit #128: egress gate applied to OTLP exports (collector URL). */
+  egress?: { check(url: string): Promise<void> };
 }
 
 let overrides: TracingOverrides = {};
@@ -127,7 +129,10 @@ function resolveExporter(config: TracingConfig): SpanExporter | undefined {
   if (key === cachedExporterKey && cachedExporter !== undefined) return cachedExporter;
   const exporter: SpanExporter =
     config.exporterKind === 'otlp'
-      ? new OtlpHttpSpanExporter({ endpoint: config.otlpEndpoint ?? 'http://localhost:4318' })
+      ? new OtlpHttpSpanExporter({
+          endpoint: config.otlpEndpoint ?? 'http://localhost:4318',
+          ...(overrides.egress !== undefined ? { egress: overrides.egress } : {}),
+        })
       : new ConsoleSpanExporter();
   cachedExporterKey = key;
   cachedExporter = exporter;
@@ -146,13 +151,26 @@ const contextBySpan = new WeakMap<Span, SpanContext>();
 
 /**
  * Trace-level sampling: a child inherits its parent's decision so a trace is
- * never partially sampled; a root decides by `Math.random() < rate`.
+ * never partially sampled. Audit #131: sibling ROOTS sharing a correlation
+ * trace_id also share one cached decision — independent Math.random() calls
+ * produced half-exported traces.
  */
-function decideSampling(parent: SpanContext | undefined, rate: number): boolean {
+const samplingDecisions = new Map<string, boolean>();
+const MAX_SAMPLING_CACHE = 10_000;
+
+function decideSampling(parent: SpanContext | undefined, rate: number, traceId: string): boolean {
   if (parent !== undefined) return parent.sampled;
   if (rate >= 1) return true;
   if (rate <= 0) return false;
-  return Math.random() < rate;
+  const cached = samplingDecisions.get(traceId);
+  if (cached !== undefined) return cached;
+  const decision = Math.random() < rate;
+  if (samplingDecisions.size >= MAX_SAMPLING_CACHE) {
+    const oldest = samplingDecisions.keys().next().value;
+    if (oldest !== undefined) samplingDecisions.delete(oldest);
+  }
+  samplingDecisions.set(traceId, decision);
+  return decision;
 }
 
 /**
@@ -163,9 +181,9 @@ function decideSampling(parent: SpanContext | undefined, rate: number): boolean 
 export function startSpan(name: string, attrs?: Record<string, unknown>): Span {
   const config = getTracingConfig();
   const parent = spanStorage.getStore();
-  const sampled = decideSampling(parent, config.sampleRate);
   const correlation = getCorrelationContext();
   const traceId = parent?.data.trace_id ?? correlation?.trace_id ?? randomBytes(16).toString('hex');
+  const sampled = decideSampling(parent, config.sampleRate, traceId);
 
   const data: SpanData = {
     name,

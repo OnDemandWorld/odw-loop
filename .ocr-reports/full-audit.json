@@ -738,8 +738,8 @@
     "suggested_fix": "Buffer spans and flush batches on interval/size with a bounded queue (drop-oldest on overflow) and concurrency limit; keep export() non-blocking.",
     "failure_scenario": "TRACE_EXPORTER=otlp with a slow/unreachable collector: 50 concurrent workflows emitting node spans accumulate hundreds of in-flight 2s POSTs; sockets/memory grow without bound, degrading the API.",
     "id": 53,
-    "status": "skipped",
-    "verification_notes": "Deferred: OTLP exporter needs a bounded queue + batch flush redesign (drop-oldest overflow, concurrency cap). Current per-span fetch with 2s abort is degraded-but-functional; defaults are local/console. NOT fixed."
+    "status": "fixed",
+    "verification_notes": "OtlpHttpSpanExporter buffers spans and flushes batches (size 50 / interval 1s) with a bounded queue (1000, drop-oldest) and a single in-flight POST; export() stays non-blocking; close() stops the timer. Regression: exporters.test.ts audit #53 (2 spans -> 1 POST with 2 resourceSpans; overflow keeps newest 2). Existing tests adapted to explicit flush. Verified: typecheck 0; unit 776/776; integration 179/180 (pre-existing only); e2e 29/29."
   },
   {
     "file": "packages/observability/src/metrics.ts",
@@ -1735,7 +1735,9 @@
     "root_cause": "OtlpHttpSpanExporter POSTs via global fetch directly, outside the egress gate governing all other outbound calls. Span attrs include error.message = String(err) (tracing.ts:247, executor.ts:548/229); upstream errors embed up to 200 chars of upstream response body (connectors/generic/adapter.ts:81-83) — customer data. Defaults are safe (console exporter, localhost:4318 only when opted in).",
     "suggested_fix": "Route OTLP export through the egress policy check (or document as operator-sanctioned egress); truncate/redact error.message attrs before export.",
     "failure_scenario": "Operator sets TRACE_EXPORTER=otlp OTLP_ENDPOINT=https://collector.vendor.example; a failing generic-http node puts customer response-body fragments into error.message, POSTed to the external collector without egress evaluation — contrary to the sovereignty guarantee.",
-    "id": 128
+    "id": 128,
+    "status": "fixed",
+    "verification_notes": "OTLP export now passes an egress check (configureTracing({egress: gate}) wired in server.ts); denied collector URLs drop the batch with a debug log. Attribute strings capped at 1024 chars (upstream error-body fragments truncated). Combined with #8's global dispatcher, private collectors are also blocked at connect time. Regression: exporters.test.ts audit #128 (denial -> zero fetches). Verified: typecheck 0; unit 776/776."
   },
   {
     "file": "packages/observability/src/exporters.ts",
@@ -1747,7 +1749,9 @@
     "root_cause": "JSON.stringify(toOtlpJson(span)) (82) and toOtlpAnyValue's JSON.stringify(value) (116) throw TypeError on circular/BigInt attribute values; the '?? String(value)' fallback never runs because stringify throws first. exportSpan's try/catch (tracing.ts:212-219) prevents a crash but silently drops the span.",
     "suggested_fix": "Use a safe serializer (pino stdSerializers or a replacer handling cycles/BigInt) inside toOtlpJson/toOtlpAnyValue.",
     "failure_scenario": "span.setAttr('ctx', circularObject): every such span lost with only a debug log, violating the SpanExporter 'must not throw' contract for direct consumers.",
-    "id": 129
+    "id": 129,
+    "status": "fixed",
+    "verification_notes": "safeStringify handles circular refs ('[Circular]') and BigInt; used for attribute values and the batch body — export never throws on hostile attrs. Regression: exporters.test.ts audit #129. Verified: typecheck 0; unit 776/776."
   },
   {
     "file": "packages/observability/src/exporters.ts",
@@ -1759,7 +1763,9 @@
     "root_cause": "X-Trace-Id accepted unvalidated (middleware/traceId.ts); toHex32 strips non-hex chars then padEnd(32,'0'). Ids with no hex chars ('zzz','yyy') all become 32 zeros; >32-hex ids truncated.",
     "suggested_fix": "Hash non-conforming ids to 32 hex chars (sha256 slice) instead of zero-padding, or validate/replace the header at ingress.",
     "failure_scenario": "Clients sending X-Trace-Id 'zzz' and 'qqq' both export traceId 000...0; unrelated traces merge in the collector, trace lookups return mixed spans.",
-    "id": 130
+    "id": 130,
+    "status": "fixed",
+    "verification_notes": "toHex32 hashes non-32-hex trace ids (sha256 slice) instead of zero-padding — 'zzz' and 'qqq' no longer collide to all-zeros. Regression: exporters.test.ts audit #130. Verified: typecheck 0; unit 776/776."
   },
   {
     "file": "packages/observability/src/tracing.ts",
@@ -1771,7 +1777,9 @@
     "root_cause": "decideSampling inherits only from an active parent span; roots sharing the correlation trace_id each call Math.random() separately, so one trace_id can be partially exported despite the documented all-or-nothing invariant.",
     "suggested_fix": "Cache the sampling decision per trace_id (bounded LRU) and reuse for all roots of that trace.",
     "failure_scenario": "TRACE_SAMPLE_RATE=0.5: a request's API-side root span is sampled but its loop.execution root dropped (or vice versa); collector shows half-traces, trace-level debugging misleads.",
-    "id": 131
+    "id": 131,
+    "status": "fixed",
+    "verification_notes": "Sampling decisions cached per trace_id (bounded 10k map): sibling roots sharing a correlation trace_id share one decision — no more half-exported traces. Regression: tracing.test.ts audit #131 (0.9 then 0.1 random draws, same trace_id -> both dropped). Verified: typecheck 0; unit 776/776."
   },
   {
     "file": "packages/state/src/migrate.ts",

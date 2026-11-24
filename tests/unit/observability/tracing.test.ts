@@ -263,3 +263,24 @@ describe('configuration', () => {
     expect(() => span.end()).not.toThrow();
   });
 });
+
+describe('trace-level sampling across sibling roots (audit #131)', () => {
+  it('roots sharing a correlation trace_id share one sampling decision', () => {
+    const { exporter, spans } = createCapturingExporter();
+    configureTracing({ sampleRate: 0.5, exporter });
+    const random = vi.spyOn(Math, 'random');
+    random.mockReturnValueOnce(0.9); // first root: dropped
+    random.mockReturnValueOnce(0.1); // would sample the second root if independent
+
+    runWithCorrelation({ request_id: 'r1', trace_id: 'shared-trace' }, () => {
+      startSpan('root-a').end();
+    });
+    runWithCorrelation({ request_id: 'r2', trace_id: 'shared-trace' }, () => {
+      startSpan('root-b').end();
+    });
+
+    // Both roots dropped — the trace is all-or-nothing.
+    expect(spans).toHaveLength(0);
+    random.mockRestore();
+  });
+});

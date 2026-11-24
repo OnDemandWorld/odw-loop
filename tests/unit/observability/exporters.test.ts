@@ -90,6 +90,8 @@ describe('OtlpHttpSpanExporter', () => {
     try {
       const exporter = new OtlpHttpSpanExporter({ endpoint: `http://127.0.0.1:${port}` });
       exporter.export(makeSpan({ name: 'otlp.span', attrs: { 'k': 'v', 'n': 3 } }));
+      await exporter.flush(); // audit #53: exports are batched — flush explicitly
+      exporter.close();
 
       await waitFor(() => received.body !== undefined);
       expect(received.method).toBe('POST');
@@ -137,6 +139,8 @@ describe('OtlpHttpSpanExporter', () => {
     });
 
     expect(() => exporter.export(makeSpan())).not.toThrow();
+    await exporter.flush();
+    exporter.close();
     await waitFor(() => fetchCalls > 0);
     // Let the swallowed rejection settle — no unhandled rejection, no throw.
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -156,7 +160,8 @@ describe('OtlpHttpSpanExporter', () => {
     try {
       const exporter = new OtlpHttpSpanExporter({ endpoint: `http://127.0.0.1:${port}` });
       expect(() => exporter.export(makeSpan())).not.toThrow();
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await exporter.flush();
+      exporter.close();
     } finally {
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
@@ -164,7 +169,7 @@ describe('OtlpHttpSpanExporter', () => {
     }
   });
 
-  it('strips trailing slashes from the endpoint', () => {
+  it('strips trailing slashes from the endpoint', async () => {
     // Indirectly verified via the URL the fetch receives.
     const urls: string[] = [];
     const spyFetch: typeof fetch = (input) => {
@@ -176,6 +181,8 @@ describe('OtlpHttpSpanExporter', () => {
       fetchImpl: spyFetch,
     });
     exporter.export(makeSpan());
+    await exporter.flush();
+    exporter.close();
     expect(urls[0]).toBe('http://collector.test:4318/v1/traces');
   });
 });
@@ -233,5 +240,97 @@ describe('toOtlpJson encoding', () => {
     };
     const attrs = payload.resourceSpans[0]?.scopeSpans[0]?.spans[0]?.attributes ?? [];
     expect(attrs.find((a) => a.key === 'flag')?.value).toEqual({ boolValue: true });
+  });
+});
+
+describe('OtlpHttpSpanExporter — batching & safety (audit #53, #128, #129, #130)', () => {
+  it('batches spans into one POST and bounds the queue', async () => {
+    const bodies: string[] = [];
+    const spyFetch: typeof fetch = (_input, init) => {
+      bodies.push(String(init?.body));
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    };
+    const exporter = new OtlpHttpSpanExporter({
+      endpoint: 'http://collector.test',
+      fetchImpl: spyFetch,
+      batchSize: 2,
+      maxQueue: 2,
+      flushIntervalMs: 60_000,
+    });
+    exporter.export(makeSpan({ name: 's1' }));
+    exporter.export(makeSpan({ name: 's2' }));
+    await exporter.flush();
+    expect(bodies).toHaveLength(1);
+    expect((JSON.parse(bodies[0]!) as { resourceSpans: unknown[] }).resourceSpans).toHaveLength(2);
+
+    exporter.close();
+
+    // Overflow: 5 spans with maxQueue 2 (large batch so no auto-flush) →
+    // only the newest 2 survive.
+    const overflowBodies: string[] = [];
+    const overflow = new OtlpHttpSpanExporter({
+      endpoint: 'http://collector.test',
+      fetchImpl: (_input, init) => {
+        overflowBodies.push(String(init?.body));
+        return Promise.resolve(new Response('{}'));
+      },
+      batchSize: 100,
+      maxQueue: 2,
+      flushIntervalMs: 60_000,
+    });
+    for (const n of ['a', 'b', 'c', 'd', 'e']) overflow.export(makeSpan({ name: n }));
+    await overflow.flush();
+    overflow.close();
+    expect(overflowBodies).toHaveLength(1);
+    const second = JSON.parse(overflowBodies[0]!) as { resourceSpans: Array<{ scopeSpans: Array<{ spans: Array<{ name: string }> }> }> };
+    expect(second.resourceSpans).toHaveLength(2);
+    expect(second.resourceSpans.map((r) => r.scopeSpans[0]!.spans[0]!.name)).toEqual(['d', 'e']);
+  });
+
+  it('egress denial drops the batch without any fetch (audit #128)', async () => {
+    let calls = 0;
+    const spyFetch: typeof fetch = () => {
+      calls += 1;
+      return Promise.resolve(new Response('{}'));
+    };
+    const exporter = new OtlpHttpSpanExporter({
+      endpoint: 'http://collector.test',
+      fetchImpl: spyFetch,
+      egress: {
+        async check(): Promise<void> {
+          throw new Error('Egress blocked');
+        },
+      },
+    });
+    exporter.export(makeSpan());
+    await exporter.flush();
+    exporter.close();
+    expect(calls).toBe(0);
+  });
+
+  it('serializes circular and BigInt attributes without throwing (audit #129)', async () => {
+    const bodies: string[] = [];
+    const spyFetch: typeof fetch = (_input, init) => {
+      bodies.push(String(init?.body));
+      return Promise.resolve(new Response('{}'));
+    };
+    const circular: Record<string, unknown> = { a: 1 };
+    circular['self'] = circular;
+    const exporter = new OtlpHttpSpanExporter({ endpoint: 'http://collector.test', fetchImpl: spyFetch });
+    exporter.export(makeSpan({ attrs: { circ: circular, big: 9007199254740993n } }));
+    await exporter.flush();
+    exporter.close();
+    expect(bodies[0]).toContain('[Circular]');
+    expect(bodies[0]).toContain('9007199254740993');
+  });
+
+  it('hashes non-hex trace ids instead of collapsing them to zeros (audit #130)', () => {
+    const a = toOtlpJson(makeSpan({ trace_id: 'zzz' })) as { resourceSpans: Array<{ scopeSpans: Array<{ spans: Array<{ traceId: string }> }> }> };
+    const b = toOtlpJson(makeSpan({ trace_id: 'qqq' })) as { resourceSpans: Array<{ scopeSpans: Array<{ spans: Array<{ traceId: string }> }> }> };
+    const ta = a.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.traceId;
+    const tb = b.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.traceId;
+    expect(ta).toMatch(/^[0-9a-f]{32}$/);
+    expect(ta).not.toBe('0'.repeat(32));
+    expect(ta).not.toBe(tb);
   });
 });

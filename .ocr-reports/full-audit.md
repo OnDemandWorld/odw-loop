@@ -397,8 +397,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** Every catch increments circuit.failures with no error classification, and the loop keeps walking the chain after io.signal aborts — each remaining provider tried with the dead signal and counted as a failure. NODE_EGRESS_BLOCKED and 4xx client errors count the same as outages.
   - **Failure scenario:** Default node timeout 30s while ollama cold starts exceed it: each timed-out LLM node increments EVERY provider's failure counter; five such nodes open all circuits and subsequent llm.complete calls fail 'No LLM providers available' for 30s. In airgap, five blocked calls likewise mask NODE_EGRESS_BLOCKED behind that generic error.
   - **Suggested fix:** Break when io?.signal?.aborted; exclude abort/cancellation, egress denials, and permanent 4xx (except 429) from failure counting.
-- [ ] **#53 — OTLP exporter: unbounded per-span fetches, no queue or batching**
+- [x] **#53 — OTLP exporter: unbounded per-span fetches, no queue or batching**
   - `packages/observability/src/exporters.ts:81-99` · category: performance
+  - **Status:** fixed — OtlpHttpSpanExporter buffers spans and flushes batches (size 50 / interval 1s) with a bounded queue (1000, drop-oldest) and a single in-flight POST; export() stays non-blocking; close() stops the timer. Regression: exporters.test.ts audit #53 (2 spans -> 1 POST with 2 resourceSpans; overflow keeps newest 2). Existing tests adapted to explicit flush. Verified: typecheck 0; unit 776/776; integration 179/180 (pre-existing only); e2e 29/29.
   - **Status:** skipped — Deferred: OTLP exporter needs a bounded queue + batch flush redesign (drop-oldest overflow, concurrency cap). Current per-span fetch with 2s abort is degraded-but-functional; defaults are local/console. NOT fixed.
   - **Root cause:** Every span.end() fires an individual HTTP POST (single-span OTLP batch) with a 2s abort budget, no cap on in-flight requests, no queue, no batching; JSON.stringify runs synchronously in the span-end hot path. Default TRACE_SAMPLE_RATE=1.0 exports every span.
   - **Failure scenario:** TRACE_EXPORTER=otlp with a slow/unreachable collector: 50 concurrent workflows emitting node spans accumulate hundreds of in-flight 2s POSTs; sockets/memory grow without bound, degrading the API.
@@ -828,23 +829,27 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** LLMProvider.isAvailable defined and implemented by every provider but never invoked (grep-verified). bedrock.ts:16-25 and vertex.ts:15-24 return success-shaped empty completions; comments claim isAvailable=false prevents selection, untrue of this router. Latent: createLLMRouter never registers the stubs today.
   - **Failure scenario:** Future wiring registering exported BedrockProvider/VertexProvider silently produces empty answers counted as successful completions, usage 0, finish_reason 'stop'.
   - **Suggested fix:** Skip providers whose isAvailable() resolves false (cache the probe), or make stubs throw instead of returning empty content.
-- [ ] **#128 — OTLP span export bypasses Egress Policy Engine; carries payload fragments**
+- [x] **#128 — OTLP span export bypasses Egress Policy Engine; carries payload fragments**
   - `packages/observability/src/exporters.ts:70-100` · category: security
+  - **Status:** fixed — OTLP export now passes an egress check (configureTracing({egress: gate}) wired in server.ts); denied collector URLs drop the batch with a debug log. Attribute strings capped at 1024 chars (upstream error-body fragments truncated). Combined with #8's global dispatcher, private collectors are also blocked at connect time. Regression: exporters.test.ts audit #128 (denial -> zero fetches). Verified: typecheck 0; unit 776/776.
   - **Root cause:** OtlpHttpSpanExporter POSTs via global fetch directly, outside the egress gate governing all other outbound calls. Span attrs include error.message = String(err) (tracing.ts:247, executor.ts:548/229); upstream errors embed up to 200 chars of upstream response body (connectors/generic/adapter.ts:81-83) — customer data. Defaults are safe (console exporter, localhost:4318 only when opted in).
   - **Failure scenario:** Operator sets TRACE_EXPORTER=otlp OTLP_ENDPOINT=https://collector.vendor.example; a failing generic-http node puts customer response-body fragments into error.message, POSTed to the external collector without egress evaluation — contrary to the sovereignty guarantee.
   - **Suggested fix:** Route OTLP export through the egress policy check (or document as operator-sanctioned egress); truncate/redact error.message attrs before export.
-- [ ] **#129 — OTLP export() throws on circular/BigInt attrs despite never-throw contract**
+- [x] **#129 — OTLP export() throws on circular/BigInt attrs despite never-throw contract**
   - `packages/observability/src/exporters.ts:82-117` · category: error-handling
+  - **Status:** fixed — safeStringify handles circular refs ('[Circular]') and BigInt; used for attribute values and the batch body — export never throws on hostile attrs. Regression: exporters.test.ts audit #129. Verified: typecheck 0; unit 776/776.
   - **Root cause:** JSON.stringify(toOtlpJson(span)) (82) and toOtlpAnyValue's JSON.stringify(value) (116) throw TypeError on circular/BigInt attribute values; the '?? String(value)' fallback never runs because stringify throws first. exportSpan's try/catch (tracing.ts:212-219) prevents a crash but silently drops the span.
   - **Failure scenario:** span.setAttr('ctx', circularObject): every such span lost with only a debug log, violating the SpanExporter 'must not throw' contract for direct consumers.
   - **Suggested fix:** Use a safe serializer (pino stdSerializers or a replacer handling cycles/BigInt) inside toOtlpJson/toOtlpAnyValue.
-- [ ] **#130 — toHex32 collapses non-hex inbound trace ids to colliding zero ids**
+- [x] **#130 — toHex32 collapses non-hex inbound trace ids to colliding zero ids**
   - `packages/observability/src/exporters.ts:105-108` · category: bug
+  - **Status:** fixed — toHex32 hashes non-32-hex trace ids (sha256 slice) instead of zero-padding — 'zzz' and 'qqq' no longer collide to all-zeros. Regression: exporters.test.ts audit #130. Verified: typecheck 0; unit 776/776.
   - **Root cause:** X-Trace-Id accepted unvalidated (middleware/traceId.ts); toHex32 strips non-hex chars then padEnd(32,'0'). Ids with no hex chars ('zzz','yyy') all become 32 zeros; >32-hex ids truncated.
   - **Failure scenario:** Clients sending X-Trace-Id 'zzz' and 'qqq' both export traceId 000...0; unrelated traces merge in the collector, trace lookups return mixed spans.
   - **Suggested fix:** Hash non-conforming ids to 32 hex chars (sha256 slice) instead of zero-padding, or validate/replace the header at ingress.
-- [ ] **#131 — Sibling root spans sample independently, breaking trace-level sampling**
+- [x] **#131 — Sibling root spans sample independently, breaking trace-level sampling**
   - `packages/observability/src/tracing.ts:151-168` · category: bug
+  - **Status:** fixed — Sampling decisions cached per trace_id (bounded 10k map): sibling roots sharing a correlation trace_id share one decision — no more half-exported traces. Regression: tracing.test.ts audit #131 (0.9 then 0.1 random draws, same trace_id -> both dropped). Verified: typecheck 0; unit 776/776.
   - **Root cause:** decideSampling inherits only from an active parent span; roots sharing the correlation trace_id each call Math.random() separately, so one trace_id can be partially exported despite the documented all-or-nothing invariant.
   - **Failure scenario:** TRACE_SAMPLE_RATE=0.5: a request's API-side root span is sampled but its loop.execution root dropped (or vice versa); collector shows half-traces, trace-level debugging misleads.
   - **Suggested fix:** Cache the sampling decision per trace_id (bounded LRU) and reuse for all roots of that trace.
