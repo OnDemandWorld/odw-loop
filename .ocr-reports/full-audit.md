@@ -1,0 +1,836 @@
+# ODW Loop — Full-Repository Code Audit
+
+- **Mode:** Open Code Review — delegation (host-driven analysis; no external OCR binary, no separate API configuration)
+- **Repository:** OnDemandWorld/odw-loop · branch `main` · commit `27b79fd`
+- **Date:** 2026-11-24
+- **Scope:** ALL existing source code (full-file review, not a diff review): 218 tracked source files (~31,100 lines) plus config/infra files (Dockerfiles, compose, Helm chart, CI workflows, .env examples, root configs).
+- **Excluded:** node_modules, .git, dist/build outputs, lockfiles, binaries, media/data assets (templates/*.json workflow data was statically scanned as context; the registry code that loads it is in scope).
+- **Constraint honored:** no source file was modified during this review; only these reports were generated.
+- **Verification:** every finding below was re-checked against the cited code by the orchestrating reviewer before inclusion; likely false positives were discarded. Cross-pass duplicates were merged (healthCheck egress bypass, cron PUT rollback) and one cross-pass defect was added (live-definition resume dispatch).
+
+## Summary
+
+| Severity | Count |
+|---|---|
+| High | 16 |
+| Medium | 71 |
+| Low | 64 |
+| **Total** | **151** |
+
+Categories: bug (76), test (23), security (18), concurrency (10), maintainability (10), error-handling (8), performance (6).
+
+**Coverage:** 218/218 source files reviewed (100%), 0 skipped. Config/infra pass additionally covered ~30 files (all reviewed). See appendix.
+
+### Cross-cutting themes
+
+1. **The sovereignty enforcement chain has no failing-capable test.** Adapters consult `params.egress?.check` (fail-open when absent); no test anywhere constructs the executor with a real egress gate; the "air-gapped deployment" E2E never enables airgap and uses zero-network mocks. A dropped gate wiring ships green.
+2. **Deployment artifacts are broken as shipped.** The API Docker image cannot build (turbo.json COPY) and would crash-loop even if fixed (missing @loop/templates package + templates data); the sandbox image runs uncompiled TypeScript with no deps and gates the whole compose stack; the Helm chart references PostgreSQL/Redis services it never creates.
+3. **Core (SQLite) vs Scale (PostgreSQL) parity defects.** Double-encoded JSON columns, BYTEA/Date contract violations, divergent search/tag semantics, empty-patch 500-vs-200, untested PG completeIfActive race guard.
+4. **Canvas editor silently loses or corrupts work.** Duplicate node IDs after delete+add, Save strips retry/timeout/settings, drag/Backspace edits never mark dirty, Run proceeds after failed save, no auth header/login flow for auth-enabled deployments.
+5. **Secrets lifecycle is broken for multi-connector deployments.** Globally-unique secret name vs scoped upsert blocks a second keyed connector; scope-less set() overwrites other scopes' secrets; header credentials stay plaintext; PUT /triggers leaks webhook secrets; deactivated users keep valid 12h JWTs.
+6. **Egress blocklist bypasses.** Non-canonical IPv6 loopback/v4-mapped literals, DNS-rebinding TOCTOU, healthCheck//ready probes, OTLP export and (latent) notifiers all run outside the gate; region policies can never match (permanent stub masked by mocked tests).
+7. **Engine resume/replay integrity.** Pruned-node idempotency collisions make branch workflows unresumable; a between-levels workflow timeout reports success; sub-workflow retries re-fire child side effects; recovery dispatches the live definition instead of the stamped version.
+
+---
+
+## High severity (16)
+
+Remediation checklist — tick each item after fixing and verifying (IDs match full-audit.json).
+
+- [ ] **#1 — REST client never sends Authorization; SPA unusable with auth-enabled API**
+  - `apps/canvas/src/lib/api.ts:136-146` · category: bug
+  - **Root cause:** Every page uses lib/api.ts whose requestEnvelope sends only Content-Type. The token-aware client (api/client.ts, reads localStorage 'loop.token') is used only for WebSocket URLs, never REST. No login flow exists to obtain a token even though the API exposes POST /api/v1/auth/login and LOOP_REQUIRE_AUTH enforcement (config default false; supported deployment mode).
+  - **Failure scenario:** Operator deploys with LOOP_REQUIRE_AUTH=true: every list/load/save returns 401; Dashboard, Workflows, Editor, Executions all error with no way to log in.
+  - **Suggested fix:** Route all REST calls through a token-aware client, add a login screen storing the JWT (in memory), handle 401 by redirecting to login.
+- [ ] **#2 — addNode derives ID from nodes.length; delete+add creates duplicate IDs**
+  - `apps/canvas/src/pages/WorkflowEditor.tsx:503-535` · category: bug
+  - **Root cause:** nodeId = `node_${nodes.length + 1}`. After deleting any node (or loading a graph whose IDs are not contiguous node_1..N), the next added node reuses an existing ID. Node IDs are not editable in the UI; the server validator rejects duplicate IDs on PUT.
+  - **Failure scenario:** Open a template with node_1..node_5, delete node_2, add a palette node -> named node_5 (duplicate). React Flow renders two nodes with one key, edges bind ambiguously, every Save fails with 'duplicate node ID(s)' — graph unsavable and unfixable from the UI.
+  - **Suggested fix:** Generate IDs from a monotonic counter/max existing suffix or crypto.randomUUID(), checking against current node IDs.
+- [ ] **#3 — Save strips retry, timeout_ms, schemas and workflow settings from definition**
+  - `apps/canvas/src/pages/WorkflowEditor.tsx:558-582` · category: bug
+  - **Root cause:** toRfNode keeps only id/type/position/config and buildDefinition rebuilds nodes/edges from scratch, dropping WorkflowNode.retry, timeout_ms, input_schema, output_schema, edge.type_compatibility and definition.settings (workflow_timeout_ms). Server zod defaults silently re-default type_compatibility to true. 16 of 23 shipped templates contain retry/timeout/settings blocks.
+  - **Failure scenario:** Instantiate 'invoice-approval' (nodes carry retry/timeout_ms), change one label, Save: all retry policies, per-node timeouts and workflow timeout silently erased; flaky connector calls now fail the whole run instead of retrying.
+  - **Suggested fix:** Carry original WorkflowNode/edge objects in node/edge data and spread unknown fields back on save; preserve definition.settings.
+- [ ] **#4 — Runtime image omits @loop/templates package; API crashes at boot**
+  - `docker/Dockerfile.app:39-65` · category: bug
+  - **Root cause:** apps/api depends on @loop/templates (server.ts:21 imports TemplateRegistry) and tsconfig references packages/templates, but the runtime stage copies dist+package.json for every workspace package except packages/templates. pnpm's node_modules/@loop/templates symlink points at ../../packages/templates which does not exist in the runtime image.
+  - **Failure scenario:** Even with the turbo.json COPY fixed, node apps/api/dist/server.js throws ERR_MODULE_NOT_FOUND for @loop/templates at startup; container crash-loops, healthcheck never passes.
+  - **Suggested fix:** Add COPY --from=builder lines for packages/templates/dist and packages/templates/package.json (plus the templates/*.json data directory — separate finding).
+- [ ] **#5 — Runtime COPY of turbo.json fails: file never copied into builder stage**
+  - `docker/Dockerfile.app:65-65` · category: bug
+  - **Root cause:** Builder copies only package.json/pnpm-workspace.yaml/pnpm-lock.yaml (line 9), tsconfigs (28) and packages//apps/ (29-30). turbo.json exists at repo root but is never COPYed into the builder, so 'COPY --from=builder /app/turbo.json ./' references a nonexistent path.
+  - **Failure scenario:** docker build -f docker/Dockerfile.app . fails with 'failed to compute cache key: /app/turbo.json not found'. CI Docker build and release image push both fail; no production image can be built.
+  - **Suggested fix:** Add turbo.json to the builder COPY on line 9 (or drop line 65 if not needed at runtime).
+- [ ] **#6 — Sandbox image runs 'node src/server.ts' with no build and no deps**
+  - `docker/Dockerfile.sandbox:22-22` · category: bug
+  - **Root cause:** CMD executes TypeScript source directly. Image never runs tsc, never installs node_modules (fastify etc.); base python:3.11-slim + apt nodejs (Debian node 18; nodesource setup on line 9 only adds a repo and is '|| true') cannot execute .ts. apps/sandbox has only src/server.ts in git.
+  - **Failure scenario:** loop-sandbox container exits immediately (SyntaxError/ERR_MODULE_NOT_FOUND). docker-compose.yml gates loop-app on service_healthy for loop-sandbox, so the whole Core-tier compose deployment never starts. Same broken image pushed to ghcr.io by release.yml.
+  - **Suggested fix:** Use a node:20 builder stage that installs deps and builds (like Dockerfile.controlplane), run dist/server.js, drop the curl|bash nodesource step.
+- [ ] **#7 — IPv6 private-range check misses non-canonical loopback/v4-mapped forms**
+  - `packages/egress/src/interceptor.ts:52-69` · category: security
+  - **Root cause:** isPrivateIPv6() compares strings against '::1'/'::' and a dotted-decimal v4-mapped regex only. '0:0:0:0:0:0:0:1' (expanded loopback) fails equality; first label '0' parses to 0x0000 (not fc00/fe80) -> false. '::ffff:7f00:1' (hex v4-mapped 127.0.0.1) fails the dotted regex; first label '' -> returns false at line 59. isIP() accepts both as valid IPv6, so firstPrivateAddress (93) takes the literal path and returns null -> EgressGate.check allows the URL even with allowPrivate=false (the config default).
+  - **Failure scenario:** With LOOP_EGRESS_ALLOW_PRIVATE=false (default), a generic.rest_call node targeting http://[0:0:0:0:0:0:0:1]:3000/ or http://[::ffff:7f00:1]:3000/ passes the gate and undici connects to the API's own loopback listener / internal services — the exact SSRF the blocklist claims to stop.
+  - **Suggested fix:** Parse IPv6 literals into 16 bytes (expand :: and groups) and evaluate ranges numerically: ::1/128, ::/128, fc00::/7, fe80::/10, ::ffff:0:0/96 with embedded IPv4 run through isPrivateIPv4. Never rely on string forms.
+- [ ] **#8 — DNS rebinding TOCTOU between egress check and actual connection**
+  - `packages/egress/src/interceptor.ts:85-103` · category: security
+  - **Root cause:** firstPrivateAddress() resolves the host via dns.lookup (getaddrinfo), then EgressGate.check returns and the adapter calls undici request(), which resolves the hostname again independently at connect time. The resolved-and-validated IP is never pinned to the connection; Node performs a fresh lookup per call.
+  - **Failure scenario:** Attacker-controlled authoritative DNS with TTL=0 alternates A records: public IP during the gate's lookup, 127.0.0.1/169.254.169.254 during undici's connect lookup. A workflow node pointing at rebinding.attacker.tld passes the private-address blocklist and reaches cloud metadata or internal services despite allowPrivate=false.
+  - **Suggested fix:** Resolve once, validate all answers, then connect to the validated IP (custom undici Agent connect/lookup returning the pinned address, or request by IP with explicit Host header). Re-validate at connect time rather than only at check time.
+- [ ] **#9 — Pruned-node rows collide with idempotency unique index on resume/replay**
+  - `packages/engine/src/executor.ts:386-399` · category: bug
+  - **Root cause:** pruneInactiveNodes unconditionally calls nodeExecutions.create with stable idempotency_key `${executionId}:${node.id}` for every branch-skipped node, without the findByIdempotencyKey reuse guard executeNodeInner (592-631) applies. Unique index idx_node_exec_idem (state migrations/index.ts:184, migrations-pg.ts:181) rejects a second insert for the same key.
+  - **Failure scenario:** control.branch workflow: false-arm node gets a 'skipped' row, execution fails or process crashes. Recovery resume (or POST /executions/:id/replay?dryRun=false) restores the branch decision, prunes the same node again, create() throws UNIQUE constraint, executeInner catch marks execution 'failed'. Any execution with branch-skipped nodes can never be resumed or non-dry replayed.
+  - **Suggested fix:** In pruneInactiveNodes look up findByIdempotencyKey first; if a row exists (e.g. 'skipped' from the prior attempt) reuse it / treat as idempotent hit instead of inserting.
+- [ ] **#10 — Workflow timeout between levels/batches marks execution 'succeeded'**
+  - `packages/engine/src/executor.ts:452-462` · category: bug
+  - **Root cause:** executeLevel breaks out of the batch loop when signal.aborted without producing any rejected result; executeInner (311-333) only fails on a rejected settled result and never checks workflowTimedOut/signal.aborted after the level loop. If the workflow timer fires while no node is in flight (during getById/prune awaits or between batches), every remaining level returns an empty settled array and the run completes 'succeeded'. TSD §6.1 requires timeout to mark failed.
+  - **Failure scenario:** workflow_timeout_ms=1000; level-1 node finishes at 900ms; timer fires at 1000ms during level-2 store reads/pruning. Levels 2..N break immediately with settled=[], no failure found, completeExecution writes 'succeeded' and execution_succeeded recorded although most nodes never ran — silent partial execution reported as success.
+  - **Suggested fix:** After each executeLevel (and after the level loop) check controller.signal.aborted/workflowTimedOut and throw WORKFLOW_TIMEOUT; or have executeLevel return a rejected result for unscheduled nodes when aborted.
+- [ ] **#11 — Sub-workflow retry/resume creates fresh child execution, re-firing side effects**
+  - `packages/engine/src/executor.ts:1091-1112` · category: bug
+  - **Root cause:** invokeSubWorkflow generates childExecutionId = randomUUID() on every invocation. executeWithRetry (default LOOP_DEFAULT_RETRY_COUNT=3 wired in server.ts) re-invokes dispatchNode on child failure, and parent resume re-invokes the node; each attempt gets a brand-new child execution id, so the child's completedOutputs/idempotency keys never match prior attempts and every child node re-dispatches.
+  - **Failure scenario:** workflow.invoke node: child node A performs a POST (side effect, row succeeded), child node B fails transiently. Retry -> new child execution id -> A's idempotency key differs -> POST fires again. Same duplication when parent crashes after child completed but before parent node row marked succeeded and recovery resumes.
+  - **Suggested fix:** Derive child execution id deterministically from the parent idempotency key (UUIDv5 of `${executionId}:${node.id}`) or look up an existing child execution by parent node key, so retries/resume reuse the child's succeeded-node skip path.
+- [ ] **#12 — Scoped secret upsert collides with globally-unique secret name**
+  - `packages/secrets/src/manager.ts:35-51` · category: bug
+  - **Root cause:** set() looks up by (name, scope, scope_id) and INSERTs when no row matches, but secrets.name is globally UNIQUE in both tiers (schema.ts:148 .unique(); migrations-pg.ts:124 UNIQUE). A second distinct scope_id with the same name finds no matching row and the insert violates UNIQUE(name). POST /api/v1/connectors (routes/index.ts:646) stores every connector key under name 'api_key'; server.ts:186 migration does the same.
+  - **Failure scenario:** Create connector A with api_key (OK) -> create connector B with api_key -> set('api_key','connector',B) finds no row -> INSERT -> UNIQUE violation -> 409; no second keyed connector can ever be created via the API. Startup migration silently keeps plaintext for every legacy row after the first (server.ts:197-199). Deleting connector A orphans its 'api_key' row, permanently blocking future keyed connector creation.
+  - **Suggested fix:** Make uniqueness composite (name, scope, scope_id) in both stores and match scope_id exactly (including NULL) in getByName; or namespace stored names per scope_id. Delete connector-scoped secrets on DELETE /connectors.
+- [ ] **#13 — Airgap E2E never enables airgap; 'local LLM' node is a no-network mock**
+  - `tests/e2e/airgapped-deployment.test.ts:30-129` · category: test
+  - **Root cause:** Neither test sets LOOP_AIRGAP_MODE or constructs an EgressGate. Test 1 inserts deny policies and calls egressEngine.evaluate directly; test 2 runs createMockAdapter('local_llm') performing zero HTTP through an executor with no gate (tests/e2e/helpers.ts:134). Header comment 'airgap check not yet wired into connectors' is stale — production wires it (server.ts:127-131,237).
+  - **Failure scenario:** Airgap leaking on the workflow execution path (gate dropped from executor wiring, adapter ignoring params.egress) ships green under a suite named 'Air-gapped deployment mode (E2E)' — data sovereignty is the product's first-class constraint.
+  - **Suggested fix:** Build the context with EgressGate({airgap:true}) passed to the executor, register an adapter making a real HTTP call to a loopback mock server, assert execution fails NODE_EGRESS_BLOCKED; assert localhost-allow succeeds only with airgap off.
+- [ ] **#14 — Test executor built without egress gate, secret resolver, or config timeouts**
+  - `tests/integration/_helpers/app.ts:155-155` · category: bug
+  - **Root cause:** buildTestApp constructs new ExecutionExecutor(store, connectors, 10) while production (apps/api/src/server.ts:223-249) passes executionEventBus, eventOutputMaxBytes, egressGate, secretResolver and retry config. In the test app egressGate/secretResolver are undefined; dispatchNode only forwards egress when the gate exists and adapters fail open (await io?.egress?.check(url)). Helper LOOP_NODE_TIMEOUT_MS/LOOP_WORKFLOW_TIMEOUT_MS/LOOP_MAX_CONCURRENT are dead. No test in the repo constructs ExecutionExecutor with a real egressGate. See also the unit-suite finding on executor-branch.test.ts.
+  - **Failure scenario:** Delete the egressGate argument at server.ts:237 or the egress spread in dispatchNode and every integration/e2e test stays green while production workflows make unrestricted outbound calls (airgap/SSRF/default-deny bypassed). Secrets-resolution regressions in the API path are likewise invisible.
+  - **Suggested fix:** Wire the helper executor exactly like server.ts (egressGate, secretResolver, eventBus, eventOutputMaxBytes, retry). Add an integration test running a workflow whose connector targets a denied domain asserting NODE_EGRESS_BLOCKED, plus one proving connector api_key reaches the adapter via the secrets store.
+- [ ] **#15 — No test pins executor->adapter egress gate wiring; airgap can silently die**
+  - `tests/unit/engine/executor-branch.test.ts:324-335` · category: test
+  - **Root cause:** Every executor test constructs ExecutionExecutor without an egressGate (this file passes undefined explicitly). No unit test builds the executor WITH a gate and asserts adapter.execute receives egress or that check() runs. The wiring is one spread at executor.ts:836 and every adapter consults it via optional chaining (params.egress?.check), so a missing gate fails OPEN silently. Companion structural gap: tests/integration/_helpers/app.ts finding.
+  - **Failure scenario:** A refactor drops the egress spread (or renames the param): LOOP_AIRGAP_MODE, all egress policies and the SSRF private blocklist become dead config for every connector node — the exact bug the S1 wiring fix addressed — and the entire unit suite stays green.
+  - **Suggested fix:** Add an executor test: recording adapter + stub gate whose check rejects; execute a connector node; assert adapter received the gate, check called with target URL, node fails NODE_EGRESS_BLOCKED. Also assert airgap=true blocks generic.rest_call end-to-end.
+- [ ] **#16 — API replay guards (REPLAY_IN_PROGRESS / REPLAY_NOT_TERMINAL) untested**
+  - `tests/unit/engine/replay.test.ts:211-248` · category: test
+  - **Root cause:** replay.test.ts covers replayExecution/computeReplayDecisions only. Route-level guards (routes/index.ts:385-427: in-flight Set -> 409 REPLAY_IN_PROGRESS; non-terminal status -> 409 REPLAY_NOT_TERMINAL; dryRun default query['dryRun'] !== 'false') have zero matches anywhere under tests/ (grep-verified).
+  - **Failure scenario:** A regression removes the Set guard or inverts the dryRun default: concurrent replays double-fire connector side effects (duplicate emails, double Vault/Desk writes), or a default POST re-executes a running workflow. Nothing in the suite fails.
+  - **Suggested fix:** Add route-level tests (Fastify inject with real route registration): two concurrent POST /executions/:id/replay?dryRun=false -> second 409 REPLAY_IN_PROGRESS; dryRun=false on running/pending/paused -> 409 REPLAY_NOT_TERMINAL and no dispatch; POST with no query param defaults to dry-run (no side effects).
+
+## Medium severity (71)
+
+Remediation checklist — tick each item after fixing and verifying (IDs match full-audit.json).
+
+- [ ] **#17 — JWT accepted without rechecking user status; 12h hard-coded life**
+  - `apps/api/src/middleware/auth.ts:167-178` · category: security
+  - **Root cause:** resolveIdentity() trusts any signature-valid JWT's sub/role claims and never consults users.is_active or existence. routes/auth.ts:118 hard-codes 12-hour expiry (ignoring LOOP_JWT_ACCESS_TTL); no revocation mechanism. Store supports deactivation (sqlite/index.ts:523) but it has no effect on already-issued tokens.
+  - **Failure scenario:** Operator deactivates a compromised editor account -> previously issued JWT keeps passing the guard with editor role for up to 12 more hours, continuing to create/execute workflows and read data.
+  - **Suggested fix:** On each authenticated request (or via short access TTL + revocation list) verify the user still exists and is_active; honour LOOP_JWT_ACCESS_TTL for issued tokens.
+- [ ] **#18 — PUT /triggers returns webhook signing secret unredacted**
+  - `apps/api/src/routes/index.ts:520-521` · category: security
+  - **Root cause:** GET /workflows/:id/triggers maps redactTriggerSecrets (529) and the comment states secrets never leave the API, but PUT /api/v1/triggers/:triggerId returns the raw store row including config.secret. POST create intentionally returns the secret once; PUT re-exposes it on every update.
+  - **Failure scenario:** Editor (requiredRoleFor gives editor for PUT) sends PUT /api/v1/triggers/<webhook-trigger> {enabled:true} -> response contains config.secret in cleartext -> editor can forge correctly-signed webhook payloads to the public /webhooks/:triggerId endpoint, impersonating the external system.
+  - **Suggested fix:** Apply redactTriggerSecrets to the PUT response (521) as done for the GET list.
+- [ ] **#19 — Connector header credentials stored plaintext; migration gap**
+  - `apps/api/src/routes/index.ts:643-662` · category: security
+  - **Root cause:** POST /connectors extracts only api_key into the encrypted secrets store; config.headers (e.g. authorization) remains plaintext in connectors.config JSON. server.ts:174-176 comment claims the L-2 migration moves 'api_key (and headers.authorization)' into the encrypted store, but migration code (182-200) only handles api_key. GET redaction hides headers from API reads but the live credential stays unencrypted at rest.
+  - **Failure scenario:** Editor creates a generic connector with config.headers.authorization='Bearer <live token>' -> token persisted as plaintext JSON in SQLite/PG -> anyone with DB/file access (backups, snapshots) reads the upstream credential, violating the encryption-at-rest guarantee the L-2 work claims.
+  - **Suggested fix:** Extract sensitive header values into the secrets store on create and in the startup migration (resolve at dispatch like api_key), or encrypt the whole config column; align migration with its comment.
+- [ ] **#20 — Forced LLM provider silently falls back to cloud vendors**
+  - `apps/api/src/routes/index.ts:764-779` · category: security
+  - **Root cause:** When body.provider is set the route builds chain=[provider, ...every other configured vendor] and the router (llm/router.ts:37-76) tries each in order on ANY failure — including an egress block. With default LOOP_EGRESS_ALLOW_PRIVATE=false (config.ts:172) the local Ollama URL (localhost:11434) is always blocked by the private-address gate, so the 'forced' local provider deterministically fails over to cloud vendors.
+  - **Failure scenario:** Deployment with Ollama + OpenAI key configured; caller POSTs /api/v1/llm/complete {provider:'ollama',prompt:'<confidential data>'} expecting local-only processing -> gate blocks localhost -> router sends the prompt to api.openai.com -> confidential data leaves the sovereign boundary contrary to the explicit provider choice.
+  - **Suggested fix:** When provider explicitly specified pass chain=[body.provider] only (no fallback), or require an explicit allow_fallback flag; surface the egress block as the error instead of switching vendors.
+- [ ] **#21 — Recovery/cron/webhook dispatch resumes with LIVE definition, not version snapshot**
+  - `apps/api/src/server.ts:269-285` · category: bug
+  - **Root cause:** dispatchToExecutor loads authoring.getById(workflowId) (live current definition) instead of resolving the execution's stamped workflow_version snapshot. A workflow edited between crash and restart resumes against a different graph while loadCompletedOutputs seeds outputs from the old version's nodes; cron/webhook executions can likewise run a newer version than stamped on the execution row. Engine-side replay.ts resolveDefinition is versioned and correct — the gap is in the injected dispatcher (verified during cross-pass review).
+  - **Failure scenario:** Execution of workflow v3 crashes mid-run; operator edits the workflow to v4 (renames/removes nodes); restart resumes the v3 execution against the v4 graph — seeded outputs reference nodes that no longer exist, branch decisions misalign, and the audit trail claims v3 while v4 ran.
+  - **Suggested fix:** Resolve the definition via the execution's workflow_version (workflowDefinitions.getByWorkflowAndVersion, falling back explicitly and logging when absent) before executor.execute; stamp-and-resolve consistently on all dispatch paths.
+- [ ] **#22 — /ready hardcodes database 'ok' and always returns HTTP 200**
+  - `apps/api/src/server.ts:333-350` · category: bug
+  - **Root cause:** Readiness handler performs no database probe — checks.database is the literal 'ok' — and returns status:'ready' with HTTP 200 even when connectorsOk is false ('degraded'). Readiness reports ready regardless of actual dependency health. (Egress bypass on the same probe path is covered under the connectors healthCheck finding.)
+  - **Failure scenario:** SQLite file corrupted / PG connection lost after startup -> /ready still answers 200 {database:'ok'} -> load balancer/k8s keeps routing traffic to an instance where every request 500s.
+  - **Suggested fix:** Probe the store (trivial query) and return 503 with status:'not_ready' when DB or required connectors are down.
+- [ ] **#23 — Bearer token sent as WS URL query param; leaked into access logs**
+  - `apps/canvas/src/api/client.ts:141-145` · category: security
+  - **Root cause:** buildExecutionWsUrl appends ?token=<JWT/API key>. Fastify request logging and intermediary proxies record full URLs including query strings, persisting credentials in plaintext logs (CWE-598).
+  - **Failure scenario:** Auth-enforced deployment: a viewer opens an execution monitor; their JWT is written to API/proxy access logs. Anyone with log read access can replay the token until expiry.
+  - **Suggested fix:** Use a short-lived single-use ticket exchanged over REST, or Sec-WebSocket-Protocol carrier; at minimum redact token from server URL logging.
+- [ ] **#24 — Only 'branch' renders named handles; control.condition port edges invisible**
+  - `apps/canvas/src/components/canvas/nodes/ControlNode.tsx:36-42` · category: bug
+  - **Root cause:** ControlNode renders true/false source handles only for controlType==='branch'; other control types get a single unnamed handle. toRfEdge (WorkflowEditor.tsx:84) maps any source_port != 'output' to a named sourceHandle, so edges from control.condition nodes (e.g. 'auto_approve'/'needs_review' in templates/content-review-pipeline.json) reference nonexistent handles and React Flow drops them.
+  - **Failure scenario:** Instantiate 'content-review-pipeline': the condition node's outgoing edges are invisible ('couldn't create edge' warning); graph looks disconnected, user cannot see or rewire routing.
+  - **Suggested fix:** Render a source handle per configured outgoing port for all control node types.
+- [ ] **#25 — Terminal WS event ignores durationMs; Duration stays '—' forever**
+  - `apps/canvas/src/pages/ExecutionDetail.tsx:94-107` · category: bug
+  - **Root cause:** applyStreamEvent sets status from execution_succeeded/execution_failed but discards event.durationMs and never sets completed_at. The 4s poll (128-132) stops once status is terminal, so duration_ms remains the null captured at load.
+  - **Failure scenario:** Run a workflow, watch it finish live via WS: Duration card shows '—' permanently until manual reload although the server recorded the duration.
+  - **Suggested fix:** On terminal events set duration_ms: event.durationMs and completed_at: event.timestamp (or do one final REST load).
+- [ ] **#26 — ConfigPanel form/JSON drafts not resynced after apply; mode switch reverts edits**
+  - `apps/canvas/src/pages/WorkflowEditor.tsx:264-275` · category: bug
+  - **Root cause:** The reset effect depends only on [node.id, type]. After applyJson/applyForm updates node.data.config, the other mode's draft state (values/extraDraft or draft) still holds the pre-apply snapshot. Switching modes and pressing Apply writes the stale snapshot over the newer config.
+  - **Failure scenario:** Edit config in JSON mode (add limit:5), apply, switch to Form to tweak query, Apply — the JSON-added limit is silently deleted because form drafts were never refreshed.
+  - **Suggested fix:** Resync all draft state from node.data.config whenever it changes (or key drafts by a config revision).
+- [ ] **#27 — Run/Validate proceed after a failed save, executing the stale definition**
+  - `apps/canvas/src/pages/WorkflowEditor.tsx:584-619` · category: bug
+  - **Root cause:** save() catches its own errors and resolves normally (592-593); run() and validate() do `if (dirty) await save()` then unconditionally call executeWorkflow/validateWorkflow. A failed PUT is followed by execution of the old server-side graph plus a success toast.
+  - **Failure scenario:** User edits a node config and clicks Run while the API briefly rejects the PUT: error toast flashes, then 'Execution started' appears and the workflow runs with the previous config — wrong side effects with no indication.
+  - **Suggested fix:** Make save() return a boolean or rethrow; abort run/validate when the pre-save fails.
+- [ ] **#28 — No unsaved-changes guard; Back navigation silently discards dirty graph**
+  - `apps/canvas/src/pages/WorkflowEditor.tsx:652-654` · category: bug
+  - **Root cause:** The toolbar Back link (and browser back) navigate without checking dirty; no router blocker or beforeunload handler.
+  - **Failure scenario:** User spends minutes wiring a graph, forgets Save, clicks Back — all edits vanish without warning.
+  - **Suggested fix:** Add useBlocker/beforeunload prompt when dirty, or autosave.
+- [ ] **#29 — Drag/keyboard-delete never set dirty; Save stays disabled, edits lost**
+  - `apps/canvas/src/pages/WorkflowEditor.tsx:788-797` · category: bug
+  - **Root cause:** onNodesChange/onEdgesChange are wired straight to useNodesState setters (lines 459-460, 791-792) without setDirty(true). Only addNode/deleteNode/onConnect/applyConfig mark dirty; Save is disabled when !dirty. React Flow's default Backspace deletion and node drags produce unsaveable changes.
+  - **Failure scenario:** User repositions nodes or deletes an edge with Backspace, clicks Save — button disabled. Navigates away; layout/deletion silently lost on reload.
+  - **Suggested fix:** Inspect changes in the handlers and setDirty(true) for position/remove/add changes (ignore select/dimensions).
+- [ ] **#30 — templates/*.json data directory not copied into runtime image**
+  - `docker/Dockerfile.app:63-65` · category: bug
+  - **Root cause:** TemplateRegistry.resolveDir looks for <moduleRoot>/templates (= /app/templates in image) and cwd walk-ups; the repo-root templates/ directory with marketplace JSON is never COPYed into the runtime layout.
+  - **Failure scenario:** Docker deployments load 0 templates with 0 load errors — silent feature loss; POST /api/v1/templates/:id/instantiate 404s for every shipped template.
+  - **Suggested fix:** COPY templates/ ./templates/ in the runtime stage (after fixing the @loop/templates package copy).
+- [ ] **#31 — Helm chart points at PostgreSQL/Redis services it never creates**
+  - `helm/loop/templates/api-deployment.yaml:38-52` · category: bug
+  - **Root cause:** values.yaml enables postgresql/redis (87-121) and deployments reference {{ .Release.Name }}-postgresql and -redis-master, but Chart.yaml declares no dependencies and templates/ contains no postgres/redis resources. LOOP_REDIS_URL also omits the password despite redis.auth.enabled=true.
+  - **Failure scenario:** helm install with default values deploys an API configured for LOOP_DB_TYPE=postgres against a nonexistent host; every pod crash-loops on DB connection. Scale-tier chart unusable as shipped.
+  - **Suggested fix:** Add bitnami postgresql/redis as chart dependencies (or document external endpoints and make hosts configurable); include the Redis password in LOOP_REDIS_URL.
+- [ ] **#32 — desk.list_conversations silently drops the canvas status filter**
+  - `packages/connectors/src/desk/adapter.ts:42-43` · category: bug
+  - **Root cause:** list_conversations calls callDesk with no query parameters and ignores params.input entirely, while the canvas form offers a status select (open/pending/resolved/all, WorkflowEditor.tsx:146-148).
+  - **Failure scenario:** Workflow configured to list only open conversations receives all including resolved ones; a downstream auto-responder replies to already-resolved tickets.
+  - **Suggested fix:** Forward input.status (and other supported filters) as URLSearchParams on the GET.
+- [ ] **#33 — generic.rest_call ignores per-node headers input (config only)**
+  - `packages/connectors/src/generic/adapter.ts:33-33` · category: bug
+  - **Root cause:** headers read only from params.config['headers']; the canvas generic.rest_call form exposes 'Headers (JSON)' landing in params.input['headers'] (WorkflowEditor.tsx:186), never consulted.
+  - **Failure scenario:** Node whose Authorization header is set in the UI form sends the request unauthenticated — 401, or silently different behavior on anonymous-access endpoints.
+  - **Suggested fix:** Merge input.headers over config.headers (string values only) before dispatch.
+- [ ] **#34 — Unbounded response buffering in generic REST adapter**
+  - `packages/connectors/src/generic/adapter.ts:78-78` · category: performance
+  - **Root cause:** response.body.text() buffers the entire upstream response with no size cap; target URL is arbitrary workflow input (egress-gated for destination, not size).
+  - **Failure scenario:** rest_call node pointed at a large data-export/file URL buffers gigabytes into the heap; the modular-monolith API OOM-crashes, killing every in-flight execution.
+  - **Suggested fix:** Stream the body with a byte cap (e.g. 10 MB) and throw a clear UpstreamError when exceeded; consider configurable limit.
+- [ ] **#35 — Slack send ignores {ok:false} and HTTP status; body never drained**
+  - `packages/connectors/src/notification/index.ts:16-25` · category: bug
+  - **Root cause:** SlackNotifier.send never reads response.statusCode or body. Slack returns HTTP 200 with {ok:false,error:...} for invalid tokens/channels; an unread undici body holds the socket (rest of repo explicitly drains bodies for this reason). Latent: notifiers exported but not yet wired into apps/api.
+  - **Failure scenario:** Misconfigured Slack token makes every notification silently 'succeed' while nothing is delivered; each send leaks a pooled socket.
+  - **Suggested fix:** Drain/parse JSON, throw on non-2xx or ok:false so NotificationQueue can retry.
+- [ ] **#36 — Slack/Webhook notifiers bypass the egress policy engine (latent)**
+  - `packages/connectors/src/notification/index.ts:16-57` · category: security
+  - **Root cause:** Neither notifier accepts or calls the egress gate before dispatching to slack.com / an arbitrary webhook URL, unlike every ConnectorAdapter. Airgap mode is specified to block ALL outbound calls. Latent: not yet wired.
+  - **Failure scenario:** Once wired per TSD §9.6, notifications flow to external hosts even with LOOP_AIRGAP_MODE=true or default-deny — the sovereignty guarantee silently has a hole.
+  - **Suggested fix:** Accept the same { check(url) } gate as ExecuteParams.egress and await it before each request; thread signal too.
+- [ ] **#37 — Webhook send ignores response status; body never drained**
+  - `packages/connectors/src/notification/index.ts:44-57` · category: bug
+  - **Root cause:** WebhookNotifier.send discards the response without checking statusCode; NotificationQueue retries only thrown errors, so HTTP-level failures are never retried. Unread body holds the socket. Latent: not yet wired.
+  - **Failure scenario:** Webhook receiver returning 500/401 treated as successful delivery; notification lost with no retry and no log.
+  - **Suggested fix:** Check statusCode>=400 and throw; drain the body on every path.
+- [ ] **#38 — Recap get_meeting id not URL-encoded — path traversal with JWT**
+  - `packages/connectors/src/recap/adapter.ts:47-47` · category: security
+  - **Root cause:** get_meeting interpolates String(params.input['id']) raw into the path; vault (45-49) and desk (45,57,68) use encodeURIComponent but recap does not. URL normalization resolves '..' segments before dispatch.
+  - **Failure scenario:** Meeting id from a trigger payload like '../../sync' or 'x?foo=bar' changes the request path/query (GET /meetings/../../sync -> /sync), sending the instance Bearer JWT to an unintended Recap endpoint.
+  - **Suggested fix:** encodeURIComponent(String(params.input['id'])) as in the sibling adapters.
+- [ ] **#39 — Connector healthCheck bypasses egress gate and has no timeout (/ready SSRF oracle)**
+  - `packages/connectors/src/vault/adapter.ts:55-65` · category: security
+  - **Root cause:** healthCheck issues undici request(baseUrl+'/health') with no egress.check and no signal/timeout; same in desk/adapter.ts:75-84 and recap/adapter.ts:57-66. interface.ts:43-44 gives healthCheck no egress/signal parameters. Connector instances (editor+ role) accept arbitrary config.base_url with no URL validation (routes/index.ts:625-662). /ready (server.ts:333-350) calls healthCheckAll() on every registered instance, so the private-address blocklist and LOOP_AIRGAP_MODE are not applied on this path.
+  - **Failure scenario:** LOOP_AIRGAP_MODE=true yet /ready still makes outbound GETs to configured hosts. With allowPrivate=false an editor registers base_url=http://169.254.169.254/latest/meta-data: every /ready probe issues a blind GET into the metadata/internal network, bypassing the SSRF blocklist enforced on execute().
+  - **Suggested fix:** Route probes through the same EgressGate (or skip probing in airgap), validate base_url at instance creation, add a short abortable timeout.
+- [ ] **#40 — Canvas rag_query sends 'question'; adapter reads 'query' -> empty RAG query**
+  - `packages/connectors/src/vault/adapter.ts:126-132` · category: bug
+  - **Root cause:** postQuery builds the Vault body from input['query']/top_k/top_k_chunks/folder_filter, but canvas FIELD_SPECS for vault.rag_query use question/context/output_format (WorkflowEditor.tsx:133-137); vault.search offers limit/filters while the adapter reads top_k/folder_filter; create_document offers tags/folder which uploadDocument (143-148) never sends. Executor passes node.config through verbatim — no mapping layer.
+  - **Failure scenario:** User builds a RAG node and types a question: node POSTs /query with {query:'',top_k_chunks:8}; Vault answers an empty query and the workflow silently continues with irrelevant/empty results.
+  - **Suggested fix:** Accept canvas keys as aliases (question->query, limit->top_k_chunks, filters->folder_filter) or align canvas field keys; forward tags/folder in the upload form.
+- [ ] **#41 — Egress denial rewrapped as UPSTREAM_*_UNAVAILABLE (vault/desk/recap)**
+  - `packages/connectors/src/vault/adapter.ts:223-235` · category: error-handling
+  - **Root cause:** Catch-all wraps every non-UpstreamError — including the gate's LoopError('NODE_EGRESS_BLOCKED',403) thrown by egress.check — into UpstreamError('UPSTREAM_VAULT_UNAVAILABLE',502). Identical in desk/adapter.ts:135-139 and recap/adapter.ts:132-136. Generic adapter and LLM providers correctly let it propagate.
+  - **Failure scenario:** In airgap or under a deny policy the node fails as 502 'Vault unavailable' and the executor's default retry (LOOP_DEFAULT_RETRY_COUNT=3) retries a permanently blocked call; operators see a phantom upstream outage instead of a policy block.
+  - **Suggested fix:** Rethrow LoopError instances with code NODE_EGRESS_BLOCKED unchanged; wrap only transport errors.
+- [ ] **#42 — Region egress policies can never match: lookupRegion is a permanent stub**
+  - `packages/egress/src/resolver.ts:35-38` · category: security
+  - **Root cause:** lookupRegion(_ip) returns '' unconditionally (no GeoIP source). Region allow/deny policies therefore never match in any real deployment. tests/unit/egress/engine.test.ts:18-24 mocks a fake lookupRegion (203.0.113.*->EU) and 'proves' region enforcement against the very function whose real implementation is dead — masking the gap.
+  - **Failure scenario:** Operator configures 'deny region RU' (data-residency requirement) alongside an allow policy: lookupRegion returns '' for every IP, the deny never matches, traffic flows to the blocked region — while the unit suite 'proves' region enforcement works.
+  - **Suggested fix:** Implement GeoIP (e.g. MaxMind) or surface the limitation in the policy API/docs and reject region policies at creation until supported; add a test asserting the shipped resolver's actual behavior.
+- [ ] **#43 — LOOP_MAX_CONCURRENT caps nodes per level, not concurrent executions**
+  - `packages/engine/src/executor.ts:443-465` · category: concurrency
+  - **Root cause:** maxConcurrent only used as batch size inside one execution's executeLevel (449). Nothing limits simultaneous execute() calls: every trigger path (cron/webhook/event/manual/recovery) fire-and-forgets executor.execute immediately. TSD §13 defines LOOP_MAX_CONCURRENT as 'Max concurrent executions' (50 Core); §8.1 requires a concurrency limit check at trigger time.
+  - **Failure scenario:** */1 cron on a 10-minute workflow plus webhook bursts produces hundreds of simultaneous executions, each running up to 50 nodes per level. Documented 50-execution cap and SQLite 'hard cap at 50 concurrent' assumption violated -> SQLITE_BUSY write contention, memory growth, upstream rate-limit failures.
+  - **Suggested fix:** Add an executor-wide semaphore/queue gating execute() entry at maxConcurrent (or per-workflow/in-flight cap in dispatch paths).
+- [ ] **#44 — Connector dispatch always uses the first instance of a type**
+  - `packages/engine/src/executor.ts:806-824` · category: bug
+  - **Root cause:** dispatchNode picks instanceId via listInstances().find(first matching adapterType). Registry keys insertion-ordered; env instances (vault-default/desk-default/recap-default) registered before DB instances; no per-node instance selection. Additional instances created via POST /api/v1/connectors silently never used.
+  - **Failure scenario:** Operator sets LOOP_VAULT_URL=old-vault then creates a new vault instance pointing at migrated-vault via POST /connectors: every vault.* node still resolves vault-default (registered first) and calls the old Vault with the old API key — writes go to the decommissioned system while GET /connectors shows the new instance.
+  - **Suggested fix:** Support per-node instance selection (config.connector_instance_id validated against registry) or at least prefer DB-registered instances over env defaults and warn when multiple instances of a type exist.
+- [ ] **#45 — Inline sub-workflow definitions bypass node-type validation**
+  - `packages/engine/src/executor.ts:1142-1169` · category: bug
+  - **Root cause:** validateInlineDefinition checks only structure (ids, edges, cycles). dispatchNode (793-804) passes unknown connector types through as input=output with only a warning. The API's assertKnownNodeTypes guard (routes/index.ts:210) covers stored definitions only, so inline workflow.invoke children reintroduce the 'green no-op' bug class it was added to fix.
+  - **Failure scenario:** workflow.invoke with inline definition containing typo'd type 'vualt.search': child node 'succeeds' echoing its input, child and parent report success, no Vault call ever happens — silent no-op execution.
+  - **Suggested fix:** Run the known-node-type check inside validateInlineDefinition, or make dispatchNode fail on unknown non-control connector types.
+- [ ] **#46 — Branch tokenizer ignores escapes; quoted strings invert decisions**
+  - `packages/engine/src/nodes/index.ts:38-44` · category: bug
+  - **Root cause:** evalCondition interpolates values with JSON.stringify (escapes embedded double quotes as \"), but tokenize's string-literal scanner uses indexOf(ch, i+1) with no escape handling (comment: 'no escapes'). A serialized value containing a double quote terminates the string early at the escaped quote; remainder fails to tokenize, parse throws, evalCondition fails closed to false — even when the comparison should be true.
+  - **Failure scenario:** Condition {{trigger.payload.name}} == {{variables.expected}} with both equal to O"Brien: both serialize to "O\"Brien", tokenizer reads string O\ then chokes -> parse error -> branch=false. Equal-values case takes the false arm; any payload string containing a double quote can never match.
+  - **Suggested fix:** Handle backslash escapes in the string-literal scanner, or pass values as pre-tokenized literals instead of re-parsing JSON text.
+- [ ] **#47 — Resume re-dispatches ambiguous in-flight node despite unsafe-side-effect policy**
+  - `packages/engine/src/recovery.ts:38-56` · category: bug
+  - **Root cause:** recover() marks a 'running' execution failed when zero nodes completed ('in-flight node's side effects are ambiguous') but resumes when >=1 completed — re-dispatching the same ambiguous in-flight node (executeNodeInner resets a 'running' row and dispatches again). Idempotency-key mitigation is best-effort: GenericAdapter never forwards an Idempotency-Key header, so generic REST side effects have no dedup vector.
+  - **Failure scenario:** Node A succeeds; node B (generic POST /charge) in flight when process crashes after upstream applied the charge. Restart -> recovery resumes (lastCompleted=A) -> B re-dispatched -> second charge. Identical crash with zero completed nodes deliberately failed instead — policy inconsistent.
+  - **Suggested fix:** Apply the ambiguity policy per node: on resume settle crash-interrupted 'running' node rows to failed (or require explicit confirmation) instead of silently re-dispatching; alternatively make idempotency-key forwarding mandatory for mutating connector operations.
+- [ ] **#48 — Malformed extra-provider entry logged with api_key intact**
+  - `packages/llm/src/factory.ts:140-142` · category: security
+  - **Root cause:** logger.warn({ extra }, ...) serializes the whole parsed entry — including api_key — when name/base_url validation fails. Line 147's JSON-parse error log can also echo a snippet of the raw string.
+  - **Failure scenario:** LOOP_LLM_EXTRA_PROVIDERS='[{"name":"gw","api_key":"sk-live-..."}]' (base_url typo/omitted) writes the live vendor key into server logs on every startup.
+  - **Suggested fix:** Log only the entry name and which fields are missing; never the raw object.
+- [ ] **#49 — Gemini prompt-level block returns empty content as 'STOP'**
+  - `packages/llm/src/gemini.ts:77-87` · category: bug
+  - **Root cause:** promptFeedback.blockReason never inspected; a blocked prompt yields no candidates so content='' and finish_reason defaults to 'STOP' — indistinguishable from a legitimate empty completion. Candidate-level SAFETY at least visible via finishReason.
+  - **Failure scenario:** Prompt hits Gemini's blocklist: API returns {promptFeedback:{blockReason:'SAFETY'}} and the workflow proceeds with an empty string as a successful answer, silently corrupting downstream steps.
+  - **Suggested fix:** When promptFeedback.blockReason set, throw UpstreamError or map to a distinct finish_reason.
+- [ ] **#50 — LOOP_LLM_TIMEOUT_MS discarded when executor signal present**
+  - `packages/llm/src/openai.ts:51-51` · category: bug
+  - **Root cause:** signal: io?.signal ?? AbortSignal.timeout(this.timeoutMs) — the executor always passes a fused node-timeout signal (executor.ts:675-697,837), so the configured provider timeout never applies on the workflow path. Identical at anthropic.ts:45, azure.ts:36, gemini.ts:60, ollama.ts:36 and 74.
+  - **Failure scenario:** Admin sets LOOP_LLM_TIMEOUT_MS=15000 to fail fast; a node with timeout_ms=600000 against a blackholed provider hangs 10 minutes instead of 15s, stalling the workflow past the intended LLM budget.
+  - **Suggested fix:** Combine deadlines: AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) (Node 20+), or race whichever fires first.
+- [ ] **#51 — Non-JSON 200 provider reply crashes with raw SyntaxError**
+  - `packages/llm/src/openai.ts:64-71` · category: error-handling
+  - **Root cause:** response.body.json() on a 200 HTML page (proxy/captive portal/wrong port) throws bare SyntaxError — not UpstreamError — losing upstream context; body left undrained (socket held). Same at anthropic.ts:53, azure.ts:44, gemini.ts:68, ollama.ts:44 and 80. Generic connector already fixed this pattern (generic/adapter.ts:74-92).
+  - **Failure scenario:** Corporate proxy returns a 200 login page for api.openai.com: node fails with "Unexpected token '<'...", circuit counts an unclassifiable failure, socket leaks.
+  - **Suggested fix:** Read text first, attempt JSON.parse, throw UpstreamError with short snippet on failure; drain on every path.
+- [ ] **#52 — Circuit breaker counts aborts/egress denials as provider failures**
+  - `packages/llm/src/router.ts:41-76` · category: bug
+  - **Root cause:** Every catch increments circuit.failures with no error classification, and the loop keeps walking the chain after io.signal aborts — each remaining provider tried with the dead signal and counted as a failure. NODE_EGRESS_BLOCKED and 4xx client errors count the same as outages.
+  - **Failure scenario:** Default node timeout 30s while ollama cold starts exceed it: each timed-out LLM node increments EVERY provider's failure counter; five such nodes open all circuits and subsequent llm.complete calls fail 'No LLM providers available' for 30s. In airgap, five blocked calls likewise mask NODE_EGRESS_BLOCKED behind that generic error.
+  - **Suggested fix:** Break when io?.signal?.aborted; exclude abort/cancellation, egress denials, and permanent 4xx (except 429) from failure counting.
+- [ ] **#53 — OTLP exporter: unbounded per-span fetches, no queue or batching**
+  - `packages/observability/src/exporters.ts:81-99` · category: performance
+  - **Root cause:** Every span.end() fires an individual HTTP POST (single-span OTLP batch) with a 2s abort budget, no cap on in-flight requests, no queue, no batching; JSON.stringify runs synchronously in the span-end hot path. Default TRACE_SAMPLE_RATE=1.0 exports every span.
+  - **Failure scenario:** TRACE_EXPORTER=otlp with a slow/unreachable collector: 50 concurrent workflows emitting node spans accumulate hundreds of in-flight 2s POSTs; sockets/memory grow without bound, degrading the API.
+  - **Suggested fix:** Buffer spans and flush batches on interval/size with a bounded queue (drop-oldest on overflow) and concurrency limit; keep export() non-blocking.
+- [ ] **#54 — require() in ESM makes all Prometheus metrics silent no-ops**
+  - `packages/observability/src/metrics.ts:52-60` · category: bug
+  - **Root cause:** Package is ESM (package.json type:module, tsconfig Node16); bare require('prom-client') throws ReferenceError at runtime; tryLoadPromClient swallows it and returns undefined. metricsRegistry() always returns no-op stubs and collectMetrics() (207-211) always returns '' in the built product despite prom-client being installed.
+  - **Failure scenario:** Production /metrics (server.ts:351) returns 200 with empty body; loop_executions_total, egress_blocked_total, circuit-breaker gauges never record. Monitoring dashboards/alerts silently blind.
+  - **Suggested fix:** Use createRequire(import.meta.url)('prom-client') or a cached dynamic import; add a unit test asserting real counters when prom-client is installed.
+- [ ] **#55 — set() without scope_id silently overwrites another scope's secret**
+  - `packages/secrets/src/manager.ts:35-40` · category: bug
+  - **Root cause:** store.secrets.getByName omits the scope_id condition when scopeId is undefined (sqlite/index.ts:542, postgres/index.ts:619), so getByName(name, scope, undefined) matches the FIRST row with that name+scope regardless of scope_id; set() then updates that row. POST /api/v1/secrets allows scope 'connector'/'workflow' with scope_id optional (routes/index.ts:795-800).
+  - **Failure scenario:** Admin POSTs /api/v1/secrets {name:'api_key',scope:'connector',value:'X'} without scope_id -> matches connector A's encrypted key row -> overwrites with X -> connector A's upstream calls fail/authenticate wrong, no conflict error. Same-scope duplicate POSTs silently upsert instead of the 409 the route comment promises.
+  - **Suggested fix:** Treat undefined scope_id as NULL and match exactly (scope_id IS NULL) in getByName; require scope_id for connector/workflow scopes in the route schema.
+- [ ] **#56 — PG workflows created_at/updated_at are Date objects cast as string**
+  - `packages/state/src/postgres/index.ts:156-156` · category: bug
+  - **Root cause:** node-postgres parses TIMESTAMP to Date. Inline workflow mappers in create (156), getById (163), list (184) cast created_at/updated_at 'as string' without toIsoString, unlike mapTrigger/mapConnector/users/audit mappers which call toIsoString. SQLite returns ISO strings.
+  - **Failure scenario:** String operations on workflow.updated_at (.slice, lexicographic compare, === ISO string) throw or return false on PG while working on SQLite; masked only at the HTTP boundary where JSON.stringify coerces Date.
+  - **Suggested fix:** Wrap workflow created_at/updated_at with toIsoString(...) in all three inline mappers.
+- [ ] **#57 — Workflow search/tag filter semantics diverge between SQLite and PG**
+  - `packages/state/src/postgres/index.ts:171-172` · category: bug
+  - **Root cause:** SQLite workflows.list (sqlite/index.ts:133-139) uses substring LIKE for tag (on JSON text) and search (name/description). PG uses tags @> '[tag]' (exact element) and to_tsvector @@ plainto_tsquery (lexeme/stem full-text). Different matching semantics for the same WorkflowFilter contract.
+  - **Failure scenario:** Search 'work' matches 'workflow' on Core (LIKE %work%) but nothing on Scale (FTS lexeme). Tag 'prod' matches 'production' on Core but not Scale. Same API query, different result sets per tier.
+  - **Suggested fix:** Pick one semantics for both tiers (exact tag membership + defined search behavior) and implement identically; document search behavior.
+- [ ] **#58 — PG secrets.encrypted_value is BYTEA; getByName returns Buffer, not string**
+  - `packages/state/src/postgres/index.ts:614-624` · category: bug
+  - **Root cause:** migrations-pg.ts:125 defines encrypted_value BYTEA while interface/SQLite use TEXT/string. create/update bind the JSON ciphertext string into BYTEA (bytea escape-format input); getByName casts r.encrypted_value 'as string' (line 623) but node-postgres returns BYTEA as Buffer. Contract violated; diverges from SQLite.
+  - **Failure scenario:** SecretsManager.get survives only because JSON.parse(Buffer) coerces via toString. Any direct string use gets a Buffer; bytea escape-format input parsing corrupts payloads containing backslashes. SQLite returns a real string for the same call.
+  - **Suggested fix:** Store encrypted_value as TEXT in PG (matches SQLite/interface), or bind Buffer.from(value,'utf8') on write and return .toString('utf8') on read.
+- [ ] **#59 — PG migration runner is check-then-act with no advisory lock**
+  - `packages/state/src/postgres/migrations.ts:25-49` · category: concurrency
+  - **Root cause:** runPostgresMigrations reads applied versions then applies pending migrations in per-migration transactions; nothing serializes concurrent runners. CREATE TABLE/INDEX IF NOT EXISTS still races under concurrent DDL; INSERT INTO schema_migrations collides on the version PK.
+  - **Failure scenario:** Two Scale replicas boot against a fresh DB: both see migration 001 unapplied, both BEGIN+CREATE+INSERT. Second hits PK/concurrent-CREATE error, rolls back and throws -> replica fails to start during rolling deploy.
+  - **Suggested fix:** Take pg_advisory_lock around the whole migration run; re-read applied versions inside the lock.
+- [ ] **#60 — SQLite json-mode columns double-encode JSON (callers pre-stringify)**
+  - `packages/state/src/sqlite/index.ts:113-120` · category: bug
+  - **Root cause:** schema.ts declares definition/tags/trigger_payload/input/output/metadata/payload/config/details as text(...,{mode:'json'}); drizzle 0.29.5 SQLiteTextJson.mapToDriverValue already JSON.stringify's. The store passes an ALREADY-stringified string (JSON.stringify(data.definition) as never), so the DB stores a JSON-string-of-JSON. Reads round-trip only because mapFromDriverValue parses once and safeJsonParse re-parses. Systemic across every json column in this file.
+  - **Failure scenario:** SELECT json_extract(definition,'$.nodes') FROM workflows returns NULL on SQLite (top-level value is a JSON string, not object); the equivalent PG JSONB column works. Core->Scale data migration or any external SQL/analytics consumer sees corrupted double-encoded data masked in-app by safeJsonParse.
+  - **Suggested fix:** Pass raw objects to drizzle json-mode columns (let drizzle serialize once), or switch columns to plain text mode and keep manual stringify. Never both.
+- [ ] **#61 — SQLite egressPolicies.update throws 'No values to set' on empty patch**
+  - `packages/state/src/sqlite/index.ts:585-590` · category: bug
+  - **Root cause:** update passes all six optional fields straight into drizzle .set(); an empty patch leaves every value undefined and drizzle 0.29.5 mapUpdateSet throws Error('No values to set'). PG adapter (postgres/index.ts:688) returns early when setClauses is empty.
+  - **Failure scenario:** PUT /api/v1/egress/policies/:id with body {} passes the all-optional schema and reaches store.egressPolicies.update(id,{}): Core (SQLite) throws -> 500; Scale (PG) no-ops -> 200.
+  - **Suggested fix:** Mirror PG: build the set conditionally and return early when no field is provided.
+- [ ] **#62 — register() unregisters existing job before validating; PUT rollback never restores schedule**
+  - `packages/triggers/src/cron.ts:51-57` · category: bug
+  - **Root cause:** register() calls this.unregister(triggerId) first, then cron.validate; when validation throws the previously working schedule is already stopped. PUT /api/v1/triggers/:triggerId (routes/index.ts:501-517) unregisters, relies on register throwing to roll back the DB config, but never re-registers the old schedule — DB and scheduler diverge.
+  - **Failure scenario:** PUT /api/v1/triggers/<enabled cron> {config:{expression:'not-a-cron'}} -> 400 returned, DB unchanged (enabled, valid expression), but the cron job was unregistered and never restored -> schedule silently stops firing until server restart.
+  - **Suggested fix:** Validate the new expression (and construct the task) before unregistering the existing job; only swap once the replacement is created. Alternatively re-register the old config in the route's catch after rollback.
+- [ ] **#63 — Cron tick failures silently swallowed (no task-failed listener)**
+  - `packages/triggers/src/cron.ts:78-86` · category: error-handling
+  - **Root cause:** executions.create sits outside any try/catch in the async tick callback. node-cron@3.0.3 Task.execute catches the rejected promise and emits 'task-failed', but CronTriggerHandler attaches no listener, so a tick failing before/while creating the execution vanishes with zero logs and no failed execution record.
+  - **Failure scenario:** SQLite momentarily locked/IO-errors at fire time: executions.create throws, async callback rejects, node-cron emits 'task-failed' to nobody. Scheduled run lost with no log line, no execution row, no alert — operators see a cron trigger that 'didn't fire'.
+  - **Suggested fix:** Wrap the whole tick body in try/catch that logs and records a failed execution when possible; attach task.on('task-failed', ...) logger in register().
+- [ ] **#64 — Event triggers fire for archived workflows (no fire-time guard)**
+  - `packages/triggers/src/dispatcher.ts:43-65` · category: bug
+  - **Root cause:** TriggerDispatcher.dispatch matches enabled event triggers and creates executions without checking workflow.status. Cron (cron.ts:69) and webhook (webhook.ts:66) have fire-time archived guards because registered triggers outlive archiving; the event path lacks it. Archiving via PUT /workflows/:id {status:'archived'} does not disarm triggers (only DELETE does, best-effort). The version read at 50-51 already fetches the row.
+  - **Failure scenario:** Workflow with event trigger archived via PUT (triggers stay enabled): POST /api/v1/events with matching source/event_type creates an execution and runExecution executes the archived definition — real side effects for a 'deleted' flow.
+  - **Suggested fix:** Load the workflow in dispatch() and skip (or disable the trigger) when status==='archived', mirroring cron/webhook.
+- [ ] **#65 — Spec-mandated webhook timestamp replay protection is missing**
+  - `packages/triggers/src/webhook.ts:36-49` · category: security
+  - **Root cause:** File header claims 'HMAC-SHA256 signature verification + replay protection (§11.6)' but TSD §11.6 requires 'timestamp in signature payload; reject if > 5 minutes old'. handle() verifies only HMAC over the raw body; no timestamp/nonce check. The 60/min rate limit is not replay protection.
+  - **Failure scenario:** Attacker capturing one valid signed webhook request (log, proxy, browser history) replays it indefinitely at up to 60/min; each replay passes HMAC and creates a new execution, re-firing side effects with no expiry.
+  - **Suggested fix:** Require a signed timestamp (header included in HMAC input or signed payload field), reject requests older than 5 minutes, optionally track recent signature nonces per trigger.
+- [ ] **#66 — Trigger config catch-all union voids webhook secret requirement**
+  - `packages/types/src/schemas/trigger.ts:23-28` · category: security
+  - **Root cause:** TriggerConfigSchema unions typed configs with z.record(z.unknown()) so any object validates; WebhookTriggerConfigSchema.secret has no min length. The create route (routes/index.ts:429+) enforces cron/event branches but not webhook, and WebhookTriggerHandler accepts unsigned events when config.secret is falsy (triggers/webhook.ts:37).
+  - **Failure scenario:** POST /api/v1/workflows/:id/triggers {trigger_type:'webhook',config:{}} creates a secret-less trigger; anyone learning the trigger UUID can fire executions with arbitrary payloads via POST /webhooks/:triggerId without signature — unauthenticated side effects.
+  - **Suggested fix:** Discriminate the union on trigger_type (or validate per-type in the route), require secret.min(16) for webhook triggers, auto-generate a secret at creation.
+- [ ] **#67 — Unbounded node timeout_ms overflows setTimeout, instant NODE_TIMEOUT**
+  - `packages/types/src/schemas/workflow.ts:27-27` · category: bug
+  - **Root cause:** WorkflowNodeSchema.timeout_ms is z.number().int().positive() with no max; executor uses it unclamped in withTimeout's setTimeout (executor.ts:490,684). Delays > 2^31-1 fire after 1ms.
+  - **Failure scenario:** Long-running node sets timeout_ms=3000000000 (~35 days): node rejected with NODE_TIMEOUT after ~1ms on every attempt, retries exhaust, execution fails despite a 'generous' timeout.
+  - **Suggested fix:** Add .max(2_147_483_647) or clamp in withTimeout.
+- [ ] **#68 — Unbounded workflow_timeout_ms overflows setTimeout, aborts in 1ms**
+  - `packages/types/src/schemas/workflow.ts:56-58` · category: bug
+  - **Root cause:** WorkflowSettingsSchema.workflow_timeout_ms is z.number().int().positive() with no max. Executor passes it straight to setTimeout (executor.ts:290-293); Node clamps delays > 2^31-1 to 1ms (TimeoutOverflowWarning).
+  - **Failure scenario:** Approval workflow sets workflow_timeout_ms=2592000000 (30 days): every execution aborts after ~1ms with WORKFLOW_TIMEOUT; workflow can never succeed and the error misreports the configured timeout.
+  - **Suggested fix:** Cap at 2_147_483_647 (or a product max like 7 days) in the schema and/or clamp in the executor.
+- [ ] **#69 — Git commit sequence unserialized; concurrent versions race on index/HEAD**
+  - `packages/versioning/src/git.ts:40-73` · category: concurrency
+  - **Root cause:** commit() does writeFileSync -> git.add -> git.commit against the shared .git/index and HEAD with no mutex; isomorphic-git provides no cross-call locking. VersioningService.createVersion is invoked from authoring.update/restoreVersion which can run concurrently.
+  - **Failure scenario:** Two concurrent createVersion calls stage into the shared index and commit: a commit can snapshot wrong index contents, or both read the same parent HEAD and the second ref write orphans the first commit -> lost/corrupted version history.
+  - **Suggested fix:** Serialize all GitBackend mutations per repo (async mutex around write+add+commit, or single-writer queue).
+- [ ] **#70 — createVersion commits to git before DB insert with no compensation**
+  - `packages/versioning/src/service.ts:29-48` · category: error-handling
+  - **Root cause:** git.commit runs first (line 30), then store.workflowDefinitions.create (line 40). Two-phase write spans git + DB with no transaction/compensation; if the DB insert fails the git commit is already persisted.
+  - **Failure scenario:** git.commit succeeds, workflowDefinitions.create throws (UNIQUE conflict from concurrent update, DB outage). Caller sees error but git history advanced with an unreferenced commit; retries add more. Git history permanently diverges from the authoritative snapshot table.
+  - **Suggested fix:** Insert the DB snapshot first, or add a compensating action on failure; treat git as rebuildable from the snapshot table.
+- [ ] **#71 — Sandbox isolation asserted against a test-local mock, not the system**
+  - `tests/e2e/code-node-isolation.test.ts:32-81` · category: test
+  - **Root cause:** startMockSandbox is a regex-based fake defined inside the test; tests 1-3 assert the fake blocks fs/network. 'Integrates with executor' tests register a test-local 'code' adapter proxying to the fake. Production registers no 'code' adapter (server.ts:119-146) so code.* nodes are rejected at creation; apps/sandbox/src/server.ts returns status:'stub' with empty output. Nothing in the real dispatch chain is exercised.
+  - **Failure scenario:** A future real code adapter ignoring the sandbox 'blocked' status (or treating stub output as success) ships green: the suite only proves its own mock returns 'blocked' for code containing 'fs'.
+  - **Suggested fix:** Mark the suite as a contract sketch until the real sandbox lands; then drive code nodes through the real adapter + apps/sandbox and assert blocked status fails the execution. At minimum assert the stub's status:'stub' is treated as failure, not success.
+- [ ] **#72 — Egress 'E2E' never exercises the connector call path it claims to wire**
+  - `tests/e2e/egress-policy.test.ts:141-159` · category: test
+  - **Root cause:** Header claims the interceptor is wired into a workflow's connector call path but no workflow is executed anywhere in the file; all tests call egressEngine.evaluate / EgressInterceptor.request directly, duplicating integration/security/egress.test.ts. The allow-policy test explicitly abandons the real call (comment 153-156). Mock adapters in helpers.ts never do HTTP.
+  - **Failure scenario:** The interceptor-to-adapter contract (adapter must consult params.egress before every call) is untested end-to-end; an adapter skipping the check passes this entire 'E2E egress enforcement' suite.
+  - **Suggested fix:** Replace decision-only tests with real execution: executor wired with gate + real adapter pointed at loopback mock server; assert blocked domain fails NODE_EGRESS_BLOCKED and allowed domain reaches the mock exactly once.
+- [ ] **#73 — 'Startup runs recovery automatically' test never starts an app**
+  - `tests/e2e/failover.test.ts:281-318` · category: test
+  - **Root cause:** The test just calls new ExecutionRecovery(ctx.store).recover() directly — identical to the four preceding tests; comment (312-314) admits buildApp is not invoked. helpers.ts:135 builds ExecutionRecovery without the re-dispatch callback; crash-recovery.test.ts re-executes manually. The production startup chain (server.ts:269-294: recover -> dispatchToExecutor -> executor.execute) is never exercised end-to-end.
+  - **Failure scenario:** A regression where recovery resets executions to 'pending' but nothing re-dispatches them (original bugs 12/13) ships green: every recovery test drives the executor by hand.
+  - **Suggested fix:** Use a file-backed SQLite DB, seed an interrupted execution, call real buildApp() on the same DB path, assert the execution is re-dispatched to terminal state without manual executor invocation.
+- [ ] **#74 — RBAC E2E asserts a test-local permission table, enforces nothing**
+  - `tests/e2e/rbac-enforcement.test.ts:18-88` · category: test
+  - **Root cause:** isAllowed (18-25) is a permission map defined in the test using legacy read/write/admin roles, divergent from production requireRole's admin/editor/viewer model. Tests assert only this local table; no HTTP request is made. Meanwhile the admin gates on POST/GET/DELETE /api/v1/secrets and /api/v1/egress/policies (routes/index.ts:686-720,802-833) have zero test coverage repo-wide (no test file contains 'api/v1/secrets').
+  - **Failure scenario:** Removing preHandler:[requireRole('admin')] from the secrets routes lets any editor create/read secret metadata ship green — the 'RBAC enforcement (E2E)' suite still passes checking its own map.
+  - **Suggested fix:** Delete the local table; drive real HTTP requests with viewer/editor JWTs against /api/v1/secrets, /api/v1/egress/policies, /api/v1/audit asserting 403 FORBIDDEN_INSUFFICIENT_ROLE.
+- [ ] **#75 — Cron handler lacks dispatcher and shutdown; leaked node-cron timers**
+  - `tests/integration/_helpers/app.ts:159-161` · category: bug
+  - **Root cause:** buildTestApp creates CronTriggerHandler(store) with no dispatcher (production server.ts:251-253 passes dispatchToExecutor — the bug-14 fix) and registers no onClose hook calling cronHandler.shutdown() (production server.ts:358-368). trigger-to-execution.test.ts:191-213 registers a '*/5 * * * *' cron trigger never unregistered; node-cron@3.0.3 timers are not unref'd; afterAll closes app/conn but the task survives.
+  - **Failure scenario:** (1) Cron-fired executions staying 'pending' forever (production bug 14) cannot be caught by any integration test; (2) the leaked */5 task fires after conn.close() in a reused vitest worker, throwing 'database connection is not open' — unhandled rejection flaking sibling files.
+  - **Suggested fix:** Pass a dispatcher mirroring server.ts and add app.addHook('onClose', () => cronHandler.shutdown()); add an integration test that a cron tick runs the workflow to terminal state.
+- [ ] **#76 — Auth integration tests assert jose/bcrypt primitives and inline tautologies**
+  - `tests/integration/api/auth.test.ts:36-189` · category: test
+  - **Root cause:** The 'login returns access and refresh tokens' test (36-72) never calls POST /api/v1/auth/login — it hand-signs/verifies a JWT with jose and issues no refresh token. RBAC tests (118-153) assert a locally computed boolean; deactivated-user test asserts canLogin = user.is_active. Header comment about unwired routes is stale (routes/auth.ts + createAuthGuard exist). buildTestApp never registers registerAuthRoutes: zero HTTP login coverage in the integration suite.
+  - **Failure scenario:** A regression in the login route's is_active check, role mapping, or token TTL passes this 'Authentication & RBAC' integration suite because it only tests the jose library and boolean algebra.
+  - **Suggested fix:** Register auth routes in buildTestApp and rewrite as HTTP tests (login, wrong password, deactivated user, lockout); delete tautological role checks (real guard coverage lives in api/rbac.test.ts).
+- [ ] **#77 — Provider-failure test depends on nothing listening on localhost:11434**
+  - `tests/integration/api/llm.test.ts:77-87` · category: test
+  - **Root cause:** Test assumes the default Ollama URL is unreachable and accepts any of 500/502/503. On developer machines running Ollama (the project's default local LLM) the call succeeds with 200 and the test fails; another service on 11434 can produce arbitrary statuses.
+  - **Failure scenario:** Local verification flakes red for any developer running Ollama; the broad [500,502,503] acceptance hides which error path fired.
+  - **Suggested fix:** Override LOOP_LLM_OLLAMA_URL to a guaranteed-closed port (http://127.0.0.1:1) or a mock server returning 500; assert the specific error envelope/code.
+- [ ] **#78 — No unit test for expired/tampered JWT rejection or static API-key auth**
+  - `tests/unit/api/auth-login.test.ts:91-140` · category: test
+  - **Root cause:** Auth unit tests cover issuance happy path, scrypt helpers, lockout, pure RBAC helpers. createAuthGuard's negative JWT paths (expired token — issuance sets 12h exp at routes/auth.ts:118; tampered signature; wrong secret) and the static LOOP_API_KEY / x-api-key path (middleware/auth.ts:170) have no unit test.
+  - **Failure scenario:** Refactor adds generous clockTolerance or drops exp verification (stolen tokens valid forever), or breaks constant-time API-key compare: issuance tests stay green.
+  - **Suggested fix:** Add guard tests: SignJWT with past exp -> 401; different-secret signature -> 401; valid x-api-key -> principal 'system' with LOOP_API_KEY_ROLE; wrong key -> 401.
+- [ ] **#79 — Issued-token check uses .not.toBe(401); 403/500 also pass**
+  - `tests/unit/api/auth-login.test.ts:100-107` · category: test
+  - **Root cause:** Guarded request hits an unregistered route, so the meaningful outcome is 404. .not.toBe(401) passes on 403 (RBAC misclassification of a valid admin token) or 500 (guard crash on a valid token), not just success.
+  - **Failure scenario:** roleFromClaims/requiredRoleFor regression rejects valid admin JWTs with 403, or guard throws 500 on well-formed tokens: login still 'issues a working token' per this test.
+  - **Suggested fix:** Assert expect(guarded.statusCode).toBe(404) (guard passed, route absent), or register a real protected route and assert 200 plus resolved authRole.
+- [ ] **#80 — node:dns mock returns wrong shape for {all:true}; private check no-ops**
+  - `tests/unit/egress/gate.test.ts:21-27` · category: test
+  - **Root cause:** Mock lookup calls cb(null, '93.184.216.34') regardless of options. interceptor.ts calls promisified lookup with {all:true}, which really returns an ARRAY of {address,family}. With the mock it resolves to a string; firstPrivateAddress for-of's the string's characters, isPrivateIp(undefined) throws inside try, catch returns null. The hostname private-address branch is silently disabled in this whole file.
+  - **Failure scenario:** A regression in firstPrivateAddress's DNS path makes hostname-based SSRF blocking fail open; gate.test.ts stays green because its mock already forces that path to null.
+  - **Suggested fix:** Make mock honor opts.all: cb(null,[{address:'93.184.216.34',family:4}]) when all:true. Add a gate test where a hostname resolves to a private address and assert check() rejects even with an allow policy.
+- [ ] **#81 — isAvailable .resolves assertions are never awaited**
+  - `tests/unit/llm/providers.test.ts:84-88` · category: test
+  - **Root cause:** Three expect(provider.isAvailable()).resolves.toBe(...) calls neither awaited nor returned. Test completes synchronously and reports passed; a failing assertion becomes a floating promise rejection with unreliable attribution.
+  - **Failure scenario:** Regression makes isAvailable() return true for a keyless remote vendor (or false for a local server): test green; router/factory then skips or misroutes providers.
+  - **Suggested fix:** await each expect(...).resolves chain (or Promise.all).
+- [ ] **#82 — Archived-cron test passes vacuously if the scheduler never fires**
+  - `tests/unit/review-round4.test.ts:87-105` · category: test
+  - **Root cause:** Test registers an every-second job, sleeps 2.2s real time, asserts created == []. No positive control that a tick happened (store.workflows.getById is a vi.fn but never asserted). If node-cron never fires — scheduler regression, timezone bug, blocked event loop under CI load — the assertion passes for the wrong reason.
+  - **Failure scenario:** A node-cron upgrade or register() regression stops jobs firing at all: this 'archived workflows no longer trigger' test stays green while the same regression silently disables ALL cron triggers in production.
+  - **Suggested fix:** Assert expect(store.workflows.getById).toHaveBeenCalled() before asserting created == []; better, drive node-cron with vi.useFakeTimers + advanceTimersByTimeAsync.
+- [ ] **#83 — Path-traversal test swallows rejection and asserts on stale request log**
+  - `tests/unit/review-round4.test.ts:297-310` · category: test
+  - **Root cause:** .catch(() => undefined) discards any execute() failure, then asserts on seen[seen.length-1]. If the adapter throws BEFORE dispatching (or no-ops), no new request is recorded and last is the previous test's '/error' request — containing neither '../' nor '/etc/passwd', so both assertions pass without any traversal request being made.
+  - **Failure scenario:** GenericAdapter regression drops the request entirely on '..' paths (or crashes pre-dispatch): test still passes, giving false confidence that traversal is 'encoded and sent'.
+  - **Suggested fix:** Capture seen.length before the call; assert a new request was recorded (or the specific rejection code if fail-closed is intended) and that its URL contains the percent-encoded form (%2e%2e%2f).
+- [ ] **#84 — Migration idempotency test asserts >0 rows, not unchanged count**
+  - `tests/unit/state/migrations.test.ts:27-36` · category: test
+  - **Root cause:** Comment says 'Should still have same number of migrations' but assertion is only migrations.length > 0 after the second run. A runner bug re-inserting schema_migrations rows (or re-applying migrations) every startup passes. Checksum-mismatch handling also untested.
+  - **Failure scenario:** migrate.ts regression loses the version check and re-applies/re-records migrations each boot: duplicate rows accumulate, future version gating misbehaves, 'idempotent' test green.
+  - **Suggested fix:** Capture row count/version set after run 1, assert deep-equality after run 2; add a test that tampering with an applied migration's checksum fails loudly.
+- [ ] **#85 — Mock pg client lacks rowCount: PG completeIfActive race guard untested**
+  - `tests/unit/state/postgres.test.ts:29-50` · category: test
+  - **Root cause:** createMockConn's query returns only { rows } — no rowCount — and the file never calls executions.completeIfActive. PG implementation (postgres/index.ts:348-363) decides the cancel-vs-completion race via (result.rowCount ?? 0) > 0 plus AND status IN ('pending','running'). SQLite equivalent well tested (complete-if-active.test.ts); Scale-tier copy pinned by nothing.
+  - **Failure scenario:** PG refactor drops AND status IN (...) or mis-maps rowCount: on Scale a late executor completion overwrites a user cancel (or vice versa) — the exact race M3 fixed for SQLite — and all unit tests pass.
+  - **Suggested fix:** Extend mock to return programmable rowCount; add PG tests mirroring complete-if-active.test.ts (terminal -> rowCount 0 -> false; active -> rowCount 1 -> true; assert SQL contains status guard).
+- [ ] **#86 — 'skips disabled triggers' test exercises nothing; version snapshot unpinned**
+  - `tests/unit/triggers/dispatcher.test.ts:92-108` · category: test
+  - **Root cause:** Mock listEnabled returns [] — identical to 'no triggers exist'. Disabled-trigger filtering lives in store.triggers.listEnabled (SQL), which the mock bypasses. Mock has no workflows entity, so dispatch()'s version-snapshot call throws into catch and always defaults to 1; objectContaining assertion omits workflow_version, leaving the M5 stale-version fix unpinned.
+  - **Failure scenario:** Store regression makes listEnabled return disabled rows (or dispatch regresses to hardcoded version 1, resolving stale definitions during replay): both pass this suite.
+  - **Suggested fix:** Test enablement against real SQLite store (enabled+disabled triggers, assert only enabled fires). Add workflows.getById returning version 3; assert executions.create receives workflow_version: 3.
+- [ ] **#87 — HMAC tests use rawBody === JSON.stringify(body); raw-byte pin is vacuous**
+  - `tests/unit/triggers/webhook.test.ts:12-38` · category: test
+  - **Root cause:** Every test sets rawBody = JSON.stringify(body), so a handler regression verifying HMAC over JSON.stringify(params.body) instead of params.rawBody produces identical signatures and passes — precisely the bug class the 'raw-body HMAC' commit fixed (senders with different key order/whitespace would all be rejected).
+  - **Failure scenario:** Someone 'simplifies' webhook.ts to re-serialize the parsed body for HMAC: all unit tests pass; in production every webhook from a sender whose serialization differs from V8's JSON.stringify gets 401.
+  - **Suggested fix:** Sign a rawBody differing from JSON.stringify(body) (spaces/reversed key order), pass parsed object as body, assert acceptance. Add negative case where signature matches JSON.stringify(body) but NOT rawBody, assert rejection.
+
+## Low severity (64)
+
+Remediation checklist — tick each item after fixing and verifying (IDs match full-audit.json).
+
+- [ ] **#88 — Duplicate settings key silently overrides import resolver config**
+  - `.eslintrc.js:41-45` · category: maintainability
+  - **Root cause:** Object literal defines settings twice (14-18 and 41-45); second wins, switching import/resolver from node to typescript — but eslint-import-resolver-typescript is not in devDependencies, so resolver-dependent import rules would fail to load.
+  - **Failure scenario:** Enabling import/no-unresolved errors with 'unable to load resolver typescript' for every file; the dead first settings block misleads readers about the active config.
+  - **Suggested fix:** Merge into one settings block; add eslint-import-resolver-typescript or keep the node resolver.
+- [ ] **#89 — runWithCorrelation with empty callback is a no-op**
+  - `apps/api/src/middleware/requestId.ts:24-25` · category: maintainability
+  - **Root cause:** runWithCorrelation({request_id}, () => {}) runs an empty function, establishing no context for downstream handlers; comment claims it covers them. Correlation works only because traceIdHook (registered after) wraps Fastify's done in storage.run. Reordering/removing traceIdHook would silently lose request_id correlation.
+  - **Failure scenario:** Future refactor registers traceIdHook before requestIdHook or drops it -> getCorrelationContext() undefined in handlers -> error responses and logs lose request_id with no test-visible signal.
+  - **Suggested fix:** Remove the no-op call and misleading comment, or wrap the hook continuation like traceIdHook; keep a single hook responsible for ALS context.
+- [ ] **#90 — scryptSync blocks the event loop in the login path**
+  - `apps/api/src/routes/auth.ts:37-53` · category: performance
+  - **Root cause:** hashPassword/verifyPassword use scryptSync (default N=16384,r=8,p=1, tens of ms) inside the request handler, stalling all concurrent requests on the single-threaded loop per login attempt.
+  - **Failure scenario:** Burst of concurrent logins (or brute-force stream within rate limit): each attempt blocks the loop ~50-100ms; unrelated API requests and webhook deliveries queue behind KDF work.
+  - **Suggested fix:** Use async crypto.scrypt (promisified) in verifyPassword/hashPassword.
+- [ ] **#91 — Unbounded per-username lockout map grows on failed logins**
+  - `apps/api/src/routes/auth.ts:61-71` · category: security
+  - **Root cause:** Module-level failures Map only deletes entries on successful login (clearFailures). registerFailure creates entries for nonexistent usernames too; nothing expires them; global rate limit (1000/min/IP) is the only brake.
+  - **Failure scenario:** Attacker sprays login with random usernames at the allowed rate -> ~1.4M map entries/day accumulate permanently -> slow memory exhaustion of the API process.
+  - **Suggested fix:** Prune expired below-threshold entries on a timer or when the map exceeds a size cap; key by username+IP or cap total entries.
+- [ ] **#92 — JWT TTL config ignored; 12h expiry hard-coded**
+  - `apps/api/src/routes/auth.ts:112-119` · category: bug
+  - **Root cause:** Login signs with setExpirationTime(now + 12*60*60) and reports expires_in 12h, while config.ts:145-146 defines LOOP_JWT_ACCESS_TTL (default '15m') and LOOP_JWT_REFRESH_TTL ('7d'); neither read anywhere, no refresh endpoint exists.
+  - **Failure scenario:** Operator sets LOOP_JWT_ACCESS_TTL=5m expecting short-lived tokens -> issued tokens remain valid 12 hours, widening the stolen-token window 144x beyond configured policy.
+  - **Suggested fix:** Parse LOOP_JWT_ACCESS_TTL and use for setExpirationTime/expires_in; implement refresh issuance or remove dead refresh config.
+- [ ] **#93 — Manual execute runs archived workflows (explicit action, no status guard)**
+  - `apps/api/src/routes/index.ts:300-329` · category: bug
+  - **Root cause:** authoring.getById returns archived rows (workflow-authoring/service.ts:59-63, no status check) and POST /execute dispatches the definition without checking status. Cron/webhook explicitly refuse archived workflows; manual does not. Downgraded to Low because manual execution is an explicit user action (arguably intentional, like executing inactive workflows in other orchestrators) — but it defeats DELETE's stated purpose of disarming the flow, and the event-trigger path (separate Medium finding) has no such excuse.
+  - **Failure scenario:** User DELETEs a workflow (archives, disarms triggers) -> anyone later POSTs /api/v1/workflows/<id>/execute -> archived definition runs with real connector side effects.
+  - **Suggested fix:** Decide and document the policy: either reject status==='archived' on POST /execute with 409 (mirroring cron/webhook), or document that manual execution of archived workflows is allowed.
+- [ ] **#94 — Egress policy PUT/DELETE report success for nonexistent ids**
+  - `apps/api/src/routes/index.ts:707-720` · category: bug
+  - **Root cause:** Unlike connectors/triggers routes, PUT and DELETE /api/v1/egress/policies/:id never check existence; store update/delete affects zero rows and the route returns updated:true / deleted:true (and invalidates cache).
+  - **Failure scenario:** Admin UI deletes an already-deleted policy id (double click/stale list) -> API answers deleted:true -> UI believes the policy existed and was removed, masking state drift; PUT typo'd id answers updated:true while nothing changed.
+  - **Suggested fix:** Load the policy first and throw NotFoundError when absent, matching other resource routes.
+- [ ] **#95 — Cron keeps firing during executor drain on shutdown**
+  - `apps/api/src/server.ts:358-368` · category: concurrency
+  - **Root cause:** onClose drains the executor (up to 10s) BEFORE cronHandler.shutdown(); a cron job firing inside that window creates and dispatches a new execution that store.close() then severs (completion writes fail and are swallowed).
+  - **Failure scenario:** SIGTERM just before a cron tick: drain waits on old runs, cron fires mid-drain, new execution starts, store.close() runs -> execution left running/pending in DB, recovered (or failed) only on next startup.
+  - **Suggested fix:** Call cronHandler.shutdown() before executor.drain() so no new executions start during the drain window.
+- [ ] **#96 — Dead parallel canvas components diverge from the live editor and hide bugs**
+  - `apps/canvas/src/components/canvas/CanvasEditor.tsx:47-61` · category: maintainability
+  - **Root cause:** CanvasEditor, NodeConfigPanel, NodeLibrary, CustomEdge, ExecutionMonitor and the apiClient REST object are exported but never imported by any page. They contain latent bugs (handleNodesChange passes pre-change stale nodes; NodeConfigPanel writes 'label' into config while reading node.data.label) and duplicate palette/config logic WorkflowEditor re-implemented.
+  - **Failure scenario:** Developer fixes node-config UX in NodeConfigPanel.tsx (obvious name) and ships a change with zero effect because WorkflowEditor uses its own internal ConfigPanel.
+  - **Suggested fix:** Delete unused modules or wire them into the editor; single source of truth for palette, config panel and API client.
+- [ ] **#97 — res.json() unguarded: non-JSON error bodies surface as SyntaxError**
+  - `apps/canvas/src/lib/api.ts:136-146` · category: error-handling
+  - **Root cause:** requestEnvelope awaits res.json() without a catch. When the API is down and the Vite proxy/gateway returns HTML/text 502, the thrown SyntaxError replaces the intended ApiError with HTTP status.
+  - **Failure scenario:** API crashes; Dashboard shows 'SyntaxError: Unexpected token <' instead of 'API unreachable (502)'.
+  - **Suggested fix:** Parse defensively (res.json().catch(() => null)) and throw ApiError with status when body is not a JSON envelope, as api/client.ts does.
+- [ ] **#98 — No-preference theme default disagrees with pre-mount script (dark vs light)**
+  - `apps/canvas/src/lib/theme.ts:13-21` · category: bug
+  - **Root cause:** readInitial returns 'dark' unless prefers-color-scheme: light matches; index.html's pre-paint script (line 22) defaults to 'light' unless prefers-color-scheme: dark matches. With no OS preference both queries are false: page paints light then flips to dark at module load.
+  - **Failure scenario:** User with no OS color-scheme preference: light flash then dark UI; documented suite-wide light default not honored.
+  - **Suggested fix:** Use the same query and fallback in both places (OS dark -> dark, else light).
+- [ ] **#99 — No React error boundary anywhere; one render exception white-screens app**
+  - `apps/canvas/src/main.tsx:6-10` · category: error-handling
+  - **Root cause:** Tree rendered without any ErrorBoundary. Any render-time throw (malformed server payload reaching .map/.toLowerCase on a non-string) unmounts the entire SPA to a blank page.
+  - **Failure scenario:** Workflow row arrives with tags:null from an API variant; Workflows' w.tags.some throws during render and the whole app blanks out.
+  - **Suggested fix:** Wrap routes in an error boundary with reload/back fallback.
+- [ ] **#100 — Dashboard stats computed from first 100 rows only; totals ignored**
+  - `apps/canvas/src/pages/Dashboard.tsx:41-47` · category: bug
+  - **Root cause:** listWorkflows/listExecutions fetched with per_page:100; stats (counts, success rate, 24h volume) computed over that page; meta.total discarded.
+  - **Failure scenario:** Installation with 350 workflows / 2,000 executions shows 'Workflows 100', 'Executions 100' and success rate from only the 100 most recent runs.
+  - **Suggested fix:** Use meta.total for counts and server-side aggregates (or paged fetch) for rates/timeline.
+- [ ] **#101 — Node-usage chart tooltip mislabels counts as 'executions'**
+  - `apps/canvas/src/pages/Dashboard.tsx:100-109` · category: bug
+  - **Root cause:** ChartTooltip hardcodes '{value} executions' and is reused for the 'Node usage by agent' BarChart (line 305) where values are node counts.
+  - **Failure scenario:** Hover 'vault' bar in 'Node usage by agent': shows '12 executions' instead of 12 nodes — misleading operational data.
+  - **Suggested fix:** Pass a unit label prop or use a separate tooltip for the node chart.
+- [ ] **#102 — load() lacks stale-response guard when route id changes**
+  - `apps/canvas/src/pages/ExecutionDetail.tsx:114-125` · category: concurrency
+  - **Root cause:** api.getExecution(id).then(setExecution) has no alive/request-id check. Back/forward navigation between execution URLs re-runs load with a new id while the old fetch may be in flight; the late old response overwrites the new execution.
+  - **Failure scenario:** View execution A (slow request), Back then open B quickly: A's response lands last, page shows A's data under B's URL while B's live events mutate it.
+  - **Suggested fix:** Track an effect-scoped alive flag or compare id before applying the response.
+- [ ] **#103 — Node trace keys differ between WS-created and REST rows; expansion collapses**
+  - `apps/canvas/src/pages/ExecutionDetail.tsx:245-247` · category: bug
+  - **Root cause:** NodeTraceRow keyed by node.id: WS/snapshot rows use node_id as id (blankNode), REST rows use DB uuid. When the 4s poll replaces a WS row with its REST counterpart the key changes, remounting the row and resetting local expanded state.
+  - **Failure scenario:** During a live run user expands a node's output; next poll swaps row id from 'node_3' to uuid and the panel collapses every few seconds.
+  - **Suggested fix:** Key rows by node_id (stable across both sources).
+- [ ] **#104 — Executions list polls every 8s unconditionally, even when idle**
+  - `apps/canvas/src/pages/Executions.tsx:24-28` · category: performance
+  - **Root cause:** Comment says 'Live refresh while any execution is running' but the interval is created regardless of active rows and never pauses on hidden tabs.
+  - **Failure scenario:** Executions tab left open overnight on idle system: ~10,800 needless list requests, each scanning the executions table.
+  - **Suggested fix:** Only poll when some row is active (and/or use document.visibilityState).
+- [ ] **#105 — Create wizard shows Tags field for templates but silently discards it**
+  - `apps/canvas/src/pages/Workflows.tsx:66-84` · category: bug
+  - **Root cause:** Template branch calls instantiateTemplate with only name/description (API accepts only those), yet step 2 renders an editable Tags input prefilled from the template. User tag edits dropped without notice.
+  - **Failure scenario:** Pick template, edit tags to 'finance, prod', create — workflow carries template's original tags; user edits vanished.
+  - **Suggested fix:** Hide/disable tags input in template mode, or apply tags via follow-up updateWorkflow.
+- [ ] **#106 — Snapshot merge never updates status of already-known nodes**
+  - `apps/canvas/src/store/executions.ts:40-59` · category: bug
+  - **Root cause:** reduceNodes's snapshot branch only inserts nodes whose node_id is unseen; existing rows keep stale status/output. Snapshot rows also lack started_at/completed_at so duration renders '—'.
+  - **Failure scenario:** REST load returns node X 'running'; X completes before WS snapshot. Snapshot says 'succeeded' but existing row kept; execution flips to succeeded (poll stops) leaving node X displayed 'running' on a finished execution.
+  - **Suggested fix:** Merge snapshot fields (status/output/error) into existing rows, preferring newer snapshot data.
+- [ ] **#107 — Archive removes row locally; 'archived' filter shows nothing until reload**
+  - `apps/canvas/src/store/workflows.ts:56-59` · category: bug
+  - **Root cause:** deleteWorkflow filters the workflow out of the store instead of updating status to 'archived'. List endpoint includes archived rows; server and client disagree until next load.
+  - **Failure scenario:** Archive a workflow, click 'archived' filter — list empty though workflow exists server-side; reappears only after navigating away and back.
+  - **Suggested fix:** Update the row's status to 'archived' in place rather than removing it.
+- [ ] **#108 — Dev server binds 0.0.0.0 and proxies /api and /metrics to loopback API**
+  - `apps/canvas/vite.config.ts:6-16` · category: security
+  - **Root cause:** host:'0.0.0.0' exposes the Vite dev server to the whole LAN while proxying to an API possibly bound to localhost only, bypassing the API's network isolation; /metrics also exposed without auth.
+  - **Failure scenario:** pnpm dev on shared Wi-Fi with API on 127.0.0.1: anyone on the network reaches http://laptop:5173/api/v1/workflows and /metrics through the proxy.
+  - **Suggested fix:** Bind to localhost by default (opt-in host flag); drop /metrics proxy unless needed.
+- [ ] **#109 — Helm 'required' secrets render empty without validation**
+  - `helm/loop/templates/secrets.yaml:9-11` · category: bug
+  - **Root cause:** global.encryptionKey/jwtSecret default to '' and are b64enc'd without Helm's required function; install succeeds creating empty secrets; API config loader rejects the empty/short key at boot.
+  - **Failure scenario:** helm install without --set values installs 'successfully', then every API pod crash-loops on encryption-key validation — failure surfaces late and opaquely.
+  - **Suggested fix:** Use {{ required "global.encryptionKey is required" .Values.global.encryptionKey | b64enc }} (same for jwtSecret and postgres password).
+- [ ] **#110 — EmailNotifier stub silently succeeds without sending**
+  - `packages/connectors/src/notification/index.ts:33-36` · category: error-handling
+  - **Root cause:** send() only logs and returns; callers receive success for an email never sent.
+  - **Failure scenario:** When the notification path is wired, email notifications no-op while workflows and the queue report success.
+  - **Suggested fix:** Throw an explicit 'not implemented' error (or return failure) until SMTP lands.
+- [ ] **#111 — Retry sleep head-of-line-blocks the notification queue**
+  - `packages/connectors/src/notification/index.ts:70-87` · category: performance
+  - **Root cause:** drain() awaits the backoff sleep (5s/30s/5min/30min) inline before processing remaining queued items; one failing item stalls everything behind it.
+  - **Failure scenario:** One failing webhook at the head of a 20-item queue delays all other notifications by up to 30 minutes cumulatively.
+  - **Suggested fix:** Re-enqueue with a per-item due timestamp (or separate timers) instead of sleeping inside the drain loop.
+- [ ] **#112 — Recap JWT echoed into create_meeting/sync request bodies**
+  - `packages/connectors/src/recap/adapter.ts:48-51` · category: security
+  - **Root cause:** token resolved from input['token'] (canvas recap.sync form offers a token field); create_meeting/sync pass the whole params.input — including token — as the JSON body, duplicating the credential beyond the Authorization header.
+  - **Failure scenario:** JWT persisted in Recap's request-body logs in addition to the auth header, widening credential exposure on the sibling service.
+  - **Suggested fix:** Strip token (and any auth material) from the body before JSON.stringify.
+- [ ] **#113 — healthCheckAll race timeout never cancels the losing probe**
+  - `packages/connectors/src/registry.ts:79-88` · category: performance
+  - **Root cause:** Promise.race resolves false after timeoutMs but the underlying healthCheck keeps running with undici's default 300s headers/body timeout; no AbortSignal passed. /ready is unauthenticated and rate-limit-exempt (server.ts:76,333-337).
+  - **Failure scenario:** Repeated /ready scrapes against a blackholed sibling accumulate pending sockets (each lives up to 300s), growing memory/FD usage on the API process.
+  - **Suggested fix:** Tie an AbortController to the race timeout and forward its signal into healthCheck.
+- [ ] **#114 — Non-JSON Vault /query reply silently becomes empty answer**
+  - `packages/connectors/src/vault/adapter.ts:215-222` · category: bug
+  - **Root cause:** callVault returns {text} for any non-JSON 200 (needed for get_text raw text), so ragQuery maps answer:'' citations:[] from it. Recap added an explicit non-JSON guard for this misconfiguration class (recap/adapter.ts:124-131); Vault's /query path has none.
+  - **Failure scenario:** LOOP_VAULT_URL points at a proxy serving a 200 HTML page: RAG node 'succeeds' with an empty answer instead of failing loudly; workflow continues on garbage.
+  - **Suggested fix:** Require JSON for /query responses (keep lenient path only for /files/{id}/text).
+- [ ] **#115 — EgressInterceptor is dead code diverging from EgressGate**
+  - `packages/egress/src/interceptor.ts:105-117` · category: maintainability
+  - **Root cause:** EgressInterceptor exported (index.ts:3) but never used in apps/ or packages/ (only dist typings and tests). Its request() applies only engine.evaluate — no airgap kill switch, no private-address blocklist — unlike EgressGate which all adapters actually use.
+  - **Failure scenario:** Developer wires EgressInterceptor.request believing it the sanctioned choke point -> outbound calls silently lose airgap and SSRF private-range protections EgressGate provides.
+  - **Suggested fix:** Delete EgressInterceptor or make it delegate to EgressGate so the two enforcement paths cannot diverge.
+- [ ] **#116 — resolveIP forces IPv4; ip_range policies never match IPv6 targets**
+  - `packages/egress/src/resolver.ts:17-28` · category: bug
+  - **Root cause:** resolveIP looks up with {family:4}; for IPv6-only hosts lookup throws and the hostname is returned, so ipInCIDR/ipToNum (engine.ts:121-144, IPv4-only) never match. ip_range allow/deny policies silently inapplicable to IPv6 literals and IPv6-only DNS names.
+  - **Failure scenario:** Admin adds deny ip_range for an IPv6 range and allows a domain resolving IPv6-only -> evaluate() compares hostname string against CIDR, never matches the deny; an ip_range ALLOW for IPv6 can never permit traffic, breaking intended policy.
+  - **Suggested fix:** Resolve both families and implement IPv6-aware CIDR matching (or explicitly reject ip_range evaluation for IPv6 with a logged reason).
+- [ ] **#117 — CircuitBreaker never resets failure count on closed-state success**
+  - `packages/engine/src/circuitBreaker.ts:36-54` · category: bug
+  - **Root cause:** failures only reset when a half_open probe succeeds or via reset(). Successes while closed leave the counter intact, so intermittent failures accumulate across arbitrarily long healthy periods until threshold opens the circuit against a currently-healthy service. Exported utility; not yet wired into dispatch.
+  - **Failure scenario:** threshold=5: four isolated failures spread over days (each followed by thousands of successes), then one more transient failure -> state open, all calls rejected for cooldown despite a 99.9%-healthy upstream.
+  - **Suggested fix:** Reset this.failures = 0 on any successful execute() while closed (consecutive-failure semantics), or use a sliding window.
+- [ ] **#118 — activeRuns leaks when pre-try startup awaits throw**
+  - `packages/engine/src/executor.ts:264-296` · category: concurrency
+  - **Root cause:** this.activeRuns++ (264) happens before the try/finally that decrements it (try starts 298). If loadCompletedOutputs or store.executions.updateStatus('running') (272) throws (DB busy/IO error), the finally never runs: activeRuns stays elevated forever while metrics.activeExecutions was never incremented.
+  - **Failure scenario:** One transient SQLITE_BUSY during the running transition leaves activeRuns permanently >=1: every subsequent graceful shutdown's drain(10_000) waits the full 10s logging 'drain timed out' with zero in-flight work; repeated occurrences grow the counter unbounded.
+  - **Suggested fix:** Move activeRuns++ inside the try block (or wrap the whole post-increment startup sequence in the same try/finally).
+- [ ] **#119 — Cancelled executions emit/record execution_failed events**
+  - `packages/engine/src/executor.ts:986-995` · category: bug
+  - **Root cause:** On API cancel executeInner throws EXECUTION_CANCELLED; catch calls completeExecution(...,'failed') plus recordEvent('execution_failed', reason:'node_error'). completeIfActive keeps the row 'cancelled', but the bus event type is finalStatus==='succeeded' ? succeeded : failed and the durable event unconditionally 'execution_failed'. foldExecutionEvents then reports 'failed' for a cancelled execution.
+  - **Failure scenario:** User cancels a running execution: WS monitors receive type 'execution_failed' (status 'cancelled'); event log stores execution_failed/node_error. Replay snapshot shows 'failed' while the executions row says 'cancelled' — audit trail and live view contradict the store.
+  - **Suggested fix:** When finalStatus is 'cancelled' emit a cancellation event (or skip the failure event) and record an execution_cancelled-equivalent payload.
+- [ ] **#120 — DelayNode timer is not abortable and outlives failed executions**
+  - `packages/engine/src/nodes/index.ts:277-282` · category: concurrency
+  - **Root cause:** DelayNode.delay uses a bare setTimeout with no AbortSignal support and no clearance. When the node/workflow timeout aborts, withTimeout rejects and the execution fails, but the delay timer keeps running (and the event loop alive) for the full requested duration.
+  - **Failure scenario:** control.delay duration_ms=3600000 with default 30s node timeout: node fails at 30s, execution settles, drain() reports fully drained — yet a 1-hour timer remains pending. Embedded/SDK hosts and tests that close the store hang until it fires; shipped server survives only because main() force-exits.
+  - **Suggested fix:** Accept an AbortSignal in DelayNode.delay, clear the timer on abort and reject; pass the fused node signal from dispatchNode.
+- [ ] **#121 — StateMachine is dead code and contradicts actual transitions**
+  - `packages/engine/src/stateMachine.ts:12-27` · category: maintainability
+  - **Root cause:** StateMachine exported but never invoked in production (grep-verified); stores apply transitions directly. Its tables forbid transitions the system performs: recovery running->pending (recovery.ts:54), retry/resume failed->running (executor.ts:612), replay terminal->running (executor.ts:272). Documented state machine misdescribes real behavior.
+  - **Failure scenario:** Developer adds a guard using StateMachine.transitionExecution for recovery: running->pending throws and crash recovery breaks — or trusts the table and assumes terminal states immutable, which replay violates.
+  - **Suggested fix:** Enforce transitions at the store/executor boundary (adding legitimate resume/recovery edges explicitly) or delete/annotate the module as aspirational.
+- [ ] **#122 — Anthropic drops all but the first system message**
+  - `packages/llm/src/anthropic.ts:25-26` · category: bug
+  - **Root cause:** find() keeps only the first system message (used at line 41); LLM connector and /llm/complete accept multiple system entries; gemini.ts:38 joins them all — behavior silently differs per vendor.
+  - **Failure scenario:** messages=[system A, system B, user] on Anthropic: instruction B never reaches the model; same workflow on Gemini honors both.
+  - **Suggested fix:** Join all system contents with newlines like gemini.ts:38.
+- [ ] **#123 — Ollama registered without default model -> router sends 'default'**
+  - `packages/llm/src/factory.ts:98-98` · category: bug
+  - **Root cause:** OllamaProvider always registered but LOOP_LLM_OLLAMA_MODEL optional (config.ts:84) with no fallback model; router.ts:59 substitutes the literal 'default', not a real Ollama model.
+  - **Failure scenario:** Out of the box (local-first, no env tuning), an llm.complete node without explicit model fails with Ollama 404 "model 'default' not found".
+  - **Suggested fix:** Default to a common model (or discover first installed model via /api/tags) when env unset.
+- [ ] **#124 — CompletionRequest.stream advertised but ignored by all providers**
+  - `packages/llm/src/interface.ts:11-11` · category: maintainability
+  - **Root cause:** openai.ts:49 and ollama.ts:33 hardcode stream:false; anthropic/azure/gemini omit the field (non-streaming default). No provider honors req.stream.
+  - **Failure scenario:** Caller sets stream:true expecting incremental delivery and silently receives a fully buffered response.
+  - **Suggested fix:** Remove the flag until streaming is implemented, or implement it; document the limitation either way.
+- [ ] **#125 — Ollama finish_reason hardcoded 'stop'; truncation invisible**
+  - `packages/llm/src/ollama.ts:61-61` · category: bug
+  - **Root cause:** /api/chat returns done_reason ('stop'|'length'|'load') but adapter always reports 'stop'.
+  - **Failure scenario:** num_predict/max_tokens cuts the answer mid-sentence; downstream nodes treat truncated output as complete.
+  - **Suggested fix:** Map data.done_reason into finish_reason.
+- [ ] **#126 — Ollama embed usage always 0 despite prompt_eval_count**
+  - `packages/llm/src/ollama.ts:80-81` · category: bug
+  - **Root cause:** /api/embed responses include prompt_eval_count but adapter hardcodes usage.total_tokens=0.
+  - **Failure scenario:** Token accounting/budgeting under-reports all embedding usage routed through Ollama.
+  - **Suggested fix:** Read prompt_eval_count from the response into usage.total_tokens.
+- [ ] **#127 — Router never calls isAvailable(); stubs return empty success**
+  - `packages/llm/src/router.ts:37-77` · category: bug
+  - **Root cause:** LLMProvider.isAvailable defined and implemented by every provider but never invoked (grep-verified). bedrock.ts:16-25 and vertex.ts:15-24 return success-shaped empty completions; comments claim isAvailable=false prevents selection, untrue of this router. Latent: createLLMRouter never registers the stubs today.
+  - **Failure scenario:** Future wiring registering exported BedrockProvider/VertexProvider silently produces empty answers counted as successful completions, usage 0, finish_reason 'stop'.
+  - **Suggested fix:** Skip providers whose isAvailable() resolves false (cache the probe), or make stubs throw instead of returning empty content.
+- [ ] **#128 — OTLP span export bypasses Egress Policy Engine; carries payload fragments**
+  - `packages/observability/src/exporters.ts:70-100` · category: security
+  - **Root cause:** OtlpHttpSpanExporter POSTs via global fetch directly, outside the egress gate governing all other outbound calls. Span attrs include error.message = String(err) (tracing.ts:247, executor.ts:548/229); upstream errors embed up to 200 chars of upstream response body (connectors/generic/adapter.ts:81-83) — customer data. Defaults are safe (console exporter, localhost:4318 only when opted in).
+  - **Failure scenario:** Operator sets TRACE_EXPORTER=otlp OTLP_ENDPOINT=https://collector.vendor.example; a failing generic-http node puts customer response-body fragments into error.message, POSTed to the external collector without egress evaluation — contrary to the sovereignty guarantee.
+  - **Suggested fix:** Route OTLP export through the egress policy check (or document as operator-sanctioned egress); truncate/redact error.message attrs before export.
+- [ ] **#129 — OTLP export() throws on circular/BigInt attrs despite never-throw contract**
+  - `packages/observability/src/exporters.ts:82-117` · category: error-handling
+  - **Root cause:** JSON.stringify(toOtlpJson(span)) (82) and toOtlpAnyValue's JSON.stringify(value) (116) throw TypeError on circular/BigInt attribute values; the '?? String(value)' fallback never runs because stringify throws first. exportSpan's try/catch (tracing.ts:212-219) prevents a crash but silently drops the span.
+  - **Failure scenario:** span.setAttr('ctx', circularObject): every such span lost with only a debug log, violating the SpanExporter 'must not throw' contract for direct consumers.
+  - **Suggested fix:** Use a safe serializer (pino stdSerializers or a replacer handling cycles/BigInt) inside toOtlpJson/toOtlpAnyValue.
+- [ ] **#130 — toHex32 collapses non-hex inbound trace ids to colliding zero ids**
+  - `packages/observability/src/exporters.ts:105-108` · category: bug
+  - **Root cause:** X-Trace-Id accepted unvalidated (middleware/traceId.ts); toHex32 strips non-hex chars then padEnd(32,'0'). Ids with no hex chars ('zzz','yyy') all become 32 zeros; >32-hex ids truncated.
+  - **Failure scenario:** Clients sending X-Trace-Id 'zzz' and 'qqq' both export traceId 000...0; unrelated traces merge in the collector, trace lookups return mixed spans.
+  - **Suggested fix:** Hash non-conforming ids to 32 hex chars (sha256 slice) instead of zero-padding, or validate/replace the header at ingress.
+- [ ] **#131 — Sibling root spans sample independently, breaking trace-level sampling**
+  - `packages/observability/src/tracing.ts:151-168` · category: bug
+  - **Root cause:** decideSampling inherits only from an active parent span; roots sharing the correlation trace_id each call Math.random() separately, so one trace_id can be partially exported despite the documented all-or-nothing invariant.
+  - **Failure scenario:** TRACE_SAMPLE_RATE=0.5: a request's API-side root span is sampled but its loop.execution root dropped (or vice versa); collector shows half-traces, trace-level debugging misleads.
+  - **Suggested fix:** Cache the sampling decision per trace_id (bounded LRU) and reuse for all roots of that trace.
+- [ ] **#132 — Migration checksum stored but never verified against applied rows**
+  - `packages/state/src/migrate.ts:30-57` · category: bug
+  - **Root cause:** Both runners compute sha256(migration.sql) and store it, but only compare the version string against appliedSet; stored checksum never read back. Same gap in postgres/migrations.ts:29-41.
+  - **Failure scenario:** Developer edits an applied migration's SQL keeping the version: runner skips it, checksum mismatch undetected, live schema drifts from code despite the checksum column existing to catch this.
+  - **Suggested fix:** On startup compare each applied migration's stored checksum to the current SQL hash; fail/warn on mismatch.
+- [ ] **#133 — PG workflows.delete reads execution ids outside the transaction**
+  - `packages/state/src/postgres/index.ts:219-232` · category: concurrency
+  - **Root cause:** SELECT id FROM workflow_executions (line 221) runs on the dedicated client BEFORE BEGIN (223). SQLite performs the equivalent read inside its transaction. An execution inserted between SELECT and DELETEs is missed by execIds.
+  - **Failure scenario:** New execution created after SELECT but before DELETE workflow_executions: its child rows not in execIds, DELETE hits node_executions FK -> whole transaction rolls back, delete fails.
+  - **Suggested fix:** Move the SELECT inside the BEGIN...COMMIT block.
+- [ ] **#134 — SQLite workflow version bump is read-then-write; PG uses atomic version+1**
+  - `packages/state/src/sqlite/index.ts:160-167` · category: concurrency
+  - **Root cause:** workflows.update SELECTs current.version (162) and writes version+1 computed in JS (163), not in a transaction. PG (postgres/index.ts:197) uses atomic 'version = version + 1'. Within single-process Core the synchronous better-sqlite3 block cannot interleave; only bites across processes sharing the file.
+  - **Failure scenario:** Two processes sharing the SQLite file both read version N and write N+1 (lost update); duplicated version trips UNIQUE(workflow_id,version) on snapshot.
+  - **Suggested fix:** Use SQL increment (version = sql`version + 1`) or wrap read+write in a transaction.
+- [ ] **#135 — Registry validates only zod shape, not topology or node types**
+  - `packages/templates/src/registry.ts:147-159` · category: bug
+  - **Root cause:** load() runs WorkflowDefinitionSchema.safeParse but never validateWorkflow (dangling edges, cycles, duplicate ids) nor the node-type check the API applies at creation. All 30 bundled templates statically scanned clean; only bites custom LOOP_TEMPLATES_DIR content.
+  - **Failure scenario:** Customer drops a template with a dangling edge into LOOP_TEMPLATES_DIR: appears in gallery but every instantiate 400s ('Invalid workflow topology') — broken surface with no load-time diagnostic.
+  - **Suggested fix:** Run validateWorkflow and known-node-type checks at load; record failures in loadErrors instead of serving unusable templates.
+- [ ] **#136 — Template id-collision suffix can overwrite an existing template**
+  - `packages/templates/src/registry.ts:159-159` · category: bug
+  - **Root cause:** On duplicate id the key is `${id}-${this.templates.size}` with no uniqueness check; the suffix can equal an id already loaded from an earlier file. Comment ('later file wins but keeps a unique key') misdescribes behavior.
+  - **Failure scenario:** Files sorted a.json(id 'x-2'), b.json(id 'x'), c.json(id 'x'): c gets key 'x-2' (size=2), Map.set silently replaces a's template — a shipped template disappears with no load error.
+  - **Suggested fix:** Loop incrementing a counter until the key is unused (while templates.has(key)).
+- [ ] **#137 — NotFoundError cast emits error codes outside the ErrorCode union**
+  - `packages/types/src/errors.ts:82-88` · category: bug
+  - **Root cause:** `NOT_FOUND_${resource.toUpperCase()}` as ErrorCode accepts any resource string. Real callers pass 'template' and 'workflow_version', producing NOT_FOUND_TEMPLATE / NOT_FOUND_WORKFLOW_VERSION which are not ErrorCode members (§12.1 envelope contract).
+  - **Failure scenario:** GET /api/v1/templates/<unknown> returns NOT_FOUND_TEMPLATE; typed clients switching on ErrorCode fall through to the generic handler; contract tests against the documented enum fail.
+  - **Suggested fix:** Constrain resource to a keyof-derived union of NOT_FOUND_* codes, or add the missing codes to ErrorCode.
+- [ ] **#138 — Retry bounds still allow exponential backoff setTimeout overflow**
+  - `packages/types/src/schemas/workflow.ts:13-17` · category: bug
+  - **Root cause:** RetryConfigSchema caps max_attempts at 20 and initial_delay_ms at 60000, but exponential delay = 60000 * 2^attempt exceeds 2^31-1 from attempt 16 (~3.9e9 ms); Node fires such timers after 1ms; engine calculateBackoff has no cap.
+  - **Failure scenario:** Node with retry {max_attempts:20, initial_delay_ms:60000, backoff:'exponential'} against a persistently failing upstream: attempts 16-19 retry ~1ms apart, hammering the upstream instead of backing off.
+  - **Suggested fix:** Clamp computed backoff to <= 2_147_483_647 (or a sane max like 60s) in the engine, and/or tighten schema bounds.
+- [ ] **#139 — Workflow update and version snapshot are non-atomic**
+  - `packages/workflow-authoring/src/service.ts:92-103` · category: concurrency
+  - **Root cause:** store.workflows.update (read-then-increment version) and versioning.createVersion run as separate operations with no transaction and no unique constraint on (workflow_id,version) (migrations create only a plain index). Concurrent definition updates can both write version N+1 and snapshot two different definitions under it; a crash between calls leaves a version with no snapshot and replay's resolveDefinition silently falls back to the live definition.
+  - **Failure scenario:** Two editors PUT different definitions simultaneously: both read version 4, both write 5, two divergent definitions snapshotted as v5. An execution stamped v5 later replays against whichever row getByWorkflowAndVersion returns first — potentially the other editor's graph.
+  - **Suggested fix:** Perform version bump + snapshot atomically (transaction / INSERT...RETURNING with unique (workflow_id,version) constraint); make replay's fallback explicit rather than silent.
+- [ ] **#140 — Rule 5 crashes on definitions without variables; stale ref patterns**
+  - `packages/workflow-authoring/src/validator.ts:53-65` · category: bug
+  - **Root cause:** definition.variables[varName] assumes variables present, but DB-loaded definitions are raw JSON (mapWorkflow/safeJsonParse applies no zod defaults), so a stored definition lacking variables throws TypeError inside validateWorkflow. Accepted patterns out of sync with executor: variables.* and raw-node-id references ({{fetch.output.x}}, hyphenated ids) valid at runtime but flagged 'may not resolve'; variables.foo looked up as literal key instead of stripping the prefix.
+  - **Failure scenario:** POST /api/v1/workflows/:id/validate on a legacy/imported row without variables key and config containing {{variables.recipient}} -> TypeError -> 500; on current rows valid {{variables.x}}/{{fetch.output.y}} references produce spurious warnings.
+  - **Suggested fix:** Use (definition.variables ?? {})[...], strip the variables. prefix before lookup, accept the executor's reference grammar (trigger.payload.*, variables.*, any <nodeId>.output.*).
+- [ ] **#141 — Flagship scenario 'triggers via webhook' never fires the webhook handler**
+  - `tests/e2e/meeting-to-tasks.test.ts:47-75` · category: maintainability
+  - **Root cause:** A webhook trigger row is created (47-54) but never used; the execution record is hand-inserted with trigger_type 'webhook' and driven directly by ctx.executor. Comment 56-59 ('executor not yet wired to auto-run from triggers') is stale — routes/index.ts:596-611 dispatches webhook executions. Title overstates coverage.
+  - **Failure scenario:** Readers believe the flagship webhook->execution pipeline is E2E-covered here; a webhook-dispatch regression is only caught by the integration suite; stale comment misdirects maintainers.
+  - **Suggested fix:** Fire the real webhook handler (HMAC-signed inject like trigger-to-execution.test.ts) or rename/recomment and delete the unused trigger.
+- [ ] **#142 — buildTestApp temp dirs and git repos are never cleaned up**
+  - `tests/integration/_helpers/app.ts:63-64` · category: bug
+  - **Root cause:** Every buildTestApp call mkdtempSync's a loop-test-* dir (DB + git repo); test files close app/conn but nothing removes the directory. auth-guard/rbac/replay build one app per test, leaking dozens of dirs per run. e2e/helpers.ts:146-153 does rmSync correctly — divergent cleanup discipline.
+  - **Failure scenario:** CI workers and dev machines accumulate orphaned SQLite files and git repos in os.tmpdir() across runs; disk pressure on long-lived self-hosted CI runners.
+  - **Suggested fix:** Expose close() on TestApp that closes conn and rmSync(tmpDataDir,{recursive:true,force:true}); use in afterAll (or track dirs in tests/setup.ts afterEach).
+- [ ] **#143 — Unused THREE_NODE_DEFINITION references unimplemented desk.create_task**
+  - `tests/integration/_helpers/app.ts:234-262` · category: maintainability
+  - **Root cause:** Exported but referenced nowhere in the test tree. Uses desk.create_task which the real DeskAdapter does not implement (connectors/desk.test.ts:126 asserts its absence). STUB_THREE_NODE is copy-pasted divergently in api/executions.test.ts:20-48 and engine/e2e-execution.test.ts:22-50.
+  - **Failure scenario:** Maintainer picks the 'official' helper definition for a new E2E test and gets a confusing execution-time failure instead of a working fixture.
+  - **Suggested fix:** Delete THREE_NODE_DEFINITION or rebuild on implemented operations (desk.send_response); hoist the shared stub into _helpers/app.ts.
+- [ ] **#144 — Egress CRUD test claims cache invalidation but never asserts its effect**
+  - `tests/integration/api/admin-routes.test.ts:155-176` · category: test
+  - **Root cause:** Title says 'round-trips and invalidates the cache' yet only checks HTTP CRUD responses; never evaluates ctx.egressEngine before/after create/update/delete to prove invalidateCache() took effect (route calls it at routes/index.ts:694,711,718).
+  - **Failure scenario:** Dropping deps.egressEngine.invalidateCache() from the policy routes leaves stale cached policies in production (new deny rules ignored until TTL) while this test stays green.
+  - **Suggested fix:** After creating an allow policy via POST, assert ctx.egressEngine.evaluate flips denied->allowed without manual invalidateCache; after DELETE assert it flips back.
+- [ ] **#145 — WS tests use a private executor+bus pair, not production singleton wiring**
+  - `tests/integration/api/ws-executions.test.ts:107-116` · category: bug
+  - **Root cause:** Both describes build a fresh ExecutionExecutor with a dedicated EventBus and register the WS route with that bus (also 175-181). Production relies on the process-wide executionEventBus shared by executor default and registerExecutionWebSocket (server.ts:229-231,328). Deliberate per comment, but actual production wiring is never asserted.
+  - **Failure scenario:** A server.ts change passing a different bus instance to the WS route than the executor publishes to breaks live monitoring in production while this suite stays green.
+  - **Suggested fix:** Add one test using ctx.executor (default singleton bus) with registerExecutionWebSocket(app,{eventBus:executionEventBus}) from the same module graph.
+- [ ] **#146 — undici mock (always 200, no body) hides notifier's missing status check**
+  - `tests/unit/connectors/notification.test.ts:6-11` · category: test
+  - **Root cause:** Mock returns {statusCode:200} with no body. WebhookNotifier.send ignores statusCode and never consumes response.body (socket leak); a downstream 500 resolves as success so NotificationQueue would never retry. Mock cannot express non-2xx or a body. Notifier classes currently unwired, hence Low.
+  - **Failure scenario:** Once wired, a downstream outage (500) silently treated as delivered and the retry queue never engages; HMAC-only test stays green.
+  - **Suggested fix:** Mock full response ({statusCode, body:{text:async()=>''}}); add non-2xx case asserting send() rejects; consume body in notifier; add NotificationQueue retry test with fake timers.
+- [ ] **#147 — Public-hostname assertions do real DNS and are vacuous when DNS fails**
+  - `tests/unit/egress/private-blocklist.test.ts:60-77` · category: test
+  - **Root cause:** firstPrivateAddress returns null on DNS failure; tests assert null/allow for https://example.com. Offline or with broken DNS the same assertions pass without resolution, unable to distinguish 'resolved public' from 'resolution broken (fail-open)'. Also makes the unit suite network-dependent.
+  - **Failure scenario:** Regression making lookupAll always throw disables hostname-based private blocking; these tests still pass offline; flaky network dependence masks the difference in CI.
+  - **Suggested fix:** Mock node:dns (correct {all:true} array shape) for public-hostname cases; keep literal-IP cases real; reserve real-DNS localhost coverage for one explicitly marked test.
+- [ ] **#148 — Dead fixture code and wrong retry-semantics comment mislead readers**
+  - `tests/unit/engine/executor-branch.test.ts:117-127` · category: maintainability
+  - **Root cause:** Lines 117-127 set unused __emit config and void categoryAdapterDispatch with comments claiming source output is 'patched via trigger' — it actually comes from recordingAdapter echoing config.category. Line 416 comments '1 initial + 2 retries' for max_attempts:3, but retry.test.ts:48 pins max_attempts=3 -> 4 calls (max_attempts means retries per tsd.md:970); the attempts==3 assertion pins no bound.
+  - **Failure scenario:** Maintainer 'fixes' executeWithRetry to treat max_attempts as total attempts (or vice versa) believing the branch test pins 3; the always-succeeds-on-3rd adapter passes under either semantics — an off-by-one in retry budgets ships.
+  - **Suggested fix:** Delete dead __emit/void lines, fix comment; add an executor test with an always-failing adapter to pin the actual attempt bound of defaultRetry.
+- [ ] **#149 — createStore/seedExecution copy-pasted divergently across ~8 files**
+  - `tests/unit/engine/executor.test.ts:73-110` · category: maintainability
+  - **Root cause:** executor, executor-branch, executor-events, executor-resume, executor-subworkflow, recovery, replay, execution-events each hand-roll createStore/seedExecution/node helpers with small divergences, while tests/helpers/testStore.ts exists and only executor-tracing uses it. types/validator.test.ts duplicates workflow-authoring/validator.test.ts coverage with different fixtures.
+  - **Failure scenario:** Schema change must be fixed in 8+ places; divergent fixtures let one suite exercise a shape the others don't, hiding contract drift.
+  - **Suggested fix:** Migrate engine/state suites to withSeededTestStore plus shared seedExecution; merge the two validateWorkflow test files.
+- [ ] **#150 — Test leaks a live every-minute cron job with an empty mock store**
+  - `tests/unit/triggers/cron.test.ts:5-12` · category: bug
+  - **Root cause:** 'accepts valid cron expression' registers '* * * * *' with mockStore = {} and never unregisters/shuts down. If the worker lives >60s (watch mode, slow CI) the job fires: workflows.getById undefined (swallowed), then executions.create on undefined throws inside the cron callback as an unhandled rejection.
+  - **Failure scenario:** Watch mode or long suite run: unhandled rejection from the leaked job fails an unrelated test file or crashes the worker — nondeterministic red/green.
+  - **Suggested fix:** Call cronHandler.shutdown() in afterEach (or unregister at test end); give the mock the store shapes the callback touches.
+- [ ] **#151 — Webhook mock store lacks workflows; version snapshot runs via catch**
+  - `tests/unit/triggers/webhook.test.ts:19-31` · category: test
+  - **Root cause:** mockStore has only triggers/executions. handle()'s store.workflows.getById TypeErrors into catch, so workflow_version always defaults to 1; version-snapshot logic (webhook.ts:60-75) never exercised on the success path.
+  - **Failure scenario:** Regression hardcodes workflow_version 1 for webhook executions; replay resolves a stale definition. Unit tests pass because the snapshot path always fell into catch.
+  - **Suggested fix:** Add workflows.getById returning {version:3,status:'active'}; assert executions.create receives workflow_version: 3.
+
+---
+
+## Appendix — coverage by review pass
+
+| Pass | Files | Status |
+|---|---|---|
+| API + secrets + egress (apps/api, packages/secrets, packages/egress) | 18 | all reviewed |
+| Engine + triggers + workflow-authoring | 23 | all reviewed |
+| State + versioning | 15 | all reviewed |
+| Connectors + LLM | 23 | all reviewed |
+| Canvas frontend (incl. vite/tailwind/postcss configs) | 28 | all reviewed |
+| Observability + templates + types + sandbox/control-plane | 26 | all reviewed |
+| Unit tests + setup/helpers | 52 | all reviewed |
+| Integration + e2e tests | 29 | all reviewed |
+| Root configs (.eslintrc.js, vitest configs ×3) | 4 | all reviewed |
+| **Source total** | **218** | **100%, 0 skipped** |
+
+Config/infra (reviewed in the observability/config pass): .env.example, .env.test, docker-compose.yml, docker-compose.dev.yml, docker/Dockerfile.app, docker/Dockerfile.sandbox, docker/Dockerfile.controlplane, .github/workflows/ci.yml, .github/workflows/release.yml, helm/loop (Chart.yaml, values.yaml, 8 templates, NOTES.txt), root package.json, tsconfig.json, tsconfig.base.json, all workspace package.json/tsconfig.json.
+
+### Verified non-issues (checked and cleared)
+
+- No SQL injection: PG ORDER BY/LIMIT whitelisted + parameterized; SQLite drizzle params + escapeLike with ESCAPE.
+- completeIfActive atomic and correct in both stores; executions NULL ordering matches across tiers.
+- Webhook HMAC itself: timing-safe, mandatory when a secret is configured, raw-body based (but see replay-protection and secret-less-trigger findings).
+- Generic HTTP adapter IS egress-gated before dispatch; undici v6 does not follow redirects by default; path '..' segments clamped/encoded.
+- AES-256-GCM: random 96-bit IVs, auth tags, tamper/wrong-key tested. Static API key: hash + timingSafeEqual. jose: HS-family only (no alg confusion).
+- No committed real credentials (.env.example placeholders; dev compose keys gated to LOOP_ENV=development and rejected in production).
+- No CI script injection (no untrusted PR title/branch interpolation; release permissions scoped).
+- No XSS in canvas: no dangerouslySetInnerHTML/innerHTML; all data rendered via escaped JSX; WS frames parsed in try/catch; external links rel=noopener.
+- Branch condition evaluator is injection-safe (JSON.stringify escaping + fail-closed restricted parser) — but see the escape-handling tokenizer bug.
+- All 30 bundled templates statically scanned: clean graphs.
