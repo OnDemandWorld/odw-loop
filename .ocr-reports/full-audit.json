@@ -171,7 +171,9 @@
     "root_cause": "Neither test sets LOOP_AIRGAP_MODE or constructs an EgressGate. Test 1 inserts deny policies and calls egressEngine.evaluate directly; test 2 runs createMockAdapter('local_llm') performing zero HTTP through an executor with no gate (tests/e2e/helpers.ts:134). Header comment 'airgap check not yet wired into connectors' is stale — production wires it (server.ts:127-131,237).",
     "suggested_fix": "Build the context with EgressGate({airgap:true}) passed to the executor, register an adapter making a real HTTP call to a loopback mock server, assert execution fails NODE_EGRESS_BLOCKED; assert localhost-allow succeeds only with airgap off.",
     "failure_scenario": "Airgap leaking on the workflow execution path (gate dropped from executor wiring, adapter ignoring params.egress) ships green under a suite named 'Air-gapped deployment mode (E2E)' — data sovereignty is the product's first-class constraint.",
-    "id": 13
+    "id": 13,
+    "status": "fixed",
+    "verification_notes": "Rewrote tests/e2e/airgapped-deployment.test.ts: kept the engine-level deny test; replaced the no-network mock test with two real-path tests wiring EgressGate({airgap}) into ExecutionExecutor and driving the REAL GenericAdapter against a loopback node:http server. Airgap on: execution fails NODE_EGRESS_BLOCKED and server receives 0 requests; airgap off (allowPrivate): execution succeeds and server receives exactly /probe. Stale header comment removed. Verified: typecheck 0; unit 673/673; integration 171/172 (pre-existing only); e2e 30/30; eslint 0 errors."
   },
   {
     "file": "tests/integration/_helpers/app.ts",
@@ -183,7 +185,9 @@
     "root_cause": "buildTestApp constructs new ExecutionExecutor(store, connectors, 10) while production (apps/api/src/server.ts:223-249) passes executionEventBus, eventOutputMaxBytes, egressGate, secretResolver and retry config. In the test app egressGate/secretResolver are undefined; dispatchNode only forwards egress when the gate exists and adapters fail open (await io?.egress?.check(url)). Helper LOOP_NODE_TIMEOUT_MS/LOOP_WORKFLOW_TIMEOUT_MS/LOOP_MAX_CONCURRENT are dead. No test in the repo constructs ExecutionExecutor with a real egressGate. See also the unit-suite finding on executor-branch.test.ts.",
     "suggested_fix": "Wire the helper executor exactly like server.ts (egressGate, secretResolver, eventBus, eventOutputMaxBytes, retry). Add an integration test running a workflow whose connector targets a denied domain asserting NODE_EGRESS_BLOCKED, plus one proving connector api_key reaches the adapter via the secrets store.",
     "failure_scenario": "Delete the egressGate argument at server.ts:237 or the egress spread in dispatchNode and every integration/e2e test stays green while production workflows make unrestricted outbound calls (airgap/SSRF/default-deny bypassed). Secrets-resolution regressions in the API path are likewise invisible.",
-    "id": 14
+    "id": 14,
+    "status": "fixed",
+    "verification_notes": "buildTestApp now constructs ExecutionExecutor with production parity (server.ts order): LOOP_MAX_CONCURRENT, LOOP_NODE_TIMEOUT_MS, LOOP_WORKFLOW_TIMEOUT_MS, executionEventBus, eventOutputMaxBytes, egressGate, secretResolver (secretsManager.get), default retry from config. Verified: pnpm typecheck 0; pnpm test:unit 673/673; pnpm test:integration 171/172 (only pre-existing vault multipart failure); pnpm test:e2e 30/30; eslint changed files 0 errors, warnings <= baseline."
   },
   {
     "file": "tests/unit/engine/executor-branch.test.ts",
@@ -195,7 +199,9 @@
     "root_cause": "Every executor test constructs ExecutionExecutor without an egressGate (this file passes undefined explicitly). No unit test builds the executor WITH a gate and asserts adapter.execute receives egress or that check() runs. The wiring is one spread at executor.ts:836 and every adapter consults it via optional chaining (params.egress?.check), so a missing gate fails OPEN silently. Companion structural gap: tests/integration/_helpers/app.ts finding.",
     "suggested_fix": "Add an executor test: recording adapter + stub gate whose check rejects; execute a connector node; assert adapter received the gate, check called with target URL, node fails NODE_EGRESS_BLOCKED. Also assert airgap=true blocks generic.rest_call end-to-end.",
     "failure_scenario": "A refactor drops the egress spread (or renames the param): LOOP_AIRGAP_MODE, all egress policies and the SSRF private blocklist become dead config for every connector node — the exact bug the S1 wiring fix addressed — and the entire unit suite stays green.",
-    "id": 15
+    "id": 15,
+    "status": "fixed",
+    "verification_notes": "Added tests/unit/engine/executor-branch.test.ts audit #15: executor constructed WITH a denying gate (9th arg); asserts adapter received the gate instance, check() consulted, node/execution fail with the egress error. A dropped egress spread now fails this test. Verified: typecheck 0; unit 673/673; integration 171/172 (pre-existing only); e2e 30/30."
   },
   {
     "file": "tests/unit/engine/replay.test.ts",
@@ -207,7 +213,9 @@
     "root_cause": "replay.test.ts covers replayExecution/computeReplayDecisions only. Route-level guards (routes/index.ts:385-427: in-flight Set -> 409 REPLAY_IN_PROGRESS; non-terminal status -> 409 REPLAY_NOT_TERMINAL; dryRun default query['dryRun'] !== 'false') have zero matches anywhere under tests/ (grep-verified).",
     "suggested_fix": "Add route-level tests (Fastify inject with real route registration): two concurrent POST /executions/:id/replay?dryRun=false -> second 409 REPLAY_IN_PROGRESS; dryRun=false on running/pending/paused -> 409 REPLAY_NOT_TERMINAL and no dispatch; POST with no query param defaults to dry-run (no side effects).",
     "failure_scenario": "A regression removes the Set guard or inverts the dryRun default: concurrent replays double-fire connector side effects (duplicate emails, double Vault/Desk writes), or a default POST re-executes a running workflow. Nothing in the suite fails.",
-    "id": 16
+    "id": 16,
+    "status": "fixed",
+    "verification_notes": "Added two route-level tests in tests/integration/api/replay.test.ts: (1) POST ?dryRun=false on running execution -> 409 REPLAY_NOT_TERMINAL; (2) concurrent replays via a hanging adapter -> second POST 409 REPLAY_IN_PROGRESS, first completes 200. Default dry-run was already covered. Verified: typecheck 0; unit 673/673; integration 171/172 (pre-existing only); e2e 30/30."
   },
   {
     "file": "apps/api/src/middleware/auth.ts",

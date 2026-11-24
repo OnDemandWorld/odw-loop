@@ -17,7 +17,7 @@ import {
 import { ConnectorRegistry, VaultAdapter, DeskAdapter } from '../../../packages/connectors/src/index.js';
 import { WorkflowAuthoringService } from '../../../packages/workflow-authoring/src/index.js';
 import { VersioningService, GitBackend } from '../../../packages/versioning/src/index.js';
-import { ExecutionExecutor } from '../../../packages/engine/src/index.js';
+import { ExecutionExecutor, executionEventBus } from '../../../packages/engine/src/index.js';
 import {
   TriggerDispatcher,
   WebhookTriggerHandler,
@@ -152,7 +152,8 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
   const authoring = new WorkflowAuthoringService(store, versioning);
 
   // ── Engine ──────────────────────────────────────────────────────────────
-  const executor = new ExecutionExecutor(store, connectors, 10);
+  // Constructed below, after the egress gate and secrets manager exist
+  // (audit #14: the executor must be wired with production parity).
 
   // ── Triggers ────────────────────────────────────────────────────────────
   const triggerDispatcher = new TriggerDispatcher(store);
@@ -169,6 +170,29 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
   });
   const secretsManager = new SecretsManager(store, config.LOOP_ENCRYPTION_KEY);
   const llmRouter = createLLMRouter(config);
+
+  // Audit #14: wire the executor exactly like apps/api/src/server.ts — egress
+  // gate, secret resolver, shared event bus, output cap, config timeouts and
+  // default retry. Previously `new ExecutionExecutor(store, connectors, 10)`
+  // left egressGate/secretResolver undefined (adapters fail open without a
+  // gate) and made the helper's timeout/concurrency config dead.
+  const executor = new ExecutionExecutor(
+    store,
+    connectors,
+    config.LOOP_MAX_CONCURRENT,
+    config.LOOP_NODE_TIMEOUT_MS,
+    config.LOOP_WORKFLOW_TIMEOUT_MS,
+    executionEventBus,
+    undefined,
+    config.LOOP_EVENT_OUTPUT_MAX_BYTES,
+    egressGate,
+    async (name, scope, scopeId) => secretsManager.get(name, scope, scopeId),
+    {
+      max_attempts: config.LOOP_DEFAULT_RETRY_COUNT,
+      backoff: config.LOOP_DEFAULT_BACKOFF,
+      initial_delay_ms: config.LOOP_DEFAULT_BACKOFF_INITIAL_MS ?? 1000,
+    },
+  );
 
   // ── Templates ──────────────────────────────────────────────────────
   // Loads the real repo templates/ directory (resolved module-relative).

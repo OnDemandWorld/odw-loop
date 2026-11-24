@@ -191,4 +191,81 @@ describe('API replay (V1.3 M1)', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json().error.code).toBe('NOT_FOUND_EXECUTION');
   });
+
+  it('audit #16: POST replay?dryRun=false on a non-terminal execution → 409 REPLAY_NOT_TERMINAL', async () => {
+    const ctx = await build();
+    ctx.connectors.registerAdapter(mockAdapter('mock').adapter);
+    const definition: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [node('n1', 'mock.op')],
+      edges: [],
+      variables: {},
+      metadata: { name: 'replay-guard' },
+    };
+    const executionId = await seedRun(ctx, definition);
+    await ctx.store.executions.updateStatus(executionId, {
+      status: 'running',
+      started_at: new Date().toISOString(),
+    });
+
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/v1/executions/${executionId}/replay?dryRun=false`,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('REPLAY_NOT_TERMINAL');
+  });
+
+  it('audit #16: concurrent replay?dryRun=false → second request gets 409 REPLAY_IN_PROGRESS', async () => {
+    const ctx = await build();
+    let mode: 'fail' | 'hang' = 'fail';
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const adapter: ConnectorAdapter = {
+      type: 'slow',
+      async execute() {
+        if (mode === 'fail') throw new Error('slow exploded');
+        await gate;
+        return { output: { ok: true } };
+      },
+      async healthCheck() {
+        return true;
+      },
+      getCapabilities(): ConnectorCapabilities {
+        return { node_types: ['slow.op'], input_types: ['any'], output_types: ['any'] };
+      },
+    };
+    ctx.connectors.registerAdapter(adapter);
+    const definition: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [node('n1', 'slow.op')],
+      edges: [],
+      variables: {},
+      metadata: { name: 'replay-inflight' },
+    };
+    const executionId = await seedRun(ctx, definition);
+    // Terminal (failed) execution so the NOT_TERMINAL guard passes.
+    await expect(ctx.executor.execute(executionId, definition, {})).rejects.toThrow(/slow exploded/);
+
+    // First replay re-dispatches the failed node and hangs inside the adapter.
+    mode = 'hang';
+    const first = ctx.app.inject({
+      method: 'POST',
+      url: `/api/v1/executions/${executionId}/replay?dryRun=false`,
+    });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const second = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/v1/executions/${executionId}/replay?dryRun=false`,
+    });
+    expect(second.statusCode).toBe(409);
+    expect(second.json().error.code).toBe('REPLAY_IN_PROGRESS');
+
+    release();
+    const firstRes = await first;
+    expect(firstRes.statusCode).toBe(200);
+  });
 });

@@ -8,6 +8,7 @@ import { createSqliteConnection, SqliteStateStore, type SqliteConnection } from 
 import { ConnectorRegistry, type ConnectorAdapter } from '../../../packages/connectors/src';
 import { ExecutionExecutor } from '../../../packages/engine/src/executor';
 import type { WorkflowDefinition, ConnectorCapabilities } from '../../../packages/types/src';
+import { LoopError } from '../../../packages/types/src/errors';
 
 interface Ctx {
   conn: SqliteConnection;
@@ -470,5 +471,53 @@ describe('defaultRetry (L-9)', () => {
     expect(execution?.status).toBe('succeeded');
     expect(dispatches.filter((o) => o === 'log')).toHaveLength(0);
     expect(dispatches.filter((o) => o === 'alert')).toHaveLength(2);
+  });
+
+  it('audit #15: executor forwards the egress gate to adapters; a denying gate fails the node', async () => {
+    const ctx = await createStore();
+    contexts.push(ctx);
+    const connectors = new ConnectorRegistry();
+    let receivedEgress: unknown;
+    let checkCalledWith: string | undefined;
+    const adapter: ConnectorAdapter = {
+      type: 'svc',
+      async execute(params) {
+        receivedEgress = params.egress;
+        checkCalledWith = 'http://blocked.example.test/api';
+        await params.egress?.check(checkCalledWith);
+        return { output: { ok: true } };
+      },
+      async healthCheck() {
+        return true;
+      },
+      getCapabilities(): ConnectorCapabilities {
+        return { node_types: ['svc.op'], input_types: ['any'], output_types: ['any'] };
+      },
+    };
+    connectors.registerAdapter(adapter);
+
+    const gate = {
+      async check(_url: string): Promise<void> {
+        throw new LoopError('NODE_EGRESS_BLOCKED', 'Egress blocked: test deny', 403);
+      },
+    };
+    const definition: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [node('n1', 'svc.op')],
+      edges: [],
+      variables: {},
+    };
+    const execId = await seedExecution(ctx.store, definition);
+    // 9th constructor argument is the egress gate (server.ts wiring order).
+    const executor = new ExecutionExecutor(
+      ctx.store, connectors, 10, 5_000, 30_000, undefined, undefined, undefined, gate as never,
+    );
+
+    await expect(executor.execute(execId, definition, {})).rejects.toThrow(/Egress blocked/);
+    // The adapter actually received the gate instance and consulted it.
+    expect(receivedEgress).toBe(gate);
+    expect(checkCalledWith).toBe('http://blocked.example.test/api');
+    const execution = await ctx.store.executions.getById(execId);
+    expect(execution?.status).toBe('failed');
   });
 });
