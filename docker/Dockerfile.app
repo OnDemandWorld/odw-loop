@@ -6,7 +6,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.4.0 --activate
 
 # Copy workspace config first for layer caching
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* turbo.json ./
 COPY packages/types/package.json packages/types/
 COPY packages/observability/package.json packages/observability/
 COPY packages/state/package.json packages/state/
@@ -18,6 +18,7 @@ COPY packages/egress/package.json packages/egress/
 COPY packages/workflow-authoring/package.json packages/workflow-authoring/
 COPY packages/engine/package.json packages/engine/
 COPY packages/triggers/package.json packages/triggers/
+COPY packages/templates/package.json packages/templates/
 COPY apps/api/package.json apps/api/
 COPY apps/sandbox/package.json apps/sandbox/
 COPY apps/control-plane/package.json apps/control-plane/
@@ -60,6 +61,8 @@ COPY --from=builder /app/packages/engine/dist ./packages/engine/dist
 COPY --from=builder /app/packages/engine/package.json ./packages/engine/
 COPY --from=builder /app/packages/triggers/dist ./packages/triggers/dist
 COPY --from=builder /app/packages/triggers/package.json ./packages/triggers/
+COPY --from=builder /app/packages/templates/dist ./packages/templates/dist
+COPY --from=builder /app/packages/templates/package.json ./packages/templates/
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/turbo.json ./

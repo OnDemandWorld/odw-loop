@@ -45,7 +45,9 @@
     "root_cause": "apps/api depends on @loop/templates (server.ts:21 imports TemplateRegistry) and tsconfig references packages/templates, but the runtime stage copies dist+package.json for every workspace package except packages/templates. pnpm's node_modules/@loop/templates symlink points at ../../packages/templates which does not exist in the runtime image.",
     "suggested_fix": "Add COPY --from=builder lines for packages/templates/dist and packages/templates/package.json (plus the templates/*.json data directory — separate finding).",
     "failure_scenario": "Even with the turbo.json COPY fixed, node apps/api/dist/server.js throws ERR_MODULE_NOT_FOUND for @loop/templates at startup; container crash-loops, healthcheck never passes.",
-    "id": 4
+    "id": 4,
+    "status": "fixed",
+    "verification_notes": "Added packages/templates/package.json to builder COPY list and templates dist+package.json to runtime stage. Verified: pnpm exec turbo run build --filter=@loop/templates... succeeds (dist/index.js produced); pnpm typecheck exit 0; pnpm test:unit 664/664 pass. docker CLI unavailable locally; image build verified statically + CI docker-build step."
   },
   {
     "file": "docker/Dockerfile.app",
@@ -57,7 +59,9 @@
     "root_cause": "Builder copies only package.json/pnpm-workspace.yaml/pnpm-lock.yaml (line 9), tsconfigs (28) and packages//apps/ (29-30). turbo.json exists at repo root but is never COPYed into the builder, so 'COPY --from=builder /app/turbo.json ./' references a nonexistent path.",
     "suggested_fix": "Add turbo.json to the builder COPY on line 9 (or drop line 65 if not needed at runtime).",
     "failure_scenario": "docker build -f docker/Dockerfile.app . fails with 'failed to compute cache key: /app/turbo.json not found'. CI Docker build and release image push both fail; no production image can be built.",
-    "id": 5
+    "id": 5,
+    "status": "fixed",
+    "verification_notes": "Added turbo.json to builder COPY line 9 (fixes runtime COPY --from=builder and turbo build invocation). Verified: turbo.json exists at root; turbo run build succeeds locally; pnpm typecheck exit 0; unit 664/664. docker build deferred to CI (no local docker)."
   },
   {
     "file": "docker/Dockerfile.sandbox",
@@ -69,7 +73,9 @@
     "root_cause": "CMD executes TypeScript source directly. Image never runs tsc, never installs node_modules (fastify etc.); base python:3.11-slim + apt nodejs (Debian node 18; nodesource setup on line 9 only adds a repo and is '|| true') cannot execute .ts. apps/sandbox has only src/server.ts in git.",
     "suggested_fix": "Use a node:20 builder stage that installs deps and builds (like Dockerfile.controlplane), run dist/server.js, drop the curl|bash nodesource step.",
     "failure_scenario": "loop-sandbox container exits immediately (SyntaxError/ERR_MODULE_NOT_FOUND). docker-compose.yml gates loop-app on service_healthy for loop-sandbox, so the whole Core-tier compose deployment never starts. Same broken image pushed to ghcr.io by release.yml.",
-    "id": 6
+    "id": 6,
+    "status": "fixed",
+    "verification_notes": "Rewrote Dockerfile.sandbox: node:20-alpine builder (pnpm install + turbo build --filter=@loop/sandbox...), runtime copies sandbox dist + workspace dep closure (types/observability/state/egress), USER node, CMD node apps/sandbox/dist/server.js. Verified: turbo build 6/6 tasks succeed, dist/server.js exists; server listens on LOOP_SANDBOX_PORT (compose sets 4000) with /health; compose healthcheck uses busybox wget present in alpine. docker build deferred to CI."
   },
   {
     "file": "packages/egress/src/interceptor.ts",

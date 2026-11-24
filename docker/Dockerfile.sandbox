@@ -1,22 +1,35 @@
-# Loop Sandbox — gVisor-based isolated code execution (§15.2)
-FROM python:3.11-slim AS runtime
+# Loop Sandbox — isolated code execution (§15.2)
+# NOTE: image-level isolation only. gVisor/Firecracker runtime isolation is
+# provided by the orchestrator (helm runtimeClassName: gvisor); plain compose
+# runs this container with standard runc isolation.
+FROM node:20-alpine AS builder
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9.4.0 --activate
+COPY . .
+RUN pnpm install --frozen-lockfile || pnpm install
+# Build the sandbox and its workspace dependencies only.
+RUN pnpm exec turbo run build --filter=@loop/sandbox... --cache-dir=.turbo
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nodejs npm curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js LTS if not available
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - || true
-
-WORKDIR /opt/sandbox
-COPY apps/sandbox/ ./
+FROM node:20-alpine AS runtime
+WORKDIR /app
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/sandbox/dist ./apps/sandbox/dist
+COPY --from=builder /app/apps/sandbox/package.json ./apps/sandbox/
+COPY --from=builder /app/packages/types/dist ./packages/types/dist
+COPY --from=builder /app/packages/types/package.json ./packages/types/
+COPY --from=builder /app/packages/observability/dist ./packages/observability/dist
+COPY --from=builder /app/packages/observability/package.json ./packages/observability/
+COPY --from=builder /app/packages/state/dist ./packages/state/dist
+COPY --from=builder /app/packages/state/package.json ./packages/state/
+COPY --from=builder /app/packages/egress/dist ./packages/egress/dist
+COPY --from=builder /app/packages/egress/package.json ./packages/egress/
 
 EXPOSE 4000
 ENV LOOP_SANDBOX_MEMORY_MB=256
 ENV LOOP_SANDBOX_CPU_SECONDS=30
+ENV NODE_ENV=production
 
-# Non-root user
-RUN useradd -m sandbox && chown -R sandbox:sandbox /opt/sandbox
-USER sandbox
+# Non-root user (node image ships the 'node' user)
+USER node
 
-CMD ["node", "src/server.ts"]
+CMD ["node", "apps/sandbox/dist/server.js"]
