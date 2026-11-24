@@ -37,18 +37,21 @@ Categories: bug (76), test (23), security (18), concurrency (10), maintainabilit
 
 Remediation checklist — tick each item after fixing and verifying (IDs match full-audit.json).
 
-- [ ] **#1 — REST client never sends Authorization; SPA unusable with auth-enabled API**
+- [x] **#1 — REST client never sends Authorization; SPA unusable with auth-enabled API**
   - `apps/canvas/src/lib/api.ts:136-146` · category: bug
+  - **Status:** fixed — lib/api.ts requestEnvelope now attaches Authorization: Bearer from localStorage loop.token (same key the WS client uses); 401 clears the token and redirects to /login (auth routes exempt to avoid loops); added api.login() and pages/Login.tsx wired at /login in App.tsx. No token -> no header, so auth-disabled deployments unchanged. Regression: tests/unit/canvas/api-auth.test.ts (4 cases). Verified: npx tsc --noEmit -p apps/canvas/tsconfig.json exit 0; turbo build canvas succeeds; pnpm test:unit 683/683; eslint 0 errors (new files carry only the systemic import/order resolver warnings). Note: token in localStorage matches existing WS client convention; hardening to in-memory/cookie is a follow-up (see #23).
   - **Root cause:** Every page uses lib/api.ts whose requestEnvelope sends only Content-Type. The token-aware client (api/client.ts, reads localStorage 'loop.token') is used only for WebSocket URLs, never REST. No login flow exists to obtain a token even though the API exposes POST /api/v1/auth/login and LOOP_REQUIRE_AUTH enforcement (config default false; supported deployment mode).
   - **Failure scenario:** Operator deploys with LOOP_REQUIRE_AUTH=true: every list/load/save returns 401; Dashboard, Workflows, Editor, Executions all error with no way to log in.
   - **Suggested fix:** Route all REST calls through a token-aware client, add a login screen storing the JWT (in memory), handle 401 by redirecting to login.
-- [ ] **#2 — addNode derives ID from nodes.length; delete+add creates duplicate IDs**
+- [x] **#2 — addNode derives ID from nodes.length; delete+add creates duplicate IDs**
   - `apps/canvas/src/pages/WorkflowEditor.tsx:503-535` · category: bug
+  - **Status:** fixed — addNode now uses nextNodeId(existing ids) (max node_N suffix + 1) via new pure helper apps/canvas/src/lib/graph.ts; useCallback deps updated to [nodes]. Regression: tests/unit/canvas/graph.test.ts (delete+add, non-contiguous, custom ids, never-collides). Verified: canvas tsc 0; canvas build OK; unit 683/683; eslint 0 errors.
   - **Root cause:** nodeId = `node_${nodes.length + 1}`. After deleting any node (or loading a graph whose IDs are not contiguous node_1..N), the next added node reuses an existing ID. Node IDs are not editable in the UI; the server validator rejects duplicate IDs on PUT.
   - **Failure scenario:** Open a template with node_1..node_5, delete node_2, add a palette node -> named node_5 (duplicate). React Flow renders two nodes with one key, edges bind ambiguously, every Save fails with 'duplicate node ID(s)' — graph unsavable and unfixable from the UI.
   - **Suggested fix:** Generate IDs from a monotonic counter/max existing suffix or crypto.randomUUID(), checking against current node IDs.
-- [ ] **#3 — Save strips retry, timeout_ms, schemas and workflow settings from definition**
+- [x] **#3 — Save strips retry, timeout_ms, schemas and workflow settings from definition**
   - `apps/canvas/src/pages/WorkflowEditor.tsx:558-582` · category: bug
+  - **Status:** fixed — toRfNode/toRfEdge stash the original node/edge in data.original; buildDefinition delegates to buildDefinitionFromGraph (lib/graph.ts) which spreads originals back (retry, timeout_ms, schemas, edge.type_compatibility) and preserves definition.settings; canvas WorkflowDefinition type gained settings. Regression: tests/unit/canvas/graph.test.ts round-trip (edited config/position applied; retry/timeout/settings/type_compatibility preserved; new nodes plain). Verified: canvas tsc 0; canvas build OK; unit 683/683; eslint 0 errors.
   - **Root cause:** toRfNode keeps only id/type/position/config and buildDefinition rebuilds nodes/edges from scratch, dropping WorkflowNode.retry, timeout_ms, input_schema, output_schema, edge.type_compatibility and definition.settings (workflow_timeout_ms). Server zod defaults silently re-default type_compatibility to true. 16 of 23 shipped templates contain retry/timeout/settings blocks.
   - **Failure scenario:** Instantiate 'invoice-approval' (nodes carry retry/timeout_ms), change one label, Save: all retry policies, per-node timeouts and workflow timeout silently erased; flaky connector calls now fail the whole run instead of retrying.
   - **Suggested fix:** Carry original WorkflowNode/edge objects in node/edge data and spread unknown fields back on save; preserve definition.settings.

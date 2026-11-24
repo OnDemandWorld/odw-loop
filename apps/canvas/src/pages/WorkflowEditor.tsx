@@ -17,6 +17,7 @@ import { ConnectorNode } from '../components/canvas/nodes/ConnectorNode';
 import { ControlNode } from '../components/canvas/nodes/ControlNode';
 import { CodeNode } from '../components/canvas/nodes/CodeNode';
 import { api, nodeTypeColor, shortId, type Workflow, type WorkflowDefinition } from '../lib/api';
+import { nextNodeId, fullNodeType, buildDefinitionFromGraph } from '../lib/graph';
 import { Icon, LoadingBlock, StatusBadge } from '../components/ui';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { useTheme } from '../lib/theme';
@@ -63,16 +64,18 @@ function toRfNode(n: WorkflowDefinition['nodes'][number], index: number): Node {
     position: n.position ?? { x: index * 220, y: 80 },
     selected: false,
   };
+  // Audit #3: stash the original node so Save preserves fields the canvas
+  // does not edit (retry, timeout_ms, input/output schemas).
   if (kind === 'control') {
-    return { ...base, type: 'control', data: { controlType: operation, label: operation, config: n.config } };
+    return { ...base, type: 'control', data: { controlType: operation, label: operation, config: n.config, original: n } };
   }
   if (kind === 'code') {
-    return { ...base, type: 'code', data: { language: operation, label: n.id, config: n.config } };
+    return { ...base, type: 'code', data: { language: operation, label: n.id, config: n.config, original: n } };
   }
   return {
     ...base,
     type: 'connector',
-    data: { connectorType: prefix, operation, label: operation.replace(/_/g, ' '), config: n.config },
+    data: { connectorType: prefix, operation, label: operation.replace(/_/g, ' '), config: n.config, original: n },
   };
 }
 
@@ -84,16 +87,9 @@ function toRfEdge(e: WorkflowDefinition['edges'][number]): Edge {
     sourceHandle: e.source_port && e.source_port !== 'output' ? e.source_port : undefined,
     targetHandle: e.target_port && e.target_port !== 'input' ? e.target_port : undefined,
     animated: true,
+    // Audit #3: preserve unedited edge fields (e.g. type_compatibility).
+    data: { original: e },
   };
-}
-
-/** Reconstruct the full dotted node type (e.g. `vault.search`) from RF node data. */
-function fullNodeType(node: Node): string {
-  return node.type === 'control'
-    ? `control.${node.data.controlType}`
-    : node.type === 'code'
-      ? `code.${node.data.language ?? 'typescript'}`
-      : `${node.data.connectorType}.${node.data.operation}`;
 }
 
 // ── Form-based node configuration (n8n-style) ────────────────────────────
@@ -503,7 +499,9 @@ export function WorkflowEditor() {
   const addNode = useCallback(
     (item: PaletteItem) => {
       const idx = nodes.length;
-      const nodeId = `node_${idx + 1}`;
+      // Audit #2: derive the id from existing ids, not nodes.length — after a
+      // deletion (or on non-contiguous template ids) length+1 collides.
+      const nodeId = nextNodeId(nodes.map((n) => n.id));
       const kind = rfKind(item.type);
       const [prefix, operation] = item.type.split('.');
       const newNode: Node =
@@ -531,7 +529,7 @@ export function WorkflowEditor() {
       setDirty(true);
       setSelectedId(nodeId);
     },
-    [nodes.length, setNodes],
+    [nodes, setNodes],
   );
 
   const updateNodeConfig = useCallback(
@@ -555,30 +553,10 @@ export function WorkflowEditor() {
     [setNodes, setEdges],
   );
 
+  // Audit #3: delegate to the pure helper that preserves unedited node/edge
+  // fields (retry, timeout_ms, schemas, type_compatibility) and settings.
   const buildDefinition = useCallback((): WorkflowDefinition => {
-    return {
-      version: workflow?.definition?.version ?? '1.0',
-      nodes: nodes.map((n) => ({
-        id: n.id,
-        type:
-          n.type === 'control'
-            ? `control.${n.data.controlType}`
-            : n.type === 'code'
-              ? `code.${n.data.language ?? 'typescript'}`
-              : `${n.data.connectorType}.${n.data.operation}`,
-        position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
-        config: (n.data.config ?? {}) as Record<string, unknown>,
-      })),
-      edges: edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        source_port: e.sourceHandle ?? 'output',
-        target: e.target,
-        target_port: e.targetHandle ?? 'input',
-      })),
-      variables: workflow?.definition?.variables ?? {},
-      metadata: workflow?.definition?.metadata ?? { name: workflow?.name ?? '', description: '', tags: [] },
-    };
+    return buildDefinitionFromGraph(nodes, edges, workflow?.definition, workflow?.name ?? '');
   }, [nodes, edges, workflow]);
 
   const save = useCallback(async () => {

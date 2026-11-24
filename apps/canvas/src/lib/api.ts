@@ -9,6 +9,7 @@ export interface WorkflowDefinition {
   edges: WorkflowEdge[];
   variables: Record<string, unknown>;
   metadata: { name: string; description: string; tags: string[] };
+  settings?: { workflow_timeout_ms?: number };
 }
 
 export interface WorkflowNode {
@@ -133,14 +134,40 @@ export class ApiError extends Error {
   }
 }
 
+/** Read the session token written by the login page (same key the WS client uses). */
+function readToken(): string | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem('loop.token') : null;
+  } catch {
+    return null;
+  }
+}
+
 async function requestEnvelope<T>(path: string, init?: RequestInit): Promise<ApiEnvelope<T>> {
+  // Audit #1: attach the bearer token so the SPA works against an
+  // auth-enabled API (LOOP_REQUIRE_AUTH=true). No token → no header, so
+  // auth-disabled deployments behave exactly as before.
+  const token = readToken();
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
-  const body = (await res.json()) as ApiEnvelope<T>;
-  if (!res.ok || !body.success) {
-    throw new ApiError(body.error?.code ?? 'HTTP_' + res.status, body.error?.message ?? res.statusText);
+  if (res.status === 401 && !path.startsWith('/api/v1/auth/')) {
+    try {
+      localStorage.removeItem('loop.token');
+    } catch {
+      /* storage unavailable */
+    }
+    if (typeof window !== 'undefined') window.location.assign('/login');
+    throw new ApiError('AUTH_INVALID_TOKEN', 'Session expired — please log in again');
+  }
+  const body = (await res.json().catch(() => null)) as ApiEnvelope<T> | null;
+  if (!res.ok || !body?.success) {
+    throw new ApiError(body?.error?.code ?? 'HTTP_' + res.status, body?.error?.message ?? res.statusText);
   }
   return body;
 }
@@ -166,6 +193,15 @@ function toPaginated<T>(body: ApiEnvelope<T[]>): Paginated<T> {
 }
 
 export const api = {
+  // ── Auth (audit #1) ─────────────────────────────────────────────────────
+  login: (username: string, password: string) =>
+    request<{
+      token: string;
+      token_type: string;
+      expires_in: number;
+      user: { id: string; username: string; email: string; role: string };
+    }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+
   // ── System ──────────────────────────────────────────────────────────────
   health: () => fetch('/health').then((r) => r.json() as Promise<{ status: string }>),
   ready: () =>
