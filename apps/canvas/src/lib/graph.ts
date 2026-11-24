@@ -22,6 +22,23 @@ export function nextNodeId(existingIds: string[]): string {
   return `node_${max + 1}`;
 }
 
+/**
+ * Named outgoing ports per source node, derived from the edge list (audit #24).
+ * Control nodes other than `branch` (e.g. control.condition) route through
+ * named ports; without a handle per port React Flow drops those edges from
+ * rendering and the graph looks disconnected.
+ */
+export function sourcePortsByNode(edges: Edge[]): Record<string, string[]> {
+  const ports: Record<string, string[]> = {};
+  for (const e of edges) {
+    const port = e.sourceHandle;
+    if (!port) continue;
+    const list = (ports[e.source] ??= []);
+    if (!list.includes(port)) list.push(port);
+  }
+  return ports;
+}
+
 /** Reconstruct the full dotted node type (e.g. `vault.search`) from RF node data. */
 export function fullNodeType(node: Node): string {
   return node.type === 'control'

@@ -176,23 +176,27 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** buildExecutionWsUrl appends ?token=<JWT/API key>. Fastify request logging and intermediary proxies record full URLs including query strings, persisting credentials in plaintext logs (CWE-598).
   - **Failure scenario:** Auth-enforced deployment: a viewer opens an execution monitor; their JWT is written to API/proxy access logs. Anyone with log read access can replay the token until expiry.
   - **Suggested fix:** Use a short-lived single-use ticket exchanged over REST, or Sec-WebSocket-Protocol carrier; at minimum redact token from server URL logging.
-- [ ] **#24 — Only 'branch' renders named handles; control.condition port edges invisible**
+- [x] **#24 — Only 'branch' renders named handles; control.condition port edges invisible**
   - `apps/canvas/src/components/canvas/nodes/ControlNode.tsx:36-42` · category: bug
+  - **Status:** fixed — ControlNode renders a source handle per named outgoing port for all control types (ports derived from edges via new pure helper sourcePortsByNode in lib/graph.ts, injected into render nodes). control.condition template edges now render. Regression: graph.test.ts sourcePortsByNode (dedup, per-source grouping). Component rendering verified via canvas tsc + vite build (no RTL in repo). Verified: canvas tsc 0; canvas build OK; unit 711/711; eslint 0 new errors.
   - **Root cause:** ControlNode renders true/false source handles only for controlType==='branch'; other control types get a single unnamed handle. toRfEdge (WorkflowEditor.tsx:84) maps any source_port != 'output' to a named sourceHandle, so edges from control.condition nodes (e.g. 'auto_approve'/'needs_review' in templates/content-review-pipeline.json) reference nonexistent handles and React Flow drops them.
   - **Failure scenario:** Instantiate 'content-review-pipeline': the condition node's outgoing edges are invisible ('couldn't create edge' warning); graph looks disconnected, user cannot see or rewire routing.
   - **Suggested fix:** Render a source handle per configured outgoing port for all control node types.
-- [ ] **#25 — Terminal WS event ignores durationMs; Duration stays '—' forever**
+- [x] **#25 — Terminal WS event ignores durationMs; Duration stays '—' forever**
   - `apps/canvas/src/pages/ExecutionDetail.tsx:94-107` · category: bug
+  - **Status:** fixed — applyStreamEvent sets duration_ms and completed_at from terminal WS events (execution_succeeded/execution_failed), so the Duration card no longer stays '—' after live completion. Verified: canvas tsc 0; canvas build OK; unit 711/711. Component-level behavior not unit-testable without RTL (noted).
   - **Root cause:** applyStreamEvent sets status from execution_succeeded/execution_failed but discards event.durationMs and never sets completed_at. The 4s poll (128-132) stops once status is terminal, so duration_ms remains the null captured at load.
   - **Failure scenario:** Run a workflow, watch it finish live via WS: Duration card shows '—' permanently until manual reload although the server recorded the duration.
   - **Suggested fix:** On terminal events set duration_ms: event.durationMs and completed_at: event.timestamp (or do one final REST load).
-- [ ] **#26 — ConfigPanel form/JSON drafts not resynced after apply; mode switch reverts edits**
+- [x] **#26 — ConfigPanel form/JSON drafts not resynced after apply; mode switch reverts edits**
   - `apps/canvas/src/pages/WorkflowEditor.tsx:264-275` · category: bug
+  - **Status:** fixed — ConfigPanel reset effect now also depends on node.data.config, so form/JSON drafts resync after applyJson/applyForm and mode switches no longer revert newer config. Verified: canvas tsc 0; canvas build OK; unit 711/711.
   - **Root cause:** The reset effect depends only on [node.id, type]. After applyJson/applyForm updates node.data.config, the other mode's draft state (values/extraDraft or draft) still holds the pre-apply snapshot. Switching modes and pressing Apply writes the stale snapshot over the newer config.
   - **Failure scenario:** Edit config in JSON mode (add limit:5), apply, switch to Form to tweak query, Apply — the JSON-added limit is silently deleted because form drafts were never refreshed.
   - **Suggested fix:** Resync all draft state from node.data.config whenever it changes (or key drafts by a config revision).
-- [ ] **#27 — Run/Validate proceed after a failed save, executing the stale definition**
+- [x] **#27 — Run/Validate proceed after a failed save, executing the stale definition**
   - `apps/canvas/src/pages/WorkflowEditor.tsx:584-619` · category: bug
+  - **Status:** fixed — save() returns Promise<boolean>; run() and validate() abort when the pre-save fails instead of executing/validating the stale server definition. Verified: canvas tsc 0; canvas build OK; unit 711/711.
   - **Root cause:** save() catches its own errors and resolves normally (592-593); run() and validate() do `if (dirty) await save()` then unconditionally call executeWorkflow/validateWorkflow. A failed PUT is followed by execution of the old server-side graph plus a success toast.
   - **Failure scenario:** User edits a node config and clicks Run while the API briefly rejects the PUT: error toast flashes, then 'Execution started' appears and the workflow runs with the previous config — wrong side effects with no indication.
   - **Suggested fix:** Make save() return a boolean or rethrow; abort run/validate when the pre-save fails.
@@ -201,8 +205,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** The toolbar Back link (and browser back) navigate without checking dirty; no router blocker or beforeunload handler.
   - **Failure scenario:** User spends minutes wiring a graph, forgets Save, clicks Back — all edits vanish without warning.
   - **Suggested fix:** Add useBlocker/beforeunload prompt when dirty, or autosave.
-- [ ] **#29 — Drag/keyboard-delete never set dirty; Save stays disabled, edits lost**
+- [x] **#29 — Drag/keyboard-delete never set dirty; Save stays disabled, edits lost**
   - `apps/canvas/src/pages/WorkflowEditor.tsx:788-797` · category: bug
+  - **Status:** fixed — onNodesChange/onEdgesChange wrapped: position/remove/add changes mark the graph dirty, so drags and Backspace deletions become saveable. Verified: canvas tsc 0; canvas build OK; unit 711/711.
   - **Root cause:** onNodesChange/onEdgesChange are wired straight to useNodesState setters (lines 459-460, 791-792) without setDirty(true). Only addNode/deleteNode/onConnect/applyConfig mark dirty; Save is disabled when !dirty. React Flow's default Backspace deletion and node drags produce unsaveable changes.
   - **Failure scenario:** User repositions nodes or deletes an edge with Backspace, clicks Save — button disabled. Navigates away; layout/deletion silently lost on reload.
   - **Suggested fix:** Inspect changes in the handlers and setDirty(true) for position/remove/add changes (ignore select/dimensions).

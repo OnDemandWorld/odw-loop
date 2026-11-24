@@ -98,3 +98,16 @@ describe('buildDefinitionFromGraph (audit #3)', () => {
     expect(out.metadata.name).toBe('my workflow');
   });
 });
+
+describe('sourcePortsByNode (audit #24)', () => {
+  it('collects named outgoing ports per source node', async () => {
+    const { sourcePortsByNode } = await import('../../../apps/canvas/src/lib/graph');
+    const edges = [
+      { id: 'e1', source: 'cond', target: 'a', sourceHandle: 'auto_approve' },
+      { id: 'e2', source: 'cond', target: 'b', sourceHandle: 'needs_review' },
+      { id: 'e3', source: 'cond', target: 'c', sourceHandle: 'auto_approve' },
+      { id: 'e4', source: 'plain', target: 'd' },
+    ] as Edge[];
+    expect(sourcePortsByNode(edges)).toEqual({ cond: ['auto_approve', 'needs_review'] });
+  });
+});

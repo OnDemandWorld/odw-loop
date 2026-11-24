@@ -39,7 +39,23 @@ export const ControlNode = memo(({ data, selected }: NodeProps) => {
           <Handle type="source" position={Position.Right} id="false" style={{ top: '70%' }} />
         </>
       )}
-      {data.controlType !== 'branch' && <Handle type="source" position={Position.Right} />}
+      {/* Audit #24: render a handle per configured outgoing port for every
+          control type (e.g. control.condition's auto_approve/needs_review),
+          not just branch — otherwise port edges reference nonexistent handles
+          and React Flow drops them. */}
+      {data.controlType !== 'branch' && Array.isArray(data.ports) && data.ports.length > 0 &&
+        (data.ports as string[]).map((port, i) => (
+          <Handle
+            key={port}
+            type="source"
+            position={Position.Right}
+            id={port}
+            style={{ top: `${((i + 1) * 100) / ((data.ports as string[]).length + 1)}%` }}
+          />
+        ))}
+      {data.controlType !== 'branch' && (!Array.isArray(data.ports) || data.ports.length === 0) && (
+        <Handle type="source" position={Position.Right} />
+      )}
     </div>
   );
 });

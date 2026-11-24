@@ -10,14 +10,16 @@ import ReactFlow, {
   useNodesState,
   type Connection,
   type Edge,
+  type EdgeChange,
   type Node,
+  type NodeChange,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { ConnectorNode } from '../components/canvas/nodes/ConnectorNode';
 import { ControlNode } from '../components/canvas/nodes/ControlNode';
 import { CodeNode } from '../components/canvas/nodes/CodeNode';
 import { api, nodeTypeColor, shortId, type Workflow, type WorkflowDefinition } from '../lib/api';
-import { nextNodeId, fullNodeType, buildDefinitionFromGraph } from '../lib/graph';
+import { nextNodeId, fullNodeType, buildDefinitionFromGraph, sourcePortsByNode } from '../lib/graph';
 import { Icon, LoadingBlock, StatusBadge } from '../components/ui';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { useTheme } from '../lib/theme';
@@ -266,9 +268,11 @@ function ConfigPanel({
     setDraft(JSON.stringify(config, null, 2));
     setParseError(null);
     setMode(specs.length > 0 ? 'form' : 'json');
-    // Reset everything when switching nodes; the spec objects are derived
-    // deterministically from `type` so they need not be dependencies.
-  }, [node.id, type]);
+    // Reset when switching nodes AND whenever the applied config changes
+    // (audit #26): after applyJson/applyForm the other mode's drafts must
+    // resync, or switching modes reverts the newer config. The spec objects
+    // are derived deterministically from `type` so they need not be deps.
+  }, [node.id, type, node.data.config]);
 
   const setField = (key: string, v: string) => setValues((prev) => ({ ...prev, [key]: v }));
 
@@ -454,6 +458,25 @@ export function WorkflowEditor() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  // Audit #29: React Flow's own change stream (drags, Backspace deletion,
+  // additions) must mark the graph dirty — previously only palette/config
+  // actions did, so those edits could never be saved.
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      onNodesChange(changes);
+      if (changes.some((c) => c.type === 'position' || c.type === 'remove' || c.type === 'add')) setDirty(true);
+    },
+    [onNodesChange],
+  );
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      onEdgesChange(changes);
+      if (changes.some((c) => c.type === 'remove' || c.type === 'add')) setDirty(true);
+    },
+    [onEdgesChange],
+  );
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -559,16 +582,20 @@ export function WorkflowEditor() {
     return buildDefinitionFromGraph(nodes, edges, workflow?.definition, workflow?.name ?? '');
   }, [nodes, edges, workflow]);
 
-  const save = useCallback(async () => {
-    if (!id) return;
+  // Audit #27: save reports success/failure so Run/Validate can abort instead
+  // of executing the stale server-side definition after a failed PUT.
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!id) return false;
     setSaving(true);
     try {
       const definition = buildDefinition();
       await api.updateWorkflow(id, { definition });
       setDirty(false);
       showToast('ok', 'Workflow saved');
+      return true;
     } catch (e) {
       showToast('err', e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -577,7 +604,7 @@ export function WorkflowEditor() {
   const validate = useCallback(async () => {
     if (!id) return;
     try {
-      if (dirty) await save();
+      if (dirty && !(await save())) return;
       const result = await api.validateWorkflow(id);
       setValidation(result);
     } catch (e) {
@@ -588,13 +615,22 @@ export function WorkflowEditor() {
   const run = useCallback(async () => {
     if (!id) return;
     try {
-      if (dirty) await save();
+      if (dirty && !(await save())) return;
       const result = await api.executeWorkflow(id);
       showToast('ok', `Execution ${shortId(result.execution_id)} started`);
     } catch (e) {
       showToast('err', e instanceof Error ? e.message : String(e));
     }
   }, [id, dirty, save, showToast]);
+
+  // Audit #24: inject the named outgoing ports (derived from edges) into
+  // control nodes so ControlNode can render a handle per port.
+  const renderNodes = useMemo(() => {
+    const ports = sourcePortsByNode(edges);
+    return nodes.map((n) =>
+      n.type === 'control' && ports[n.id] ? { ...n, data: { ...n.data, ports: ports[n.id] } } : n,
+    );
+  }, [nodes, edges]);
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) ?? null, [nodes, selectedId]);
   const categories = useMemo(() => [...new Set(PALETTE.map((p) => p.category))], []);
@@ -764,10 +800,10 @@ export function WorkflowEditor() {
         {/* Canvas */}
         <div className="flex-1 min-w-0 relative">
           <ReactFlow
-            nodes={nodes}
+            nodes={renderNodes}
             edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
             nodeTypes={nodeTypes}
             fitView

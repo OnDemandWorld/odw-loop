@@ -94,11 +94,27 @@ function nodeDuration(node: NodeExecution): number | null {
 function applyStreamEvent(execution: Execution | null, event: ExecutionStreamEvent): Execution | null {
   if (!execution) return execution;
   const nodes = reduceNodes(execution.nodes ?? [], event);
+  // Audit #25: carry the terminal event's duration/completion time — the poll
+  // stops once status is terminal, so discarding durationMs left the Duration
+  // card showing '—' forever.
   if (event.type === 'execution_succeeded') {
-    return { ...execution, nodes, status: 'succeeded' };
+    return {
+      ...execution,
+      nodes,
+      status: 'succeeded',
+      duration_ms: event.durationMs ?? execution.duration_ms,
+      completed_at: event.timestamp ?? execution.completed_at,
+    };
   }
   if (event.type === 'execution_failed') {
-    return { ...execution, nodes, status: 'failed', error: event.error ?? execution.error };
+    return {
+      ...execution,
+      nodes,
+      status: 'failed',
+      error: event.error ?? execution.error,
+      duration_ms: event.durationMs ?? execution.duration_ms,
+      completed_at: event.timestamp ?? execution.completed_at,
+    };
   }
   if (event.type === 'snapshot' && typeof event.status === 'string') {
     return { ...execution, nodes, status: event.status as Execution['status'] };
