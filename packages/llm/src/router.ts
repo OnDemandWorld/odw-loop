@@ -25,6 +25,7 @@ export interface ProviderStatus {
 
 export class LLMRouter {
   private circuits = new Map<string, CircuitState>();
+  private availability = new Map<string, { ok: boolean; at: number }>();
   private readonly threshold = 5;
   private readonly cooldownMs = 30_000;
 
@@ -42,6 +43,18 @@ export class LLMRouter {
     for (const provider of providers) {
       const circuit = this.circuits.get(provider.name);
       if (!circuit) continue;
+
+      // Audit #127: honour isAvailable() (cached 30s so probes don't run on
+      // every request) — unavailable providers (e.g. keyless cloud vendors,
+      // unimplemented stubs) are skipped instead of producing empty answers.
+      const avail = this.availability.get(provider.name);
+      if (!avail || Date.now() - avail.at > 30_000) {
+        const ok = await provider.isAvailable().catch(() => false);
+        this.availability.set(provider.name, { ok, at: Date.now() });
+        if (!ok) continue;
+      } else if (!avail.ok) {
+        continue;
+      }
 
       // Check circuit state
       if (circuit.state === 'open') {

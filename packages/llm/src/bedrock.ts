@@ -13,15 +13,12 @@ export class BedrockProvider implements LLMProvider {
     private _secretAccessKey?: string,
   ) {}
 
-  async complete(req: CompletionRequest): Promise<CompletionResponse> {
+  async complete(_req: CompletionRequest): Promise<CompletionResponse> {
     // Bedrock requires AWS SDK — stub returns empty for now.
     // Developer task: integrate @aws-sdk/client-bedrock-runtime.
-    return {
-      content: '',
-      model: req.model,
-      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-      finish_reason: 'stop',
-    };
+    // Audit #127: fail loudly — an empty success-shaped completion would be
+    // indistinguishable from a real answer if this stub were ever wired.
+    throw new Error('Bedrock provider is not implemented');
   }
 
   async isAvailable(): Promise<boolean> {

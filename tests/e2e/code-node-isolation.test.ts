@@ -80,7 +80,11 @@ async function startMockSandbox(): Promise<FastifyInstance> {
   return sandbox;
 }
 
-describe('Code node sandbox isolation (E2E)', () => {
+// Audit #71: CONTRACT SKETCH — the mock below is test-local; the real
+// gVisor/Firecracker sandbox is not implemented yet (apps/sandbox is a stub
+// and no 'code' adapter is registered). When the real sandbox lands, drive
+// code nodes through it and assert blocked status fails the execution.
+describe('Code node sandbox isolation contract (mock — real sandbox pending)', () => {
   let sandboxServer: FastifyInstance;
   let sandboxUrl: string;
   let ctx: TestContext;

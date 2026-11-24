@@ -277,6 +277,8 @@ describe('Provider parity fixes (audit #122, #123)', () => {
   });
 
   it('Ollama uses a real default model, not the literal "default" (audit #123)', async () => {
+    // First call: the router's isAvailable() probe (/api/tags, audit #127).
+    requestMock.mockResolvedValueOnce(jsonResponse(200, { models: [] }));
     requestMock.mockResolvedValueOnce(jsonResponse(200, {
       message: { content: 'ok' },
       done_reason: 'stop',
@@ -289,7 +291,31 @@ describe('Provider parity fixes (audit #122, #123)', () => {
     const { LLMRouter } = await import('../../../packages/llm/src/router');
     const router = new LLMRouter([provider]);
     await router.complete({ model: '', messages: [{ role: 'user', content: 'hi' }] });
-    const body = JSON.parse(requestMock.mock.calls[0]![1].body as string);
+    const chatCall = requestMock.mock.calls.find((c) => String(c[0]).includes('/api/chat'));
+    const body = JSON.parse(chatCall![1].body as string);
     expect(body.model).toBe('llama3.2');
+  });
+});
+
+describe('Ollama response fidelity (audit #125, #126)', () => {
+  beforeEach(() => requestMock.mockReset());
+
+  it('maps done_reason length to finish_reason length (truncation visible)', async () => {
+    requestMock.mockResolvedValueOnce(jsonResponse(200, {
+      message: { content: 'cut mid-' },
+      done_reason: 'length',
+      prompt_eval_count: 5,
+      eval_count: 3,
+    }));
+    const provider = new OllamaProvider('http://localhost:11434', 'm');
+    const result = await provider.complete({ model: 'm', messages: [{ role: 'user', content: 'hi' }] });
+    expect(result.finish_reason).toBe('length');
+  });
+
+  it('reports embedding token usage from prompt_eval_count', async () => {
+    requestMock.mockResolvedValueOnce(jsonResponse(200, { embeddings: [[0.1]], prompt_eval_count: 7 }));
+    const provider = new OllamaProvider('http://localhost:11434', 'm');
+    const result = await provider.embed({ model: 'm', input: 'text' });
+    expect(result.usage.total_tokens).toBe(7);
   });
 });

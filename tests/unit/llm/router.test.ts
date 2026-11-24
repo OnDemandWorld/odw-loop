@@ -226,3 +226,28 @@ describe('LLMRouter — failure classification (audit #52)', () => {
     expect(second.complete).not.toHaveBeenCalled();
   });
 });
+
+describe('LLMRouter — availability gating (audit #127)', () => {
+  it('skips unavailable providers instead of returning their empty answers', async () => {
+    const unavailable: LLMProvider = {
+      name: 'unavailable',
+      complete: vi.fn().mockResolvedValue({
+        content: '', model: 'm',
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }, finish_reason: 'stop',
+      }),
+      isAvailable: vi.fn().mockResolvedValue(false),
+    };
+    const good: LLMProvider = {
+      name: 'good',
+      complete: vi.fn().mockResolvedValue({
+        content: 'real answer', model: 'm',
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }, finish_reason: 'stop',
+      }),
+      isAvailable: vi.fn().mockResolvedValue(true),
+    };
+    const router = new LLMRouter([unavailable, good]);
+    const result = await router.complete({ model: '', messages: [{ role: 'user', content: 'hi' }] });
+    expect(result.content).toBe('real answer');
+    expect(unavailable.complete).not.toHaveBeenCalled();
+  });
+});

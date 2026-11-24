@@ -38,9 +38,4 @@ module.exports = {
     '@typescript-eslint/consistent-type-imports': 'warn',
     'import/order': ['warn', { 'newlines-between': 'always' }],
   },
-  settings: {
-    'import/resolver': {
-      typescript: true,
-    },
-  },
 };

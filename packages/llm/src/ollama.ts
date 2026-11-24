@@ -49,6 +49,7 @@ export class OllamaProvider implements LLMProvider {
       error?: string;
       eval_count?: number;
       prompt_eval_count?: number;
+      done_reason?: string;
     };
     if (data.error) {
       throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `Ollama returned an error: ${data.error}`);
@@ -61,7 +62,9 @@ export class OllamaProvider implements LLMProvider {
         completion_tokens: data.eval_count ?? 0,
         total_tokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
       },
-      finish_reason: 'stop',
+      // Audit #125: surface truncation — done_reason 'length' means the answer
+      // was cut mid-sentence by num_predict/max_tokens.
+      finish_reason: data.done_reason === 'length' ? 'length' : 'stop',
     };
   }
 
@@ -80,8 +83,9 @@ export class OllamaProvider implements LLMProvider {
       const detail = await response.body.text().catch(() => '');
       throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `Ollama embed returned ${response.statusCode}: ${detail.slice(0, 500)}`);
     }
-    const data = await response.body.text().then((t) => { try { return JSON.parse(t); } catch { throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `${this.name} returned a non-JSON response: ${t.slice(0, 200)}`); } }) as { embeddings?: number[][] };
-    return { embeddings: data.embeddings ?? [], model: req.model, usage: { total_tokens: 0 } };
+    const data = await response.body.text().then((t) => { try { return JSON.parse(t); } catch { throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `${this.name} returned a non-JSON response: ${t.slice(0, 200)}`); } }) as { embeddings?: number[][]; prompt_eval_count?: number };
+    // Audit #126: report real embedding token usage (was hardcoded 0).
+    return { embeddings: data.embeddings ?? [], model: req.model, usage: { total_tokens: data.prompt_eval_count ?? 0 } };
   }
 
   async isAvailable(): Promise<boolean> {
