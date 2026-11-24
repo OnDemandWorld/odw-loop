@@ -5,7 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    host: '0.0.0.0',
+    // Audit #108: bind loopback by default — 0.0.0.0 exposed the dev server
+    // (and its proxied /api + /metrics) to the whole LAN. Opt in with
+    // `pnpm dev --host` when LAN access is actually wanted.
+    host: '127.0.0.1',
     proxy: {
       '/api': { target: 'http://localhost:3000', changeOrigin: true },
       // V1.1 M2 (F5): proxy the execution-monitor WebSocket to the API.

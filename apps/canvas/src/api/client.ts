@@ -1,104 +1,14 @@
 /**
- * Loop Canvas API client (V1.1 M2, F4).
+ * Loop Canvas real-time execution stream client (V1.1 M2, F5).
  *
- * A typed fetch wrapper that adds what the existing `lib/api.ts` helper does
- * not: a configurable base URL and an `Authorization: Bearer <token>` header
- * sourced from a token provider (so the SPA can talk to an auth-enforced
- * backend, V1.0 §11). Also provides the real-time WebSocket helpers used by the
- * execution monitor (V1.1 M2, F5): a URL builder that carries the token as a
- * query param (browsers cannot set headers on a WS upgrade) and a small
- * `openExecutionSocket` wrapper that parses server events.
+ * REST lives in `lib/api.ts` (the single live client — the divergent parallel
+ * REST client here was removed, audit #96). This module provides the WS
+ * helpers: a URL builder carrying a single-use ticket (audit #23 — browsers
+ * cannot set headers on a WS upgrade) and an `openExecutionSocket` wrapper
+ * that parses server events.
  */
 
 import type { Execution, NodeExecution } from '../lib/api';
-
-// ─── REST client ─────────────────────────────────────────────────────────────
-
-export interface ApiClientOptions {
-  /** Prepended to every path. Defaults to '' (same-origin via the dev proxy). */
-  baseUrl?: string;
-  /** Returns the current bearer token, or null when unauthenticated. */
-  getToken?: () => string | null;
-}
-
-/** Error thrown for non-2xx responses or `{ success: false }` envelopes. */
-export class ApiClientError extends Error {
-  readonly code: string;
-  readonly status: number;
-  constructor(code: string, message: string, status: number) {
-    super(message);
-    this.name = 'ApiClientError';
-    this.code = code;
-    this.status = status;
-  }
-}
-
-interface Envelope<T> {
-  success?: boolean;
-  data?: T;
-  error?: { code: string; message: string };
-}
-
-/** Read the token persisted by the (future) login flow; null when absent. */
-function defaultGetToken(): string | null {
-  try {
-    return window.localStorage.getItem('loop.token');
-  } catch {
-    return null;
-  }
-}
-
-export interface ApiClient {
-  request: <T>(path: string, init?: RequestInit) => Promise<T>;
-  get: <T>(path: string) => Promise<T>;
-  post: <T>(path: string, body?: unknown) => Promise<T>;
-  put: <T>(path: string, body?: unknown) => Promise<T>;
-  del: <T>(path: string) => Promise<T>;
-}
-
-/** Build a JSON REST client bound to the given base URL + token provider. */
-export function createApiClient(options: ApiClientOptions = {}): ApiClient {
-  const baseUrl = options.baseUrl ?? '';
-  const getToken = options.getToken ?? defaultGetToken;
-
-  async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const headers = new Headers(init?.headers);
-    if (init?.body != null && !headers.has('Content-Type')) {
-      headers.set('Content-Type', 'application/json');
-    }
-    const token = getToken();
-    if (token && !headers.has('Authorization')) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
-
-    const res = await fetch(`${baseUrl}${path}`, { ...init, headers });
-    const body = (await res.json().catch(() => null)) as Envelope<T> | null;
-
-    if (!res.ok || (body != null && body.success === false)) {
-      throw new ApiClientError(
-        body?.error?.code ?? `HTTP_${res.status}`,
-        body?.error?.message ?? res.statusText,
-        res.status,
-      );
-    }
-    // Unwrap `{ success, data }` envelopes; pass through bare payloads.
-    return (body && 'data' in body ? body.data : body) as T;
-  }
-
-  const json = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) });
-
-  return {
-    request,
-    get: <T>(path: string) => request<T>(path),
-    post: <T>(path: string, body?: unknown) => request<T>(path, json(body)),
-    put: <T>(path: string, body?: unknown) =>
-      request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
-    del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
-  };
-}
-
-/** Default same-origin client (requests are proxied to the API in dev). */
-export const apiClient = createApiClient();
 
 // ─── Real-time execution stream (F5) ─────────────────────────────────────────
 

@@ -81,3 +81,28 @@ describe('SlackNotifier', () => {
     expect(sent).toHaveLength(0);
   });
 });
+
+describe('EmailNotifier stub (audit #110)', () => {
+  it('throws instead of silently reporting success', async () => {
+    const { EmailNotifier } = await import('../../../packages/connectors/src/notification/index');
+    const notifier = new EmailNotifier({ host: 'smtp.test', port: 587, user: 'u', pass: 'p' });
+    await expect(notifier.send('to@test', 'subject', 'body')).rejects.toThrow(/not implemented/);
+  });
+});
+
+describe('NotificationQueue — no head-of-line blocking (audit #111)', () => {
+  it('a failing item does not delay ready items behind it', async () => {
+    const { NotificationQueue } = await import('../../../packages/connectors/src/notification/index');
+    const queue = new NotificationQueue();
+    let okCalled = false;
+    queue.enqueue(async () => {
+      throw new Error('always fails');
+    });
+    queue.enqueue(async () => {
+      okCalled = true;
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    // The second item ran immediately — the old inline 5s sleep blocked it.
+    expect(okCalled).toBe(true);
+  });
+});

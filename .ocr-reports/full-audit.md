@@ -663,8 +663,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** onClose drains the executor (up to 10s) BEFORE cronHandler.shutdown(); a cron job firing inside that window creates and dispatches a new execution that store.close() then severs (completion writes fail and are swallowed).
   - **Failure scenario:** SIGTERM just before a cron tick: drain waits on old runs, cron fires mid-drain, new execution starts, store.close() runs -> execution left running/pending in DB, recovered (or failed) only on next startup.
   - **Suggested fix:** Call cronHandler.shutdown() before executor.drain() so no new executions start during the drain window.
-- [ ] **#96 — Dead parallel canvas components diverge from the live editor and hide bugs**
+- [x] **#96 — Dead parallel canvas components diverge from the live editor and hide bugs**
   - `apps/canvas/src/components/canvas/CanvasEditor.tsx:47-61` · category: maintainability
+  - **Status:** fixed — Deleted the five dead parallel components (CanvasEditor, NodeConfigPanel, NodeLibrary, CustomEdge, ExecutionMonitor — verified zero imports) and the divergent unused REST client section of api/client.ts; lib/api.ts is the single REST client, client.ts now WS-only with an accurate header. Verified: canvas tsc 0; vite build OK; unit 786/786.
   - **Root cause:** CanvasEditor, NodeConfigPanel, NodeLibrary, CustomEdge, ExecutionMonitor and the apiClient REST object are exported but never imported by any page. They contain latent bugs (handleNodesChange passes pre-change stale nodes; NodeConfigPanel writes 'label' into config while reading node.data.label) and duplicate palette/config logic WorkflowEditor re-implemented.
   - **Failure scenario:** Developer fixes node-config UX in NodeConfigPanel.tsx (obvious name) and ships a change with zero effect because WorkflowEditor uses its own internal ConfigPanel.
   - **Suggested fix:** Delete unused modules or wire them into the editor; single source of truth for palette, config panel and API client.
@@ -734,8 +735,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** deleteWorkflow filters the workflow out of the store instead of updating status to 'archived'. List endpoint includes archived rows; server and client disagree until next load.
   - **Failure scenario:** Archive a workflow, click 'archived' filter — list empty though workflow exists server-side; reappears only after navigating away and back.
   - **Suggested fix:** Update the row's status to 'archived' in place rather than removing it.
-- [ ] **#108 — Dev server binds 0.0.0.0 and proxies /api and /metrics to loopback API**
+- [x] **#108 — Dev server binds 0.0.0.0 and proxies /api and /metrics to loopback API**
   - `apps/canvas/vite.config.ts:6-16` · category: security
+  - **Status:** fixed — Vite dev server binds 127.0.0.1 by default (opt-in --host for LAN) — the proxied /api and /metrics are no longer exposed to the whole network by default. Verified: canvas tsc 0; vite build OK.
   - **Root cause:** host:'0.0.0.0' exposes the Vite dev server to the whole LAN while proxying to an API possibly bound to localhost only, bypassing the API's network isolation; /metrics also exposed without auth.
   - **Failure scenario:** pnpm dev on shared Wi-Fi with API on 127.0.0.1: anyone on the network reaches http://laptop:5173/api/v1/workflows and /metrics through the proxy.
   - **Suggested fix:** Bind to localhost by default (opt-in host flag); drop /metrics proxy unless needed.
@@ -745,18 +747,21 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** global.encryptionKey/jwtSecret default to '' and are b64enc'd without Helm's required function; install succeeds creating empty secrets; API config loader rejects the empty/short key at boot.
   - **Failure scenario:** helm install without --set values installs 'successfully', then every API pod crash-loops on encryption-key validation — failure surfaces late and opaquely.
   - **Suggested fix:** Use {{ required "global.encryptionKey is required" .Values.global.encryptionKey | b64enc }} (same for jwtSecret and postgres password).
-- [ ] **#110 — EmailNotifier stub silently succeeds without sending**
+- [x] **#110 — EmailNotifier stub silently succeeds without sending**
   - `packages/connectors/src/notification/index.ts:33-36` · category: error-handling
+  - **Status:** fixed — EmailNotifier.send throws 'SMTP not implemented' (with a warn log) instead of silently succeeding. Regression: notification.test.ts audit #110. Verified: typecheck 0; unit 786/786.
   - **Root cause:** send() only logs and returns; callers receive success for an email never sent.
   - **Failure scenario:** When the notification path is wired, email notifications no-op while workflows and the queue report success.
   - **Suggested fix:** Throw an explicit 'not implemented' error (or return failure) until SMTP lands.
-- [ ] **#111 — Retry sleep head-of-line-blocks the notification queue**
+- [x] **#111 — Retry sleep head-of-line-blocks the notification queue**
   - `packages/connectors/src/notification/index.ts:70-87` · category: performance
+  - **Status:** fixed — NotificationQueue uses per-item due timestamps + a scheduled wake-up (unref'd) instead of an inline backoff sleep — ready items are never head-of-line-blocked; single drain loop guarded. Regression: notification.test.ts audit #111 (failing item does not delay the next). Verified: typecheck 0; unit 786/786.
   - **Root cause:** drain() awaits the backoff sleep (5s/30s/5min/30min) inline before processing remaining queued items; one failing item stalls everything behind it.
   - **Failure scenario:** One failing webhook at the head of a 20-item queue delays all other notifications by up to 30 minutes cumulatively.
   - **Suggested fix:** Re-enqueue with a per-item due timestamp (or separate timers) instead of sleeping inside the drain loop.
-- [ ] **#112 — Recap JWT echoed into create_meeting/sync request bodies**
+- [x] **#112 — Recap JWT echoed into create_meeting/sync request bodies**
   - `packages/connectors/src/recap/adapter.ts:48-51` · category: security
+  - **Status:** fixed — recap create_meeting/sync strip the token from the outgoing body (stripToken) — the JWT travels only in the Authorization header. Regression: recap-adapter.test.ts audit #112 (body has no token, other fields intact). Verified: typecheck 0; unit 786/786; integration 179/180 (pre-existing only).
   - **Root cause:** token resolved from input['token'] (canvas recap.sync form offers a token field); create_meeting/sync pass the whole params.input — including token — as the JSON body, duplicating the credential beyond the Authorization header.
   - **Failure scenario:** JWT persisted in Recap's request-body logs in addition to the auth header, widening credential exposure on the sibling service.
   - **Suggested fix:** Strip token (and any auth material) from the body before JSON.stringify.

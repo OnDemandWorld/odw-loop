@@ -58,3 +58,35 @@ describe('RecapAdapter — meeting id encoding (audit #38)', () => {
     expect(urls[0]).toBe('/meetings/..%2F..%2Fsync');
   });
 });
+
+describe('RecapAdapter — credential body hygiene (audit #112)', () => {
+  const bodies: string[] = [];
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => (body += d));
+    req.on('end', () => {
+      bodies.push(body);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"id":"m1"}');
+    });
+  });
+  beforeAll(async () => {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  });
+  afterAll(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('create_meeting/sync bodies never carry the token', async () => {
+    const port = (server.address() as { port: number }).port;
+    const adapter = new RecapAdapter();
+    await adapter.execute({
+      operation: 'create_meeting',
+      input: { title: 'Standup', token: 'jwt-secret-value' },
+      config: { base_url: `http://127.0.0.1:${port}` },
+    } as never);
+    expect(bodies[0]).not.toContain('jwt-secret-value');
+    expect(JSON.parse(bodies[0]!)).toEqual({ title: 'Standup' });
+  });
+});

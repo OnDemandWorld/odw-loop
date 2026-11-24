@@ -49,9 +49,12 @@ export class RecapAdapter implements ConnectorAdapter {
         // instance JWT) to an unintended Recap endpoint.
         return this.callRecap(baseUrl, token, 'GET', `/meetings/${encodeURIComponent(String(params.input['id']))}`, undefined, idemKey, params);
       case 'create_meeting':
-        return this.callRecap(baseUrl, token, 'POST', '/meetings/', params.input, idemKey, params);
+        // Audit #112: never echo the JWT into the request body — it already
+        // travels in the Authorization header; duplicating it widens exposure
+        // in the sibling service's body logs.
+        return this.callRecap(baseUrl, token, 'POST', '/meetings/', stripToken(params.input), idemKey, params);
       case 'sync':
-        return this.callRecap(baseUrl, token, 'POST', '/sync', params.input, idemKey, params);
+        return this.callRecap(baseUrl, token, 'POST', '/sync', stripToken(params.input), idemKey, params);
       default:
         throw new Error(`Unknown Recap operation: ${params.operation}`);
     }
@@ -140,4 +143,10 @@ export class RecapAdapter implements ConnectorAdapter {
       throw new UpstreamError('UPSTREAM_RECAP_UNAVAILABLE', String(err));
     }
   }
+}
+
+/** Audit #112: remove auth material from outgoing request bodies. */
+function stripToken(input: Record<string, unknown>): Record<string, unknown> {
+  const { token: _token, ...rest } = input;
+  return rest;
 }

@@ -1335,7 +1335,9 @@
     "root_cause": "CanvasEditor, NodeConfigPanel, NodeLibrary, CustomEdge, ExecutionMonitor and the apiClient REST object are exported but never imported by any page. They contain latent bugs (handleNodesChange passes pre-change stale nodes; NodeConfigPanel writes 'label' into config while reading node.data.label) and duplicate palette/config logic WorkflowEditor re-implemented.",
     "suggested_fix": "Delete unused modules or wire them into the editor; single source of truth for palette, config panel and API client.",
     "failure_scenario": "Developer fixes node-config UX in NodeConfigPanel.tsx (obvious name) and ships a change with zero effect because WorkflowEditor uses its own internal ConfigPanel.",
-    "id": 96
+    "id": 96,
+    "status": "fixed",
+    "verification_notes": "Deleted the five dead parallel components (CanvasEditor, NodeConfigPanel, NodeLibrary, CustomEdge, ExecutionMonitor — verified zero imports) and the divergent unused REST client section of api/client.ts; lib/api.ts is the single REST client, client.ts now WS-only with an accurate header. Verified: canvas tsc 0; vite build OK; unit 786/786."
   },
   {
     "file": "apps/canvas/src/lib/api.ts",
@@ -1501,7 +1503,9 @@
     "root_cause": "host:'0.0.0.0' exposes the Vite dev server to the whole LAN while proxying to an API possibly bound to localhost only, bypassing the API's network isolation; /metrics also exposed without auth.",
     "suggested_fix": "Bind to localhost by default (opt-in host flag); drop /metrics proxy unless needed.",
     "failure_scenario": "pnpm dev on shared Wi-Fi with API on 127.0.0.1: anyone on the network reaches http://laptop:5173/api/v1/workflows and /metrics through the proxy.",
-    "id": 108
+    "id": 108,
+    "status": "fixed",
+    "verification_notes": "Vite dev server binds 127.0.0.1 by default (opt-in --host for LAN) — the proxied /api and /metrics are no longer exposed to the whole network by default. Verified: canvas tsc 0; vite build OK."
   },
   {
     "file": "helm/loop/templates/secrets.yaml",
@@ -1527,7 +1531,9 @@
     "root_cause": "send() only logs and returns; callers receive success for an email never sent.",
     "suggested_fix": "Throw an explicit 'not implemented' error (or return failure) until SMTP lands.",
     "failure_scenario": "When the notification path is wired, email notifications no-op while workflows and the queue report success.",
-    "id": 110
+    "id": 110,
+    "status": "fixed",
+    "verification_notes": "EmailNotifier.send throws 'SMTP not implemented' (with a warn log) instead of silently succeeding. Regression: notification.test.ts audit #110. Verified: typecheck 0; unit 786/786."
   },
   {
     "file": "packages/connectors/src/notification/index.ts",
@@ -1539,7 +1545,9 @@
     "root_cause": "drain() awaits the backoff sleep (5s/30s/5min/30min) inline before processing remaining queued items; one failing item stalls everything behind it.",
     "suggested_fix": "Re-enqueue with a per-item due timestamp (or separate timers) instead of sleeping inside the drain loop.",
     "failure_scenario": "One failing webhook at the head of a 20-item queue delays all other notifications by up to 30 minutes cumulatively.",
-    "id": 111
+    "id": 111,
+    "status": "fixed",
+    "verification_notes": "NotificationQueue uses per-item due timestamps + a scheduled wake-up (unref'd) instead of an inline backoff sleep — ready items are never head-of-line-blocked; single drain loop guarded. Regression: notification.test.ts audit #111 (failing item does not delay the next). Verified: typecheck 0; unit 786/786."
   },
   {
     "file": "packages/connectors/src/recap/adapter.ts",
@@ -1551,7 +1559,9 @@
     "root_cause": "token resolved from input['token'] (canvas recap.sync form offers a token field); create_meeting/sync pass the whole params.input — including token — as the JSON body, duplicating the credential beyond the Authorization header.",
     "suggested_fix": "Strip token (and any auth material) from the body before JSON.stringify.",
     "failure_scenario": "JWT persisted in Recap's request-body logs in addition to the auth header, widening credential exposure on the sibling service.",
-    "id": 112
+    "id": 112,
+    "status": "fixed",
+    "verification_notes": "recap create_meeting/sync strip the token from the outgoing body (stripToken) — the JWT travels only in the Authorization header. Regression: recap-adapter.test.ts audit #112 (body has no token, other fields intact). Verified: typecheck 0; unit 786/786; integration 179/180 (pre-existing only)."
   },
   {
     "file": "packages/connectors/src/registry.ts",
