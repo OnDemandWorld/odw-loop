@@ -15,7 +15,9 @@ import { UpstreamError } from '../../../packages/types/src/errors';
 
 describe('GenericAdapter — response size cap (audit #34)', () => {
   const bigBody = 'x'.repeat(11 * 1024 * 1024); // 11 MB > 10 MB cap
+  const seenHeaders: http.IncomingHttpHeaders[] = [];
   const server = http.createServer((req, res) => {
+    seenHeaders.push(req.headers);
     if (req.url === '/big') {
       res.writeHead(200, { 'content-type': 'text/plain' });
       res.end(bigBody);
@@ -58,5 +60,37 @@ describe('GenericAdapter — response size cap (audit #34)', () => {
       config: { base_url: baseUrl() },
     } as never);
     expect((result as { output: { data: unknown } }).output.data).toEqual({ ok: true });
+  });
+});
+
+describe('GenericAdapter — input headers (audit #33)', () => {
+  // Reuses the capture server above (same describe scope is closed; start a
+  // dedicated one here to keep the suites independent).
+  const seen: http.IncomingHttpHeaders[] = [];
+  const server = http.createServer((req, res) => {
+    seen.push(req.headers);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{"ok":true}');
+  });
+  beforeAll(async () => {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  });
+  afterAll(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('merges input.headers over config headers (canvas Headers field)', async () => {
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    const adapter = new GenericAdapter();
+    await adapter.execute({
+      operation: 'rest_call',
+      input: { path: '/x', method: 'GET', headers: { authorization: 'Bearer input-token', 'x-custom': 'yes' } },
+      config: { base_url: `http://127.0.0.1:${port}`, headers: { 'x-instance': 'kept' } },
+    } as never);
+    expect(seen[0]!['authorization']).toBe('Bearer input-token');
+    expect(seen[0]!['x-custom']).toBe('yes');
+    expect(seen[0]!['x-instance']).toBe('kept');
   });
 });

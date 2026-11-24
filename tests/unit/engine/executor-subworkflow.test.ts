@@ -417,3 +417,35 @@ describe('ExecutionExecutor — workflow.invoke sub-workflows (V1.2 M3)', () => 
     expect(rows.total).toBe(2);
   });
 });
+
+describe('workflow.invoke — inline node-type validation (audit #45)', () => {
+  const conns: SqliteConnection[] = [];
+  afterEach(() => {
+    while (conns.length > 0) conns.pop()!.close();
+  });
+
+  it('rejects inline definitions with unknown connector types (no green no-op)', async () => {
+    const { conn, store } = await createStore();
+    conns.push(conn);
+    const connectors = new ConnectorRegistry();
+    connectors.registerAdapter(recordingAdapter('mock', []));
+
+    const child: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [{ id: 'typo', type: 'vualt.search', position: { x: 0, y: 0 }, config: {} }],
+      edges: [],
+      variables: {},
+      metadata: { name: 'typo-child' },
+    };
+    const parent: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [{ id: 'node_sub', type: 'workflow.invoke', position: { x: 0, y: 0 }, config: { definition: child } }],
+      edges: [],
+      variables: {},
+      metadata: { name: 'typo-parent' },
+    };
+    const executionId = await seedExecution(store, parent);
+    const executor = new ExecutionExecutor(store, connectors, 10, 5_000, 30_000);
+    await expect(executor.execute(executionId, parent, {})).rejects.toThrow(/unknown node type 'vualt.search'/);
+  });
+});

@@ -407,7 +407,7 @@
     "failure_scenario": "Docker deployments load 0 templates with 0 load errors — silent feature loss; POST /api/v1/templates/:id/instantiate 404s for every shipped template.",
     "id": 30,
     "status": "fixed",
-    "verification_notes": "Dockerfile.app runtime stage now COPYs templates/ into /app/templates (TemplateRegistry's module-relative resolution). Verified statically (no local docker); CI docker-build step exercises it. typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30."
+    "verification_notes": "Dockerfile.app runtime stage now COPYs templates/ into /app/templates (TemplateRegistry's module-relative resolution). Verified statically (no local docker); CI docker-build step exercises it. typecheck 0; unit 717/717; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "helm/loop/templates/api-deployment.yaml",
@@ -443,7 +443,9 @@
     "root_cause": "headers read only from params.config['headers']; the canvas generic.rest_call form exposes 'Headers (JSON)' landing in params.input['headers'] (WorkflowEditor.tsx:186), never consulted.",
     "suggested_fix": "Merge input.headers over config.headers (string values only) before dispatch.",
     "failure_scenario": "Node whose Authorization header is set in the UI form sends the request unauthenticated — 401, or silently different behavior on anonymous-access endpoints.",
-    "id": 33
+    "id": 33,
+    "status": "fixed",
+    "verification_notes": "GenericAdapter merges string-valued input.headers over instance config headers (canvas Headers field now takes effect). Regression: generic-cap.test.ts audit #33 (authorization/x-custom from input reach the server; instance header kept). Verified: typecheck 0; unit 722/722; integration 177/178 (pre-existing only); e2e 30/30; eslint 0 new errors."
   },
   {
     "file": "packages/connectors/src/generic/adapter.ts",
@@ -457,7 +459,7 @@
     "failure_scenario": "rest_call node pointed at a large data-export/file URL buffers gigabytes into the heap; the modular-monolith API OOM-crashes, killing every in-flight execution.",
     "id": 34,
     "status": "fixed",
-    "verification_notes": "GenericAdapter buffers the response with a 10 MB cap (chunked read; destroys the body and throws UPSTREAM_GENERIC_HTTP_ERROR when exceeded). Regression: generic-cap.test.ts (11 MB response rejects with /exceeds/; small response round-trips). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30; eslint 0 new errors."
+    "verification_notes": "GenericAdapter buffers the response with a 10 MB cap (chunked read; destroys the body and throws UPSTREAM_GENERIC_HTTP_ERROR when exceeded). Regression: generic-cap.test.ts (11 MB response rejects with /exceeds/; small response round-trips). Verified: typecheck 0; unit 717/717; integration 177/178 (pre-existing only); e2e 30/30; eslint 0 new errors."
   },
   {
     "file": "packages/connectors/src/notification/index.ts",
@@ -581,7 +583,9 @@
     "root_cause": "dispatchNode picks instanceId via listInstances().find(first matching adapterType). Registry keys insertion-ordered; env instances (vault-default/desk-default/recap-default) registered before DB instances; no per-node instance selection. Additional instances created via POST /api/v1/connectors silently never used.",
     "suggested_fix": "Support per-node instance selection (config.connector_instance_id validated against registry) or at least prefer DB-registered instances over env defaults and warn when multiple instances of a type exist.",
     "failure_scenario": "Operator sets LOOP_VAULT_URL=old-vault then creates a new vault instance pointing at migrated-vault via POST /connectors: every vault.* node still resolves vault-default (registered first) and calls the old Vault with the old API key — writes go to the decommissioned system while GET /connectors shows the new instance.",
-    "id": 44
+    "id": 44,
+    "status": "fixed",
+    "verification_notes": "dispatchNode honors node.config.connector_instance_id when it names a registered instance of the type; otherwise first instance with a warning when multiple exist. Regression: executor-branch.test.ts audit #44 (second instance selected via config). Verified: typecheck 0; unit 722/722; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/engine/src/executor.ts",
@@ -593,7 +597,9 @@
     "root_cause": "validateInlineDefinition checks only structure (ids, edges, cycles). dispatchNode (793-804) passes unknown connector types through as input=output with only a warning. The API's assertKnownNodeTypes guard (routes/index.ts:210) covers stored definitions only, so inline workflow.invoke children reintroduce the 'green no-op' bug class it was added to fix.",
     "suggested_fix": "Run the known-node-type check inside validateInlineDefinition, or make dispatchNode fail on unknown non-control connector types.",
     "failure_scenario": "workflow.invoke with inline definition containing typo'd type 'vualt.search': child node 'succeeds' echoing its input, child and parent report success, no Vault call ever happens — silent no-op execution.",
-    "id": 45
+    "id": 45,
+    "status": "fixed",
+    "verification_notes": "invokeSubWorkflow validates inline child node types against the registry (pass-through: stub/control/workflow), mirroring the API's assertKnownNodeTypes — typo'd types fail fast instead of green no-ops. Regression: executor-subworkflow.test.ts audit #45 ('vualt.search' rejected). Verified: typecheck 0; unit 722/722; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/engine/src/nodes/index.ts",
@@ -647,7 +653,7 @@
     "failure_scenario": "Prompt hits Gemini's blocklist: API returns {promptFeedback:{blockReason:'SAFETY'}} and the workflow proceeds with an empty string as a successful answer, silently corrupting downstream steps.",
     "id": 49,
     "status": "fixed",
-    "verification_notes": "Gemini provider throws UpstreamError when promptFeedback.blockReason is set instead of returning an empty 'STOP' completion. Regression: providers.test.ts audit #49 (SAFETY block rejects). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30."
+    "verification_notes": "Gemini provider throws UpstreamError when promptFeedback.blockReason is set instead of returning an empty 'STOP' completion. Regression: providers.test.ts audit #49 (SAFETY block rejects). Verified: typecheck 0; unit 717/717; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/llm/src/openai.ts",
@@ -675,7 +681,7 @@
     "failure_scenario": "Corporate proxy returns a 200 login page for api.openai.com: node fails with \"Unexpected token '<'...\", circuit counts an unclassifiable failure, socket leaks.",
     "id": 51,
     "status": "fixed",
-    "verification_notes": "All six provider parse sites (openai/anthropic/azure/gemini/ollama chat+embed) read text first and JSON.parse with an UpstreamError carrying a 200-char snippet on failure (mirrors the generic adapter's existing guard); bodies drained on every path. Regression: providers.test.ts audit #51 (200 HTML page -> UpstreamError /non-JSON/, not SyntaxError). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30."
+    "verification_notes": "All six provider parse sites (openai/anthropic/azure/gemini/ollama chat+embed) read text first and JSON.parse with an UpstreamError carrying a 200-char snippet on failure (mirrors the generic adapter's existing guard); bodies drained on every path. Regression: providers.test.ts audit #51 (200 HTML page -> UpstreamError /non-JSON/, not SyntaxError). Verified: typecheck 0; unit 717/717; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/llm/src/router.ts",
@@ -715,7 +721,7 @@
     "failure_scenario": "Production /metrics (server.ts:351) returns 200 with empty body; loop_executions_total, egress_blocked_total, circuit-breaker gauges never record. Monitoring dashboards/alerts silently blind.",
     "id": 54,
     "status": "fixed",
-    "verification_notes": "tryLoadPromClient uses createRequire(import.meta.url) — metrics are real again in the ESM build. Regression: metrics.test.ts (counter recorded; collectMetrics renders loop_executions_total with labels; non-empty output). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30; eslint warnings back to baseline after import-order fix."
+    "verification_notes": "tryLoadPromClient uses createRequire(import.meta.url) — metrics are real again in the ESM build. Regression: metrics.test.ts (counter recorded; collectMetrics renders loop_executions_total with labels; non-empty output). Verified: typecheck 0; unit 717/717; integration 177/178 (pre-existing only); e2e 30/30; eslint warnings back to baseline after import-order fix."
   },
   {
     "file": "packages/secrets/src/manager.ts",
@@ -783,7 +789,9 @@
     "root_cause": "runPostgresMigrations reads applied versions then applies pending migrations in per-migration transactions; nothing serializes concurrent runners. CREATE TABLE/INDEX IF NOT EXISTS still races under concurrent DDL; INSERT INTO schema_migrations collides on the version PK.",
     "suggested_fix": "Take pg_advisory_lock around the whole migration run; re-read applied versions inside the lock.",
     "failure_scenario": "Two Scale replicas boot against a fresh DB: both see migration 001 unapplied, both BEGIN+CREATE+INSERT. Second hits PK/concurrent-CREATE error, rolls back and throws -> replica fails to start during rolling deploy.",
-    "id": 59
+    "id": 59,
+    "status": "fixed",
+    "verification_notes": "runPostgresMigrations takes a session-level pg_advisory_lock on a dedicated client, re-reads applied versions inside the lock, and unlocks in finally — concurrent Scale replicas no longer race on DDL/PK. Regression: postgres.test.ts audit #59 (lock first, version read inside, unlock last, client released). PG behavior verified via mock (no local PG). Verified: typecheck 0; unit 722/722; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/state/src/sqlite/index.ts",
@@ -917,7 +925,9 @@
     "root_cause": "commit() does writeFileSync -> git.add -> git.commit against the shared .git/index and HEAD with no mutex; isomorphic-git provides no cross-call locking. VersioningService.createVersion is invoked from authoring.update/restoreVersion which can run concurrently.",
     "suggested_fix": "Serialize all GitBackend mutations per repo (async mutex around write+add+commit, or single-writer queue).",
     "failure_scenario": "Two concurrent createVersion calls stage into the shared index and commit: a commit can snapshot wrong index contents, or both read the same parent HEAD and the second ref write orphans the first commit -> lost/corrupted version history.",
-    "id": 69
+    "id": 69,
+    "status": "fixed",
+    "verification_notes": "GitBackend.commit serializes all mutations through a per-repo promise queue (commitSerialized). Regression: git-mutex.test.ts (10 concurrent commits across 2 workflows -> 10 distinct shas, 5+5 history). Verified: typecheck 0; unit 722/722; integration 177/178 (pre-existing only); e2e 30/30; eslint 0 new errors."
   },
   {
     "file": "packages/versioning/src/service.ts",

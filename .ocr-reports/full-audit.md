@@ -213,7 +213,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Inspect changes in the handlers and setDirty(true) for position/remove/add changes (ignore select/dimensions).
 - [x] **#30 — templates/*.json data directory not copied into runtime image**
   - `docker/Dockerfile.app:63-65` · category: bug
-  - **Status:** fixed — Dockerfile.app runtime stage now COPYs templates/ into /app/templates (TemplateRegistry's module-relative resolution). Verified statically (no local docker); CI docker-build step exercises it. typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30.
+  - **Status:** fixed — Dockerfile.app runtime stage now COPYs templates/ into /app/templates (TemplateRegistry's module-relative resolution). Verified statically (no local docker); CI docker-build step exercises it. typecheck 0; unit 717/717; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** TemplateRegistry.resolveDir looks for <moduleRoot>/templates (= /app/templates in image) and cwd walk-ups; the repo-root templates/ directory with marketplace JSON is never COPYed into the runtime layout.
   - **Failure scenario:** Docker deployments load 0 templates with 0 load errors — silent feature loss; POST /api/v1/templates/:id/instantiate 404s for every shipped template.
   - **Suggested fix:** COPY templates/ ./templates/ in the runtime stage (after fixing the @loop/templates package copy).
@@ -227,14 +227,15 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** list_conversations calls callDesk with no query parameters and ignores params.input entirely, while the canvas form offers a status select (open/pending/resolved/all, WorkflowEditor.tsx:146-148).
   - **Failure scenario:** Workflow configured to list only open conversations receives all including resolved ones; a downstream auto-responder replies to already-resolved tickets.
   - **Suggested fix:** Forward input.status (and other supported filters) as URLSearchParams on the GET.
-- [ ] **#33 — generic.rest_call ignores per-node headers input (config only)**
+- [x] **#33 — generic.rest_call ignores per-node headers input (config only)**
   - `packages/connectors/src/generic/adapter.ts:33-33` · category: bug
+  - **Status:** fixed — GenericAdapter merges string-valued input.headers over instance config headers (canvas Headers field now takes effect). Regression: generic-cap.test.ts audit #33 (authorization/x-custom from input reach the server; instance header kept). Verified: typecheck 0; unit 722/722; integration 177/178 (pre-existing only); e2e 30/30; eslint 0 new errors.
   - **Root cause:** headers read only from params.config['headers']; the canvas generic.rest_call form exposes 'Headers (JSON)' landing in params.input['headers'] (WorkflowEditor.tsx:186), never consulted.
   - **Failure scenario:** Node whose Authorization header is set in the UI form sends the request unauthenticated — 401, or silently different behavior on anonymous-access endpoints.
   - **Suggested fix:** Merge input.headers over config.headers (string values only) before dispatch.
 - [x] **#34 — Unbounded response buffering in generic REST adapter**
   - `packages/connectors/src/generic/adapter.ts:78-78` · category: performance
-  - **Status:** fixed — GenericAdapter buffers the response with a 10 MB cap (chunked read; destroys the body and throws UPSTREAM_GENERIC_HTTP_ERROR when exceeded). Regression: generic-cap.test.ts (11 MB response rejects with /exceeds/; small response round-trips). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30; eslint 0 new errors.
+  - **Status:** fixed — GenericAdapter buffers the response with a 10 MB cap (chunked read; destroys the body and throws UPSTREAM_GENERIC_HTTP_ERROR when exceeded). Regression: generic-cap.test.ts (11 MB response rejects with /exceeds/; small response round-trips). Verified: typecheck 0; unit 717/717; integration 177/178 (pre-existing only); e2e 30/30; eslint 0 new errors.
   - **Root cause:** response.body.text() buffers the entire upstream response with no size cap; target URL is arbitrary workflow input (egress-gated for destination, not size).
   - **Failure scenario:** rest_call node pointed at a large data-export/file URL buffers gigabytes into the heap; the modular-monolith API OOM-crashes, killing every in-flight execution.
   - **Suggested fix:** Stream the body with a byte cap (e.g. 10 MB) and throw a clear UpstreamError when exceeded; consider configurable limit.
@@ -285,13 +286,15 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** maxConcurrent only used as batch size inside one execution's executeLevel (449). Nothing limits simultaneous execute() calls: every trigger path (cron/webhook/event/manual/recovery) fire-and-forgets executor.execute immediately. TSD §13 defines LOOP_MAX_CONCURRENT as 'Max concurrent executions' (50 Core); §8.1 requires a concurrency limit check at trigger time.
   - **Failure scenario:** */1 cron on a 10-minute workflow plus webhook bursts produces hundreds of simultaneous executions, each running up to 50 nodes per level. Documented 50-execution cap and SQLite 'hard cap at 50 concurrent' assumption violated -> SQLITE_BUSY write contention, memory growth, upstream rate-limit failures.
   - **Suggested fix:** Add an executor-wide semaphore/queue gating execute() entry at maxConcurrent (or per-workflow/in-flight cap in dispatch paths).
-- [ ] **#44 — Connector dispatch always uses the first instance of a type**
+- [x] **#44 — Connector dispatch always uses the first instance of a type**
   - `packages/engine/src/executor.ts:806-824` · category: bug
+  - **Status:** fixed — dispatchNode honors node.config.connector_instance_id when it names a registered instance of the type; otherwise first instance with a warning when multiple exist. Regression: executor-branch.test.ts audit #44 (second instance selected via config). Verified: typecheck 0; unit 722/722; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** dispatchNode picks instanceId via listInstances().find(first matching adapterType). Registry keys insertion-ordered; env instances (vault-default/desk-default/recap-default) registered before DB instances; no per-node instance selection. Additional instances created via POST /api/v1/connectors silently never used.
   - **Failure scenario:** Operator sets LOOP_VAULT_URL=old-vault then creates a new vault instance pointing at migrated-vault via POST /connectors: every vault.* node still resolves vault-default (registered first) and calls the old Vault with the old API key — writes go to the decommissioned system while GET /connectors shows the new instance.
   - **Suggested fix:** Support per-node instance selection (config.connector_instance_id validated against registry) or at least prefer DB-registered instances over env defaults and warn when multiple instances of a type exist.
-- [ ] **#45 — Inline sub-workflow definitions bypass node-type validation**
+- [x] **#45 — Inline sub-workflow definitions bypass node-type validation**
   - `packages/engine/src/executor.ts:1142-1169` · category: bug
+  - **Status:** fixed — invokeSubWorkflow validates inline child node types against the registry (pass-through: stub/control/workflow), mirroring the API's assertKnownNodeTypes — typo'd types fail fast instead of green no-ops. Regression: executor-subworkflow.test.ts audit #45 ('vualt.search' rejected). Verified: typecheck 0; unit 722/722; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** validateInlineDefinition checks only structure (ids, edges, cycles). dispatchNode (793-804) passes unknown connector types through as input=output with only a warning. The API's assertKnownNodeTypes guard (routes/index.ts:210) covers stored definitions only, so inline workflow.invoke children reintroduce the 'green no-op' bug class it was added to fix.
   - **Failure scenario:** workflow.invoke with inline definition containing typo'd type 'vualt.search': child node 'succeeds' echoing its input, child and parent report success, no Vault call ever happens — silent no-op execution.
   - **Suggested fix:** Run the known-node-type check inside validateInlineDefinition, or make dispatchNode fail on unknown non-control connector types.
@@ -314,7 +317,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Log only the entry name and which fields are missing; never the raw object.
 - [x] **#49 — Gemini prompt-level block returns empty content as 'STOP'**
   - `packages/llm/src/gemini.ts:77-87` · category: bug
-  - **Status:** fixed — Gemini provider throws UpstreamError when promptFeedback.blockReason is set instead of returning an empty 'STOP' completion. Regression: providers.test.ts audit #49 (SAFETY block rejects). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30.
+  - **Status:** fixed — Gemini provider throws UpstreamError when promptFeedback.blockReason is set instead of returning an empty 'STOP' completion. Regression: providers.test.ts audit #49 (SAFETY block rejects). Verified: typecheck 0; unit 717/717; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** promptFeedback.blockReason never inspected; a blocked prompt yields no candidates so content='' and finish_reason defaults to 'STOP' — indistinguishable from a legitimate empty completion. Candidate-level SAFETY at least visible via finishReason.
   - **Failure scenario:** Prompt hits Gemini's blocklist: API returns {promptFeedback:{blockReason:'SAFETY'}} and the workflow proceeds with an empty string as a successful answer, silently corrupting downstream steps.
   - **Suggested fix:** When promptFeedback.blockReason set, throw UpstreamError or map to a distinct finish_reason.
@@ -326,7 +329,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Combine deadlines: AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) (Node 20+), or race whichever fires first.
 - [x] **#51 — Non-JSON 200 provider reply crashes with raw SyntaxError**
   - `packages/llm/src/openai.ts:64-71` · category: error-handling
-  - **Status:** fixed — All six provider parse sites (openai/anthropic/azure/gemini/ollama chat+embed) read text first and JSON.parse with an UpstreamError carrying a 200-char snippet on failure (mirrors the generic adapter's existing guard); bodies drained on every path. Regression: providers.test.ts audit #51 (200 HTML page -> UpstreamError /non-JSON/, not SyntaxError). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30.
+  - **Status:** fixed — All six provider parse sites (openai/anthropic/azure/gemini/ollama chat+embed) read text first and JSON.parse with an UpstreamError carrying a 200-char snippet on failure (mirrors the generic adapter's existing guard); bodies drained on every path. Regression: providers.test.ts audit #51 (200 HTML page -> UpstreamError /non-JSON/, not SyntaxError). Verified: typecheck 0; unit 717/717; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** response.body.json() on a 200 HTML page (proxy/captive portal/wrong port) throws bare SyntaxError — not UpstreamError — losing upstream context; body left undrained (socket held). Same at anthropic.ts:53, azure.ts:44, gemini.ts:68, ollama.ts:44 and 80. Generic connector already fixed this pattern (generic/adapter.ts:74-92).
   - **Failure scenario:** Corporate proxy returns a 200 login page for api.openai.com: node fails with "Unexpected token '<'...", circuit counts an unclassifiable failure, socket leaks.
   - **Suggested fix:** Read text first, attempt JSON.parse, throw UpstreamError with short snippet on failure; drain on every path.
@@ -343,7 +346,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Buffer spans and flush batches on interval/size with a bounded queue (drop-oldest on overflow) and concurrency limit; keep export() non-blocking.
 - [x] **#54 — require() in ESM makes all Prometheus metrics silent no-ops**
   - `packages/observability/src/metrics.ts:52-60` · category: bug
-  - **Status:** fixed — tryLoadPromClient uses createRequire(import.meta.url) — metrics are real again in the ESM build. Regression: metrics.test.ts (counter recorded; collectMetrics renders loop_executions_total with labels; non-empty output). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30; eslint warnings back to baseline after import-order fix.
+  - **Status:** fixed — tryLoadPromClient uses createRequire(import.meta.url) — metrics are real again in the ESM build. Regression: metrics.test.ts (counter recorded; collectMetrics renders loop_executions_total with labels; non-empty output). Verified: typecheck 0; unit 717/717; integration 177/178 (pre-existing only); e2e 30/30; eslint warnings back to baseline after import-order fix.
   - **Root cause:** Package is ESM (package.json type:module, tsconfig Node16); bare require('prom-client') throws ReferenceError at runtime; tryLoadPromClient swallows it and returns undefined. metricsRegistry() always returns no-op stubs and collectMetrics() (207-211) always returns '' in the built product despite prom-client being installed.
   - **Failure scenario:** Production /metrics (server.ts:351) returns 200 with empty body; loop_executions_total, egress_blocked_total, circuit-breaker gauges never record. Monitoring dashboards/alerts silently blind.
   - **Suggested fix:** Use createRequire(import.meta.url)('prom-client') or a cached dynamic import; add a unit test asserting real counters when prom-client is installed.
@@ -371,8 +374,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** migrations-pg.ts:125 defines encrypted_value BYTEA while interface/SQLite use TEXT/string. create/update bind the JSON ciphertext string into BYTEA (bytea escape-format input); getByName casts r.encrypted_value 'as string' (line 623) but node-postgres returns BYTEA as Buffer. Contract violated; diverges from SQLite.
   - **Failure scenario:** SecretsManager.get survives only because JSON.parse(Buffer) coerces via toString. Any direct string use gets a Buffer; bytea escape-format input parsing corrupts payloads containing backslashes. SQLite returns a real string for the same call.
   - **Suggested fix:** Store encrypted_value as TEXT in PG (matches SQLite/interface), or bind Buffer.from(value,'utf8') on write and return .toString('utf8') on read.
-- [ ] **#59 — PG migration runner is check-then-act with no advisory lock**
+- [x] **#59 — PG migration runner is check-then-act with no advisory lock**
   - `packages/state/src/postgres/migrations.ts:25-49` · category: concurrency
+  - **Status:** fixed — runPostgresMigrations takes a session-level pg_advisory_lock on a dedicated client, re-reads applied versions inside the lock, and unlocks in finally — concurrent Scale replicas no longer race on DDL/PK. Regression: postgres.test.ts audit #59 (lock first, version read inside, unlock last, client released). PG behavior verified via mock (no local PG). Verified: typecheck 0; unit 722/722; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** runPostgresMigrations reads applied versions then applies pending migrations in per-migration transactions; nothing serializes concurrent runners. CREATE TABLE/INDEX IF NOT EXISTS still races under concurrent DDL; INSERT INTO schema_migrations collides on the version PK.
   - **Failure scenario:** Two Scale replicas boot against a fresh DB: both see migration 001 unapplied, both BEGIN+CREATE+INSERT. Second hits PK/concurrent-CREATE error, rolls back and throws -> replica fails to start during rolling deploy.
   - **Suggested fix:** Take pg_advisory_lock around the whole migration run; re-read applied versions inside the lock.
@@ -428,8 +432,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** WorkflowSettingsSchema.workflow_timeout_ms is z.number().int().positive() with no max. Executor passes it straight to setTimeout (executor.ts:290-293); Node clamps delays > 2^31-1 to 1ms (TimeoutOverflowWarning).
   - **Failure scenario:** Approval workflow sets workflow_timeout_ms=2592000000 (30 days): every execution aborts after ~1ms with WORKFLOW_TIMEOUT; workflow can never succeed and the error misreports the configured timeout.
   - **Suggested fix:** Cap at 2_147_483_647 (or a product max like 7 days) in the schema and/or clamp in the executor.
-- [ ] **#69 — Git commit sequence unserialized; concurrent versions race on index/HEAD**
+- [x] **#69 — Git commit sequence unserialized; concurrent versions race on index/HEAD**
   - `packages/versioning/src/git.ts:40-73` · category: concurrency
+  - **Status:** fixed — GitBackend.commit serializes all mutations through a per-repo promise queue (commitSerialized). Regression: git-mutex.test.ts (10 concurrent commits across 2 workflows -> 10 distinct shas, 5+5 history). Verified: typecheck 0; unit 722/722; integration 177/178 (pre-existing only); e2e 30/30; eslint 0 new errors.
   - **Root cause:** commit() does writeFileSync -> git.add -> git.commit against the shared .git/index and HEAD with no mutex; isomorphic-git provides no cross-call locking. VersioningService.createVersion is invoked from authoring.update/restoreVersion which can run concurrently.
   - **Failure scenario:** Two concurrent createVersion calls stage into the shared index and commit: a commit can snapshot wrong index contents, or both read the same parent HEAD and the second ref write orphans the first commit -> lost/corrupted version history.
   - **Suggested fix:** Serialize all GitBackend mutations per repo (async mutex around write+add+commit, or single-writer queue).

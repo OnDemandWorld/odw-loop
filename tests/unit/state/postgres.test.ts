@@ -466,3 +466,31 @@ describe('PostgresStateStore — row contract parity (audit #56, #58)', () => {
     expect(lastCall(mock.calls).sql).toContain('scope_id IS NULL');
   });
 });
+
+describe('PostgresStateStore — migration locking (audit #59)', () => {
+  it('serializes the migration run with an advisory lock', async () => {
+    const { runPostgresMigrations } = await import('../../../packages/state/src/postgres/migrations');
+    const calls: Array<{ sql: string; params?: unknown[] }> = [];
+    const client = {
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        calls.push({ sql, params });
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const conn = {
+      pool: {
+        query: vi.fn(async () => ({ rows: [] })),
+        connect: vi.fn(async () => client),
+      },
+    } as never;
+
+    await runPostgresMigrations(conn);
+
+    expect(calls[0]!.sql).toContain('pg_advisory_lock');
+    // Applied versions are re-read INSIDE the lock.
+    expect(calls[1]!.sql).toContain('SELECT version FROM schema_migrations');
+    expect(calls[calls.length - 1]!.sql).toContain('pg_advisory_unlock');
+    expect(client.release).toHaveBeenCalled();
+  });
+});

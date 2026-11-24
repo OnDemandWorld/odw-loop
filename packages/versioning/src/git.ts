@@ -19,6 +19,9 @@ export interface GitBackendOptions {
 
 export class GitBackend {
   private repoPath: string;
+  // Audit #69: isomorphic-git has no cross-call locking — concurrent commits
+  // race on the shared index/HEAD. Serialize all mutations per repo.
+  private commitQueue: Promise<unknown> = Promise.resolve();
 
   constructor(opts: GitBackendOptions) {
     this.repoPath = opts.repoPath;
@@ -36,8 +39,20 @@ export class GitBackend {
     }
   }
 
-  /** Commit a workflow definition snapshot. */
+  /** Commit a workflow definition snapshot (serialized per repo). */
   async commit(params: {
+    workflow_id: string;
+    version: number;
+    definition: string;
+    author: string;
+    message: string;
+  }): Promise<string> {
+    const run = this.commitQueue.then(() => this.commitSerialized(params));
+    this.commitQueue = run.catch(() => {});
+    return run;
+  }
+
+  private async commitSerialized(params: {
     workflow_id: string;
     version: number;
     definition: string;

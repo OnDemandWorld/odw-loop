@@ -521,3 +521,39 @@ describe('defaultRetry (L-9)', () => {
     expect(execution?.status).toBe('failed');
   });
 });
+
+describe('connector instance selection (audit #44)', () => {
+  it('honors config.connector_instance_id over the first-registered instance', async () => {
+    const ctx = await createStore();
+    contexts.push(ctx);
+    const connectors = new ConnectorRegistry();
+    const seenConfigs: Record<string, unknown>[] = [];
+    const adapter: ConnectorAdapter = {
+      type: 'svc',
+      async execute(params) {
+        seenConfigs.push(params.config as Record<string, unknown>);
+        return { output: { ok: true } };
+      },
+      async healthCheck() {
+        return true;
+      },
+      getCapabilities(): ConnectorCapabilities {
+        return { node_types: ['svc.op'], input_types: ['any'], output_types: ['any'] };
+      },
+    };
+    connectors.registerAdapter(adapter);
+    connectors.registerInstance('svc-env', 'svc', { base_url: 'http://first.test' });
+    connectors.registerInstance('svc-db', 'svc', { base_url: 'http://second.test' });
+
+    const definition: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [node('n1', 'svc.op', { connector_instance_id: 'svc-db' })],
+      edges: [],
+      variables: {},
+    };
+    const execId = await seedExecution(ctx.store, definition);
+    const executor = new ExecutionExecutor(ctx.store, connectors, 10, 5_000, 30_000);
+    await executor.execute(execId, definition, {});
+    expect(seenConfigs[0]!['base_url']).toBe('http://second.test');
+  });
+});

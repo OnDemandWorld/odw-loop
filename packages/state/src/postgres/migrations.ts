@@ -10,6 +10,9 @@ import { MIGRATIONS_PG, type Migration } from './migrations-pg.js';
 
 const logger = createLogger({ name: 'loop:state:postgres:migrate', component: 'state' });
 
+/** Fixed key for the migration advisory lock (arbitrary, app-specific). */
+const MIGRATION_LOCK_ID = 727001;
+
 export async function runPostgresMigrations(conn: PostgresConnection): Promise<void> {
   const { pool } = conn;
 
@@ -22,30 +25,39 @@ export async function runPostgresMigrations(conn: PostgresConnection): Promise<v
     )
   `);
 
-  const { rows: appliedRows } = await pool.query('SELECT version FROM schema_migrations');
-  const appliedSet = new Set(appliedRows.map((r: { version: string }) => r.version));
+  // Audit #59: serialize concurrent runners (e.g. Scale replicas booting in a
+  // rolling deploy) with a session-level advisory lock, and re-read the
+  // applied versions INSIDE the lock — the previous check-then-act raced on
+  // concurrent DDL and the schema_migrations PK.
+  const client = await pool.connect();
+  try {
+    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_ID]);
 
-  for (const migration of MIGRATIONS_PG) {
-    if (appliedSet.has(migration.version)) {
-      logger.debug({ version: migration.version }, 'Migration already applied');
-      continue;
+    const { rows: appliedRows } = await client.query('SELECT version FROM schema_migrations');
+    const appliedSet = new Set(appliedRows.map((r: { version: string }) => r.version));
+
+    for (const migration of MIGRATIONS_PG) {
+      if (appliedSet.has(migration.version)) {
+        logger.debug({ version: migration.version }, 'Migration already applied');
+        continue;
+      }
+
+      const checksum = createHash('sha256').update(migration.sql).digest('hex');
+      logger.info({ version: migration.version, checksum: checksum.slice(0, 12) }, 'Applying migration');
+
+      try {
+        await client.query('BEGIN');
+        await client.query(migration.sql);
+        await client.query('INSERT INTO schema_migrations (version, checksum) VALUES ($1, $2)', [migration.version, checksum]);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      }
     }
-
-    const checksum = createHash('sha256').update(migration.sql).digest('hex');
-    logger.info({ version: migration.version, checksum: checksum.slice(0, 12) }, 'Applying migration');
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(migration.sql);
-      await client.query('INSERT INTO schema_migrations (version, checksum) VALUES ($1, $2)', [migration.version, checksum]);
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+  } finally {
+    await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_ID]).catch(() => {});
+    client.release();
   }
 
   logger.info('All PostgreSQL migrations applied');

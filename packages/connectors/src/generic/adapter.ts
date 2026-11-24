@@ -30,7 +30,15 @@ export class GenericAdapter implements ConnectorAdapter {
     }
     const path = segments.join('/');
     const query = qIndex === -1 ? '' : `?${rawPath.slice(qIndex + 1)}`;
-    const headers = (params.config?.['headers'] as Record<string, string>) ?? {};
+    // Audit #33: the canvas form puts Headers (JSON) in input.headers; merge
+    // string-valued input headers over the instance config headers.
+    const headers: Record<string, string> = { ...((params.config?.['headers'] as Record<string, string>) ?? {}) };
+    const inputHeaders = params.input['headers'];
+    if (inputHeaders !== null && typeof inputHeaders === 'object' && !Array.isArray(inputHeaders)) {
+      for (const [k, v] of Object.entries(inputHeaders as Record<string, unknown>)) {
+        if (typeof v === 'string') headers[k] = v;
+      }
+    }
     const body = params.input['body'] as Record<string, unknown> | undefined;
 
     // V1.7 (L-7): honour the `url` and `params` fields the canvas form offers.

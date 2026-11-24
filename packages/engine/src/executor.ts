@@ -825,9 +825,23 @@ export class ExecutionExecutor {
       return input;
     }
 
-    const instanceId = this.connectors.listInstances().find((id) => {
+    // Audit #44: support per-node instance selection. Previously the FIRST
+    // instance of a type always won, so instances created via POST /connectors
+    // were silently never used (env defaults register first).
+    const matchingInstances = this.connectors.listInstances().filter((id) => {
       return this.connectors.getInstanceAdapterType(id) === connectorType;
     });
+    const requestedInstance = node.config?.['connector_instance_id'];
+    const instanceId =
+      typeof requestedInstance === 'string' && matchingInstances.includes(requestedInstance)
+        ? requestedInstance
+        : matchingInstances[0];
+    if (matchingInstances.length > 1 && instanceId !== requestedInstance) {
+      logger.warn(
+        { nodeId: node.id, connectorType, instances: matchingInstances, using: instanceId },
+        'Multiple connector instances of this type — using the first; set config.connector_instance_id to choose',
+      );
+    }
 
     const config = instanceId ? this.connectors.getInstanceConfig(instanceId) : {};
     // Surface the instance's api_key (when present) as a secret so adapters can
@@ -1057,6 +1071,21 @@ export class ExecutionExecutor {
       // here — otherwise a malformed/cyclic inline graph is silently
       // "partially executed and successful" (computeLevels drops cycle nodes).
       validateInlineDefinition(candidate, node.id);
+      // Audit #45: mirror the API's known-node-type guard — inline definitions
+      // bypass authoring validation, and dispatchNode passes unknown connector
+      // types through as input=output (a silent "green no-op").
+      const passThrough = new Set(['stub', 'control', 'workflow']);
+      for (const n of candidate.nodes) {
+        const prefix = String(n.type).split('.')[0] ?? n.type;
+        if (passThrough.has(prefix)) continue;
+        if (!this.connectors.getAdapter(prefix)) {
+          throw new LoopError(
+            'VALIDATION_INVALID',
+            `workflow.invoke node '${node.id}': inline definition contains unknown node type '${n.type}'`,
+            400,
+          );
+        }
+      }
       childDefinition = candidate;
     } else if (typeof workflowIdInput === 'string' && workflowIdInput.length > 0) {
       const loaded = await this.store.workflows.getById(workflowIdInput);
