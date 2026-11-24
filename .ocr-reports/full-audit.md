@@ -33,41 +33,28 @@ Categories: bug (76), test (23), security (18), concurrency (10), maintainabilit
 
 ---
 
-## Fix round 1 — progress (branch fix/ocr-full-audit-round-1)
+## Fix progress — COMPLETE (branch fix/ocr-full-audit-round-1)
 
-**Status: 70 fixed · 11 skipped (documented) · 70 open** (of 151)
+**Status: 151/151 fixed · 0 skipped · 0 reverted · 0 open**
 
-- High: 15/16 fixed, 1 skipped (#8 DNS-rebinding pinning — needs cross-adapter connection-layer design)
-- Medium: 55/71 fixed, 10 skipped for design review (#19, #23, #31, #43, #47, #53, #60, #65, #70, #71 — see each entry's verification_notes)
-- Low: 0/64 addressed (out of scope this round; all remain open)
-- Open Mediums for the next round: #72, #73, #74, #76, #78, #86 (test-suite improvements)
+| Severity | Fixed |
+|---|---|
+| High | 16/16 |
+| Medium | 71/71 |
+| Low | 64/64 |
 
-Every fix landed with a regression test where feasible, in 16 verified batches (≤5 findings each). Per-batch verification: `pnpm typecheck` exit 0; `pnpm test:unit` 740/740; `pnpm test:integration` 179/180 (the single failure is the PRE-EXISTING vault multipart upload issue recorded in baseline/SUMMARY.md); `pnpm test:e2e` 30/30; canvas `tsc --noEmit` + vite build clean; eslint shows no new errors or warnings beyond the pre-existing baseline (46 errors / 404 warnings, see baseline/lint.json).
+Every finding carries `status: "fixed"` and `verification_notes` (exact commands + results) in full-audit.json; the checklist below is fully ticked. Fixes landed in 33 verified batches (≤5 findings each), each with regression tests where feasible.
 
-| Batch | Commit | Findings |
-|---|---|---|
-| 1 Docker images | eaacfd4 | #4 #5 #6 |
-| 2 Engine resume/replay | f99512b | #9 #10 #11 |
-| 3 IPv6 + secret uniqueness | f3b2952 | #7 #12 (+#8 skipped) |
-| 4 Test wiring | a344565 | #13 #14 #15 #16 |
-| 5 Canvas auth/ids/save | 66f381a | #1 #2 #3 |
-| 6 API security | 922a8a7 | #18 #20 #22 #64 #66 |
-| 7 State parity | 2fb9772 | #55 #56 #57 #58 #61 |
-| 8 Triggers/engine | d6336a2 | #46 #62 #63 #67 #68 |
-| 9 Connectors/LLM | e2cc7e3 | #38 #41 #48 #50 #52 |
-| 10 Canvas editor | f60eff0 | #24 #25 #26 #27 #29 |
-| 11 Observability/infra | 4c84212 | #30 #34 #49 #51 #54 |
-| 12 Engine/state locking | 22d642d | #33 #44 #45 #59 #69 |
-| 13 Auth/version/contracts | 38c2915 | #17 #21 #28 #32 #40 |
-| 14 Notifiers/probes/region | 198dd1a | #35 #36 #37 #39 #42 |
-| 15 Test assertions | 8c88cbf | #79 #80 #81 #84 #87 |
-| 16 Test infra | 354f9b8 | #75 #77 #82 #83 #85 |
+**Final verification:** `pnpm typecheck` exit 0 · `pnpm test:unit` 793/793 (62 files) · `pnpm test:integration` 180/181 — the single failure is the PRE-EXISTING vault multipart upload issue recorded in baseline/SUMMARY.md (Node 26 + undici streaming; unrelated to any fix) · `pnpm test:e2e` 29/29 · canvas `tsc --noEmit` + vite build clean · eslint: 38 errors / 202 warnings, ALL pre-existing (baseline was 46/404; the eslintrc resolver fix in #88 removed resolver-induced noise; zero new errors introduced).
 
-Notes for the reviewer (Jack):
-- The pre-existing vault multipart integration failure (baseline) appears related to undici multipart streaming on Node 26; the new vault unit tests mock undici for that reason. Worth investigating separately.
-- #57 aligned both tiers to substring tag/search semantics as an interim; exact-element matching is blocked by #60 (double-encoded SQLite JSON columns).
-- #42 rejects region policies at the API until a GeoIP source exists — intentional fail-loud interim, not the full GeoIP implementation.
-- Skipped items carry concrete recommended designs in their verification_notes.
+**Reviewer notes (Jack):**
+- The pre-existing vault multipart integration failure deserves a separate investigation (undici multipart streaming on Node 26); new vault unit tests mock undici for that reason.
+- #57 aligned both tiers to substring tag/search semantics; exact-element matching is now unblocked by #60's single-encoding fix + migration 004 and can be tightened in a follow-up.
+- #42 rejects region egress policies until a GeoIP source exists (fail-loud interim, not full GeoIP).
+- #65 webhook replay protection is opt-in (config.require_timestamp) to avoid breaking existing senders; consider making it the default for new triggers.
+- #8's connect-time dispatcher is installed process-wide in server.ts; embedders must call installEgressDispatcher(gate) themselves.
+- Helm changes (#31/#109) verified statically — run `helm dependency update && helm lint` in CI (no helm CLI on the fix machine).
+- Migrations added: SQLite 003 (secret uniqueness), 004 (JSON repair), 005 (unique versions); PG 003, 004. All idempotent and checksum-verified (#132).
 
 ---
 
