@@ -94,3 +94,32 @@ describe('GenericAdapter — input headers (audit #33)', () => {
     expect(seen[0]!['x-instance']).toBe('kept');
   });
 });
+
+describe('GenericAdapter — idempotency key forwarding (audit #47)', () => {
+  const seen: http.IncomingHttpHeaders[] = [];
+  const server = http.createServer((req, res) => {
+    seen.push(req.headers);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{"ok":true}');
+  });
+  beforeAll(async () => {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  });
+  afterAll(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('forwards the idempotency key as a header for upstream dedup', async () => {
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    const adapter = new GenericAdapter();
+    await adapter.execute({
+      operation: 'rest_call',
+      input: { path: '/charge', method: 'POST', body: { amount: 10 } },
+      config: { base_url: `http://127.0.0.1:${port}` },
+      idempotencyKey: 'exec-1:node_1',
+    } as never);
+    expect(seen[0]!['idempotency-key']).toBe('exec-1:node_1');
+  });
+});

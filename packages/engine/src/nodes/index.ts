@@ -300,8 +300,24 @@ export class ApprovalNode {
 // ─── Delay ────────────────────────────────────────────────────────────────────
 
 export class DelayNode {
-  /** Pause execution for a specified duration. */
-  static async delay(durationMs: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, durationMs));
+  /** Pause execution for a specified duration. Audit #120: abortable — the
+   *  timer is cleared when the node/workflow deadline aborts, so a long delay
+   *  cannot outlive the failed execution and keep the event loop alive. */
+  static async delay(durationMs: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error('Delay aborted'));
+        return;
+      }
+      const onAbort = (): void => {
+        clearTimeout(timer);
+        reject(new Error('Delay aborted'));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, durationMs);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
   }
 }

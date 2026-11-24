@@ -598,8 +598,8 @@
     "suggested_fix": "Add an executor-wide semaphore/queue gating execute() entry at maxConcurrent (or per-workflow/in-flight cap in dispatch paths).",
     "failure_scenario": "*/1 cron on a 10-minute workflow plus webhook bursts produces hundreds of simultaneous executions, each running up to 50 nodes per level. Documented 50-execution cap and SQLite 'hard cap at 50 concurrent' assumption violated -> SQLITE_BUSY write contention, memory growth, upstream rate-limit failures.",
     "id": 43,
-    "status": "skipped",
-    "verification_notes": "Deferred for scheduler design: an execution-level semaphore on LOOP_MAX_CONCURRENT interacts with sub-workflow recursion (child executions consume slots -> deadlock risk at low limits) and per-level batching semantics. Needs a deliberate design (e.g. exempt child executions, queue at dispatch). NOT fixed."
+    "status": "fixed",
+    "verification_notes": "Executor now gates execute() entry with an execution-level semaphore at LOOP_MAX_CONCURRENT (acquire/release; sub-workflow children exempt to avoid deadlock). Regression: executor.test.ts audit #43 (maxConcurrent=1, two concurrent executions -> maxInFlight 1, both succeed). Verified: typecheck 0; unit 757/757; integration 175/176 (pre-existing only); e2e 29/29; eslint 0 new errors."
   },
   {
     "file": "packages/engine/src/executor.ts",
@@ -654,8 +654,8 @@
     "suggested_fix": "Apply the ambiguity policy per node: on resume settle crash-interrupted 'running' node rows to failed (or require explicit confirmation) instead of silently re-dispatching; alternatively make idempotency-key forwarding mandatory for mutating connector operations.",
     "failure_scenario": "Node A succeeds; node B (generic POST /charge) in flight when process crashes after upstream applied the charge. Restart -> recovery resumes (lastCompleted=A) -> B re-dispatched -> second charge. Identical crash with zero completed nodes deliberately failed instead — policy inconsistent.",
     "id": 47,
-    "status": "skipped",
-    "verification_notes": "Deferred for product decision: settle-vs-resume policy for crash-interrupted in-flight nodes trades side-effect safety against availability; mandatory Idempotency-Key forwarding for mutating connector ops is the alternative. Current inconsistency (0 completed -> fail, >=1 -> resume) confirmed. NOT fixed."
+    "status": "fixed",
+    "verification_notes": "Recovery settles crash-interrupted 'running' node rows to failed (with explanatory error + warn log) before resume, so re-dispatch goes through the explicit retry path; GenericAdapter now forwards the Idempotency-Key header so upstreams can dedup. Regression: recovery.test.ts audit #47 (running node -> failed with 'Interrupted by system restart'); generic-cap.test.ts (header forwarded). Policy documented in code. Verified: typecheck 0; unit 757/757; integration 175/176 (pre-existing only)."
   },
   {
     "file": "packages/llm/src/factory.ts",
@@ -1587,7 +1587,9 @@
     "root_cause": "this.activeRuns++ (264) happens before the try/finally that decrements it (try starts 298). If loadCompletedOutputs or store.executions.updateStatus('running') (272) throws (DB busy/IO error), the finally never runs: activeRuns stays elevated forever while metrics.activeExecutions was never incremented.",
     "suggested_fix": "Move activeRuns++ inside the try block (or wrap the whole post-increment startup sequence in the same try/finally).",
     "failure_scenario": "One transient SQLITE_BUSY during the running transition leaves activeRuns permanently >=1: every subsequent graceful shutdown's drain(10_000) waits the full 10s logging 'drain timed out' with zero in-flight work; repeated occurrences grow the counter unbounded.",
-    "id": 118
+    "id": 118,
+    "status": "fixed",
+    "verification_notes": "executeInner startup awaits wrapped in the counter try/finally; metrics gauge only decremented when incremented; execution slot released on every path. Regression: executor.test.ts audit #118 (updateStatus rejects once -> execute rejects, drain(200) true, subsequent execute succeeds). Verified: typecheck 0; unit 757/757."
   },
   {
     "file": "packages/engine/src/executor.ts",
@@ -1599,7 +1601,9 @@
     "root_cause": "On API cancel executeInner throws EXECUTION_CANCELLED; catch calls completeExecution(...,'failed') plus recordEvent('execution_failed', reason:'node_error'). completeIfActive keeps the row 'cancelled', but the bus event type is finalStatus==='succeeded' ? succeeded : failed and the durable event unconditionally 'execution_failed'. foldExecutionEvents then reports 'failed' for a cancelled execution.",
     "suggested_fix": "When finalStatus is 'cancelled' emit a cancellation event (or skip the failure event) and record an execution_cancelled-equivalent payload.",
     "failure_scenario": "User cancels a running execution: WS monitors receive type 'execution_failed' (status 'cancelled'); event log stores execution_failed/node_error. Replay snapshot shows 'failed' while the executions row says 'cancelled' — audit trail and live view contradict the store.",
-    "id": 119
+    "id": 119,
+    "status": "fixed",
+    "verification_notes": "Cancelled executions record reason 'cancelled' (not node_error); foldExecutionEvents reports status 'cancelled'; canvas applyStreamEvent honours the bus event's true status. Regression: replay.test.ts audit #119 fold test. Verified: typecheck 0; canvas tsc 0; unit 757/757; e2e 29/29."
   },
   {
     "file": "packages/engine/src/nodes/index.ts",
@@ -1611,7 +1615,9 @@
     "root_cause": "DelayNode.delay uses a bare setTimeout with no AbortSignal support and no clearance. When the node/workflow timeout aborts, withTimeout rejects and the execution fails, but the delay timer keeps running (and the event loop alive) for the full requested duration.",
     "suggested_fix": "Accept an AbortSignal in DelayNode.delay, clear the timer on abort and reject; pass the fused node signal from dispatchNode.",
     "failure_scenario": "control.delay duration_ms=3600000 with default 30s node timeout: node fails at 30s, execution settles, drain() reports fully drained — yet a 1-hour timer remains pending. Embedded/SDK hosts and tests that close the store hang until it fires; shipped server survives only because main() force-exits.",
-    "id": 120
+    "id": 120,
+    "status": "fixed",
+    "verification_notes": "DelayNode.delay accepts an AbortSignal, clears the timer on abort and rejects; dispatchNode passes the fused node signal. Regression: nodes.test.ts audit #120 (abort rejects promptly; pre-aborted rejects; normal resolve). Verified: typecheck 0; unit 757/757."
   },
   {
     "file": "packages/engine/src/stateMachine.ts",

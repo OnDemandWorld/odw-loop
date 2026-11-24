@@ -74,7 +74,13 @@ export class GenericAdapter implements ConnectorAdapter {
 
     const response = await request(target, {
       method: method as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
-      headers: { 'content-type': 'application/json', ...headers },
+      headers: {
+        'content-type': 'application/json',
+        ...headers,
+        // Audit #47: forward the idempotency key so upstreams can dedup
+        // re-dispatches after crash recovery (best-effort, per INTEGRATION_CONTRACT §4).
+        ...(params.idempotencyKey ? { 'idempotency-key': params.idempotencyKey } : {}),
+      },
       body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body ?? {}),
       signal: params.signal,
     });

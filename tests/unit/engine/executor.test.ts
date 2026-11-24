@@ -8,7 +8,7 @@
  *   - a node that exceeds its timeout fails the execution (NODE_TIMEOUT).
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createSqliteConnection, SqliteStateStore, type SqliteConnection } from '../../../packages/state/src';
 import { ConnectorRegistry, type ConnectorAdapter } from '../../../packages/connectors/src';
 import { ExecutionExecutor } from '../../../packages/engine/src/executor';
@@ -237,5 +237,72 @@ describe('ExecutionExecutor — parallel levels & timeout', () => {
     // it still differs from the 60_000ms executor default, so the override is proven.
     const executor = new ExecutionExecutor(store, connectors, 10, 60_000);
     await expect(executor.execute(executionId, definition, {})).rejects.toThrow(/timed out after 200ms/);
+  });
+});
+
+describe('ExecutionExecutor — execution concurrency cap (audit #43)', () => {
+  const conns: SqliteConnection[] = [];
+  afterEach(async () => {
+    while (conns.length > 0) conns.pop()!.close();
+  });
+
+  it('LOOP_MAX_CONCURRENT caps concurrent executions, not just nodes per level', async () => {
+    const { conn, store } = await createStore();
+    conns.push(conn);
+    const { adapter, stats } = createTrackingAdapter('slow', 60);
+    const connectors = new ConnectorRegistry();
+    connectors.registerAdapter(adapter);
+
+    const definition: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [node('a', 'slow.op')],
+      edges: [],
+      variables: {},
+      metadata: { name: 'cap' },
+    };
+    const e1 = await seedExecution(store, definition);
+    const e2 = await seedExecution(store, definition);
+
+    const executor = new ExecutionExecutor(store, connectors, 1, 5_000); // max 1 execution
+    await Promise.all([executor.execute(e1, definition, {}), executor.execute(e2, definition, {})]);
+
+    expect(stats.calls).toBe(2);
+    expect(stats.maxInFlight).toBe(1); // serialized, never 2
+    expect((await store.executions.getById(e1))?.status).toBe('succeeded');
+    expect((await store.executions.getById(e2))?.status).toBe('succeeded');
+  });
+});
+
+describe('ExecutionExecutor — startup failure counter hygiene (audit #118)', () => {
+  const conns: SqliteConnection[] = [];
+  afterEach(async () => {
+    while (conns.length > 0) conns.pop()!.close();
+  });
+
+  it('a startup throw before the main try does not leak activeRuns', async () => {
+    const { conn, store } = await createStore();
+    conns.push(conn);
+    const { adapter } = createTrackingAdapter('ok', 1);
+    const connectors = new ConnectorRegistry();
+    connectors.registerAdapter(adapter);
+    const definition: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [node('a', 'ok.op')],
+      edges: [],
+      variables: {},
+      metadata: { name: 'leak' },
+    };
+    const executionId = await seedExecution(store, definition);
+    const executor = new ExecutionExecutor(store, connectors, 5, 5_000);
+
+    const spy = vi.spyOn(store.executions, 'updateStatus').mockRejectedValueOnce(new Error('database is locked'));
+    await expect(executor.execute(executionId, definition, {})).rejects.toThrow('database is locked');
+    spy.mockRestore();
+
+    // Drain must report fully drained immediately — no leaked active run.
+    expect(await executor.drain(200)).toBe(true);
+    // And the executor still works afterwards.
+    await executor.execute(executionId, definition, {});
+    expect((await store.executions.getById(executionId))?.status).toBe('succeeded');
   });
 });

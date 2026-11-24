@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { BranchNode, LoopNode } from '../../../packages/engine/src/nodes/index';
+import { BranchNode, LoopNode, DelayNode } from '../../../packages/engine/src/nodes/index';
 
 vi.mock('@loop/observability', () => ({
   createLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
@@ -85,5 +85,24 @@ describe('BranchNode — escaped string literals (audit #46)', () => {
     const ctx = { ctx: { a: 'back\\slash', b: 'back\\slash', multi: 'line1\nline2' } };
     expect(BranchNode.evaluate(branches('{{ctx.a}} == {{ctx.b}}'), ctx)).toBe('yes');
     expect(BranchNode.evaluate(branches('{{ctx.multi}} == "line1\nline2"'), ctx)).toBe('yes');
+  });
+});
+
+describe('DelayNode — abortable timer (audit #120)', () => {
+  it('rejects promptly when the signal aborts and clears the timer', async () => {
+    const controller = new AbortController();
+    const pending = DelayNode.delay(60_000, controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toThrow('Delay aborted');
+  });
+
+  it('rejects immediately for an already-aborted signal', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(DelayNode.delay(60_000, controller.signal)).rejects.toThrow('Delay aborted');
+  });
+
+  it('still resolves normally without a signal', async () => {
+    await expect(DelayNode.delay(5)).resolves.toBeUndefined();
   });
 });

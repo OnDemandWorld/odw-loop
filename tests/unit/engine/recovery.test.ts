@@ -228,3 +228,29 @@ describe('ExecutionRecovery — event recording (V1.1 M1)', () => {
     expect(execution?.error).toContain('workflow archived');
   });
 });
+
+describe('ExecutionRecovery — ambiguous in-flight node settlement (audit #47)', () => {
+  const conns: SqliteConnection[] = [];
+  afterEach(() => {
+    while (conns.length > 0) conns.pop()!.close();
+  });
+
+  it('settles crash-interrupted running nodes to failed before resume', async () => {
+    const { conn, store } = await createStore();
+    conns.push(conn);
+    const executionId = await seedRunningExecution(store);
+
+    const okId = crypto.randomUUID();
+    await store.nodeExecutions.create({ id: okId, execution_id: executionId, node_id: 'node_1', node_type: 'vault.search', idempotency_key: `${executionId}:node_1` });
+    await store.nodeExecutions.updateStatus(okId, { status: 'succeeded', output: { ok: true }, completed_at: new Date().toISOString() });
+    const inflightId = crypto.randomUUID();
+    await store.nodeExecutions.create({ id: inflightId, execution_id: executionId, node_id: 'node_2', node_type: 'vault.search', idempotency_key: `${executionId}:node_2` });
+    await store.nodeExecutions.updateStatus(inflightId, { status: 'running', started_at: new Date().toISOString() });
+
+    await new ExecutionRecovery(store).recover();
+
+    const settled = await store.nodeExecutions.findByIdempotencyKey(`${executionId}:node_2`);
+    expect(settled?.status).toBe('failed');
+    expect(settled?.error).toContain('Interrupted by system restart');
+  });
+});

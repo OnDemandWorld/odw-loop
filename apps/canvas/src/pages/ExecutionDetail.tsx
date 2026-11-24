@@ -110,7 +110,9 @@ function applyStreamEvent(execution: Execution | null, event: ExecutionStreamEve
     return {
       ...execution,
       nodes,
-      status: 'failed',
+      // Audit #119: the bus event carries the true final status — a cancelled
+      // execution arrives as execution_failed with status 'cancelled'.
+      status: (event.status as Execution['status'] | undefined) ?? 'failed',
       error: event.error ?? execution.error,
       duration_ms: event.durationMs ?? execution.duration_ms,
       completed_at: event.timestamp ?? execution.completed_at,

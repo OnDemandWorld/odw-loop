@@ -93,7 +93,9 @@ export function foldExecutionEvents(executionId: string, events: ExecutionEvent[
         endedAt = timestamp;
         break;
       case 'execution_failed':
-        status = 'failed';
+        // Audit #119: the executor records cancellations with reason
+        // 'cancelled' — the snapshot must agree with the executions row.
+        status = payload['reason'] === 'cancelled' ? 'cancelled' : 'failed';
         endedAt = timestamp;
         error = asString(payload['error']) ?? error;
         detail = error;

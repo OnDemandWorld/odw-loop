@@ -165,6 +165,24 @@ export class ExecutionExecutor {
 
   /** V1.7 (L-10): in-flight executions on this executor (see drain()). */
   private activeRuns = 0;
+  // Audit #43: execution-level concurrency cap (TSD §13 LOOP_MAX_CONCURRENT).
+  private runningExecutions = 0;
+  private executionWaiters: Array<() => void> = [];
+
+  private async acquireExecutionSlot(): Promise<void> {
+    if (this.runningExecutions < this.maxConcurrent) {
+      this.runningExecutions++;
+      return;
+    }
+    await new Promise<void>((resolve) => this.executionWaiters.push(resolve));
+    this.runningExecutions++;
+  }
+
+  private releaseExecutionSlot(): void {
+    this.runningExecutions--;
+    const next = this.executionWaiters.shift();
+    if (next) next();
+  }
 
   /**
    * V1.7 (L-10): wait for in-flight executions to settle (bounded). The API
@@ -261,29 +279,38 @@ export class ExecutionExecutor {
       skippedNodes: new Set(),
       variables,
     };
+    // Audit #43: cap concurrent EXECUTIONS (not just nodes per level).
+    // Sub-workflow children are exempt — they run inside the parent's slot;
+    // counting them would deadlock at low limits.
+    const isTopLevel = options?.parentExecutionId === undefined;
+    if (isTopLevel) await this.acquireExecutionSlot();
     this.activeRuns++;
+    // Audit #118: startup awaits can throw (DB busy/IO) before the main try
+    // block — the counters must still be released, so wrap them too.
+    let metricsActive = false;
+    try {
+      // V1.1 M1 (F1 resume / F2 idempotency): seed the context with outputs of
+      // nodes that already succeeded for this execution so a resumed run skips
+      // them instead of re-dispatching (and re-triggering side effects).
+      await this.loadCompletedOutputs(executionId, ctx);
 
-    // V1.1 M1 (F1 resume / F2 idempotency): seed the context with outputs of
-    // nodes that already succeeded for this execution so a resumed run skips
-    // them instead of re-dispatching (and re-triggering side effects).
-    await this.loadCompletedOutputs(executionId, ctx);
-
-    // Transition execution to running
-    await this.store.executions.updateStatus(executionId, {
-      status: 'running',
-      started_at: new Date().toISOString(),
-    });
-    metrics.activeExecutions.inc();
-    await recordEvent(this.store, executionId, 'execution_started', undefined, {
-      resumed: ctx.completedOutputs.size > 0,
-    });
-    this.emit({
-      type: 'execution_started',
-      executionId,
-      status: 'running',
-      timestamp: new Date().toISOString(),
-      ...this.parentMarker(ctx),
-    });
+      // Transition execution to running
+      await this.store.executions.updateStatus(executionId, {
+        status: 'running',
+        started_at: new Date().toISOString(),
+      });
+      metrics.activeExecutions.inc();
+      metricsActive = true;
+      await recordEvent(this.store, executionId, 'execution_started', undefined, {
+        resumed: ctx.completedOutputs.size > 0,
+      });
+      this.emit({
+        type: 'execution_started',
+        executionId,
+        status: 'running',
+        timestamp: new Date().toISOString(),
+        ...this.parentMarker(ctx),
+      });
 
     // V1.1 M1 (F3): bound the WHOLE execution with a workflow-level timeout.
     // Per-definition `settings.workflow_timeout_ms` wins over the executor default.
@@ -355,15 +382,21 @@ export class ExecutionExecutor {
         : err;
       logger.error({ executionId, error: errorMsg }, 'Execution failed');
       await this.completeExecution(executionId, 'failed', startTime, errorMsg, ctx.workflowId, ctx.parentExecutionId);
+      // Audit #119: a cancelled execution is not a node error — record the
+      // accurate reason so the replay snapshot reports 'cancelled', not 'failed'.
+      const cancelled = err instanceof LoopError && err.code === 'EXECUTION_CANCELLED';
       await recordEvent(this.store, executionId, 'execution_failed', undefined, {
         error: errorMsg,
-        reason: workflowTimedOut ? 'workflow_timeout' : 'node_error',
+        reason: workflowTimedOut ? 'workflow_timeout' : cancelled ? 'cancelled' : 'node_error',
       });
       throw finalErr;
     } finally {
       clearTimeout(timer);
-      metrics.activeExecutions.dec();
+    }
+    } finally {
+      if (metricsActive) metrics.activeExecutions.dec();
       this.activeRuns--;
+      if (isTopLevel) this.releaseExecutionSlot();
     }
   }
 
@@ -795,7 +828,7 @@ export class ExecutionExecutor {
       if (!Number.isFinite(ms) || ms < 0) {
         throw new LoopError('VALIDATION_INVALID', `control.delay node '${node.id}' requires a non-negative numeric duration_ms`, 400);
       }
-      await DelayNode.delay(Math.floor(ms));
+      await DelayNode.delay(Math.floor(ms), signal);
       return { delayed_ms: Math.floor(ms) };
     }
 

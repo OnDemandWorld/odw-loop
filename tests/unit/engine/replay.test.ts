@@ -334,3 +334,15 @@ describe('replay — replayExecution dry-run (R2)', () => {
     await expect(replayExecution(executor, store, crypto.randomUUID())).rejects.toThrow(/not found/);
   });
 });
+
+describe('replay — cancelled execution fold (audit #119)', () => {
+  it('reports cancelled (not failed) when the failure event reason is cancelled', () => {
+    const execId = 'exec-cancel';
+    const events = [
+      event(execId, 1, 'execution_started', undefined),
+      event(execId, 2, 'execution_failed', undefined, { error: 'Execution cancelled', reason: 'cancelled' }),
+    ];
+    const snap = foldExecutionEvents(execId, events);
+    expect(snap.status).toBe('cancelled');
+  });
+});

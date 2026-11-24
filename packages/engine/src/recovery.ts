@@ -48,6 +48,26 @@ export class ExecutionRecovery {
         continue;
       }
 
+      // Audit #47: a crash-interrupted 'running' node's upstream side effects
+      // are ambiguous. Settle it to failed BEFORE resume so the re-dispatch
+      // goes through the explicit retry path (retry_count increments, the
+      // idempotency key is forwarded — GenericAdapter now sends it too) and
+      // the audit trail shows what happened, instead of silently resetting
+      // the row to running.
+      if (lastCompleted) {
+        for (const n of nodeExecs.filter((x) => x.status === 'running')) {
+          await this.store.nodeExecutions.updateStatus(n.id, {
+            status: 'failed',
+            error: 'Interrupted by system restart — re-dispatched with idempotency key',
+            completed_at: new Date().toISOString(),
+          });
+          logger.warn(
+            { executionId: execution.id, nodeId: n.node_id },
+            'Re-dispatching crash-interrupted node; upstream side effects may already have applied',
+          );
+        }
+      }
+
       // Recoverable: 'running' with completed nodes (resume — the executor
       // skips already-succeeded nodes) or 'pending' that never started.
       const reason = lastCompleted ? 'resume_from_last_succeeded' : 'never_started';
