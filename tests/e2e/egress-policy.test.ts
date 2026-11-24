@@ -1,7 +1,7 @@
 /**
  * E2E — Egress policy enforcement.
  *
- * Verifies that the EgressEngine + EgressInterceptor combination correctly
+ * Verifies that the EgressEngine + EgressGate combination correctly
  * enforces domain-level policies. The interceptor is wired into a workflow's
  * connector call path; the test asserts:
  *
@@ -17,7 +17,7 @@ import http from 'node:http';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 
-import { EgressInterceptor, EgressGate } from '../../packages/egress/src/interceptor';
+import { EgressGate } from '../../packages/egress/src/interceptor';
 import { GenericAdapter } from '../../packages/connectors/src';
 import { ExecutionExecutor } from '../../packages/engine/src';
 import type { WorkflowDefinition } from '../../packages/types';
@@ -137,13 +137,10 @@ describe('Egress policy enforcement (E2E)', () => {
     expect(after.matched_policy).toBe('allow-example');
   });
 
-  it('EgressInterceptor throws LoopError when egress is blocked', async () => {
+  it('EgressGate.check throws LoopError when egress is blocked (audit #115)', async () => {
     // No allow policies → default deny
-    const interceptor = new EgressInterceptor(ctx.egressEngine);
-
-    await expect(
-      interceptor.request('https://blocked.example.com/data'),
-    ).rejects.toThrow(/Egress blocked/);
+    const gate = new EgressGate(ctx.egressEngine, { airgap: false, unconfiguredPolicy: 'deny', allowPrivate: true });
+    await expect(gate.check('https://blocked.example.com/data')).rejects.toThrow(/Egress blocked/);
   });
 
   // Audit #72: the two tests below exercise the REAL execution path —

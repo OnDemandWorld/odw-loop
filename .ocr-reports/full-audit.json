@@ -108,8 +108,8 @@
     "suggested_fix": "Resolve once, validate all answers, then connect to the validated IP (custom undici Agent connect/lookup returning the pinned address, or request by IP with explicit Host header). Re-validate at connect time rather than only at check time.",
     "failure_scenario": "Attacker-controlled authoritative DNS with TTL=0 alternates A records: public IP during the gate's lookup, 127.0.0.1/169.254.169.254 during undici's connect lookup. A workflow node pointing at rebinding.attacker.tld passes the private-address blocklist and reaches cloud metadata or internal services despite allowPrivate=false.",
     "id": 8,
-    "status": "skipped",
-    "verification_notes": "Skipped this round: a correct fix must pin the validated IP to the actual connection (custom undici Agent connect/lookup or connect-time re-validation) across ALL adapters (vault/desk/recap/generic/llm providers) — a cross-cutting connection-layer design change too risky for a minimal-edit batch. Recommended design: shared egress-safe undici dispatcher in @loop/egress whose lookup hook resolves+validates at connect time (fail-closed), injected via ExecuteParams. Needs design review. NOT fixed — remains open."
+    "status": "fixed",
+    "verification_notes": "EgressGate now builds an undici Agent whose connect-time lookup re-validates the private-range blocklist on the ACTUAL resolution used for the connection; installEgressDispatcher(gate) sets it process-wide in server.ts, covering every outbound undici call (adapters, providers, notifiers, OTLP fetch). Closes the check-vs-connect DNS-rebinding window. Regression: private-blocklist.test.ts audit #8 (hostname resolving to loopback blocked at connect without any check(); allowPrivate permits). Verified: typecheck 0; unit 771/771; integration 179/180 (pre-existing only); e2e 29/29."
   },
   {
     "file": "packages/engine/src/executor.ts",
@@ -1565,7 +1565,9 @@
     "root_cause": "EgressInterceptor exported (index.ts:3) but never used in apps/ or packages/ (only dist typings and tests). Its request() applies only engine.evaluate — no airgap kill switch, no private-address blocklist — unlike EgressGate which all adapters actually use.",
     "suggested_fix": "Delete EgressInterceptor or make it delegate to EgressGate so the two enforcement paths cannot diverge.",
     "failure_scenario": "Developer wires EgressInterceptor.request believing it the sanctioned choke point -> outbound calls silently lose airgap and SSRF private-range protections EgressGate provides.",
-    "id": 115
+    "id": 115,
+    "status": "fixed",
+    "verification_notes": "Dead EgressInterceptor class removed (diverged from EgressGate: no airgap/blocklist); exports updated; the two test usages converted to EgressGate.check. Verified: typecheck 0; unit 771/771; integration 179/180 (pre-existing only); e2e 29/29."
   },
   {
     "file": "packages/egress/src/resolver.ts",
@@ -1577,7 +1579,9 @@
     "root_cause": "resolveIP looks up with {family:4}; for IPv6-only hosts lookup throws and the hostname is returned, so ipInCIDR/ipToNum (engine.ts:121-144, IPv4-only) never match. ip_range allow/deny policies silently inapplicable to IPv6 literals and IPv6-only DNS names.",
     "suggested_fix": "Resolve both families and implement IPv6-aware CIDR matching (or explicitly reject ip_range evaluation for IPv6 with a logged reason).",
     "failure_scenario": "Admin adds deny ip_range for an IPv6 range and allows a domain resolving IPv6-only -> evaluate() compares hostname string against CIDR, never matches the deny; an ip_range ALLOW for IPv6 can never permit traffic, breaking intended policy.",
-    "id": 116
+    "id": 116,
+    "status": "fixed",
+    "verification_notes": "resolveIP resolves both families; ipInCIDR supports IPv6 via 128-bit prefix comparison (parseIPv6Bytes moved to resolver, shared with the blocklist); engine strips IPv6 brackets from URL.hostname (Node keeps them, which broke matching). Regression: engine.test.ts audit #116 (::1/128 deny matches; 2001:db8::/32 allow matches inside, not outside). Verified: typecheck 0; unit 771/771."
   },
   {
     "file": "packages/engine/src/circuitBreaker.ts",
@@ -1845,7 +1849,9 @@
     "root_cause": "`NOT_FOUND_${resource.toUpperCase()}` as ErrorCode accepts any resource string. Real callers pass 'template' and 'workflow_version', producing NOT_FOUND_TEMPLATE / NOT_FOUND_WORKFLOW_VERSION which are not ErrorCode members (§12.1 envelope contract).",
     "suggested_fix": "Constrain resource to a keyof-derived union of NOT_FOUND_* codes, or add the missing codes to ErrorCode.",
     "failure_scenario": "GET /api/v1/templates/<unknown> returns NOT_FOUND_TEMPLATE; typed clients switching on ErrorCode fall through to the generic handler; contract tests against the documented enum fail.",
-    "id": 137
+    "id": 137,
+    "status": "fixed",
+    "verification_notes": "ErrorCode union gained NOT_FOUND_TEMPLATE, NOT_FOUND_WORKFLOW_VERSION, NOT_FOUND_EGRESS_POLICY — the codes NotFoundError callers actually emit (incl. the new egress 404s). Verified: typecheck 0; unit 771/771."
   },
   {
     "file": "packages/types/src/schemas/workflow.ts",
@@ -1857,7 +1863,9 @@
     "root_cause": "RetryConfigSchema caps max_attempts at 20 and initial_delay_ms at 60000, but exponential delay = 60000 * 2^attempt exceeds 2^31-1 from attempt 16 (~3.9e9 ms); Node fires such timers after 1ms; engine calculateBackoff has no cap.",
     "suggested_fix": "Clamp computed backoff to <= 2_147_483_647 (or a sane max like 60s) in the engine, and/or tighten schema bounds.",
     "failure_scenario": "Node with retry {max_attempts:20, initial_delay_ms:60000, backoff:'exponential'} against a persistently failing upstream: attempts 16-19 retry ~1ms apart, hammering the upstream instead of backing off.",
-    "id": 138
+    "id": 138,
+    "status": "fixed",
+    "verification_notes": "calculateBackoff clamps to 2_147_483_647 ms — exponential delays can no longer overflow setTimeout into a ~1ms retry burst. Regression: retry.test.ts audit #138 (60000*2^19 clamps; small delays unchanged). Verified: typecheck 0; unit 771/771."
   },
   {
     "file": "packages/workflow-authoring/src/service.ts",

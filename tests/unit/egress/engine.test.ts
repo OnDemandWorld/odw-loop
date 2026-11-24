@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EgressEngine, type EgressPolicy } from '../../../packages/egress/src/engine';
 
 // Mock the resolver so tests are deterministic (no real DNS, controllable region).
-vi.mock('../../../packages/egress/src/resolver.js', () => ({
+vi.mock('../../../packages/egress/src/resolver.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   resolveIP: (hostname: string): string => {
     // If it already looks like an IPv4 literal, return as-is.
     if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return hostname;
@@ -251,5 +252,24 @@ describe('@loop/egress — EgressEngine', () => {
       await engine.evaluate('https://api.example.com/b');
       expect(loader).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe('EgressEngine — IPv6 ip_range policies (audit #116)', () => {
+  it('matches IPv6 CIDR ranges for deny and allow', async () => {
+    const denyEngine = new EgressEngine(async () => [
+      makePolicy({ id: 'deny-v6-loop', target_type: 'ip_range', target_value: '::1/128', rule_type: 'deny', priority: 100 }),
+      makePolicy({ id: 'allow-all', target_type: 'domain', target_value: '*', priority: 1 }),
+    ]);
+    const denied = await denyEngine.evaluate('http://[::1]/x');
+    expect(denied.allowed).toBe(false);
+
+    const allowEngine = new EgressEngine(async () => [
+      makePolicy({ id: 'allow-v6-doc', target_type: 'ip_range', target_value: '2001:db8::/32', priority: 100 }),
+    ]);
+    const allowed = await allowEngine.evaluate('http://[2001:db8::1]/x');
+    expect(allowed.allowed).toBe(true);
+    const outside = await allowEngine.evaluate('http://[2001:db9::1]/x');
+    expect(outside.allowed).toBe(false);
   });
 });

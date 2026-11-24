@@ -2,13 +2,16 @@
  * Network call interceptor — wraps undici to enforce egress policies.
  */
 
-import { request as undiciRequest, type Dispatcher } from 'undici';
 import { lookup } from 'node:dns';
 import { promisify } from 'node:util';
 import { isIP } from 'node:net';
+
+import { Agent, setGlobalDispatcher } from 'undici';
 import { createLogger } from '@loop/observability';
-import type { EgressEngine } from './engine.js';
 import { LoopError } from '@loop/types';
+
+import { parseIPv6Bytes } from './resolver.js';
+import type { EgressEngine } from './engine.js';
 
 const logger = createLogger({ name: 'loop:egress:interceptor', component: 'egress' });
 
@@ -46,52 +49,6 @@ function ipv4InCidr(ip: string, cidrBase: string, prefixBits: number): boolean {
 /** True for loopback/private/reserved IPv4 addresses (RFC1918, CGNAT, link-local, …). */
 export function isPrivateIPv4(ip: string): boolean {
   return PRIVATE_V4_RANGES.some(([base, bits]) => ipv4InCidr(ip, base, bits));
-}
-
-/**
- * Parse an IPv6 literal into 16 bytes, handling '::' compression and embedded
- * dotted-IPv4 tails. Returns null for anything malformed. Audit #7: range
- * checks must run on the parsed bytes — string-form comparisons miss
- * non-canonical spellings like '0:0:0:0:0:0:0:1' or '::ffff:7f00:1'.
- */
-function parseIPv6Bytes(ip: string): number[] | null {
-  const halves = ip.split('::');
-  if (halves.length > 2) return null;
-
-  const expand = (segment: string): number[] | null => {
-    if (segment === '') return [];
-    const groups = segment.split(':');
-    const bytes: number[] = [];
-    for (let i = 0; i < groups.length; i++) {
-      const g = groups[i]!;
-      if (g.includes('.')) {
-        // Embedded IPv4 is only valid as the final group.
-        if (i !== groups.length - 1) return null;
-        const octets = g.split('.');
-        if (octets.length !== 4) return null;
-        for (const o of octets) {
-          if (!/^\d{1,3}$/.test(o)) return null;
-          const n = Number(o);
-          if (n > 255) return null;
-          bytes.push(n);
-        }
-        continue;
-      }
-      if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
-      const n = Number.parseInt(g, 16);
-      bytes.push(n >> 8, n & 0xff);
-    }
-    return bytes;
-  };
-
-  const left = expand(halves[0]!);
-  if (!left) return null;
-  if (halves.length === 1) return left.length === 16 ? left : null;
-  const right = expand(halves[1]!);
-  if (!right) return null;
-  const fill = 16 - left.length - right.length;
-  if (fill < 1) return null; // '::' must stand for at least one zero group
-  return [...left, ...new Array<number>(fill).fill(0), ...right];
 }
 
 /** True for loopback/ULA/link-local/unspecified/v4-mapped-private IPv6 addresses. */
@@ -148,20 +105,6 @@ export async function firstPrivateAddress(url: string): Promise<string | null> {
   return null;
 }
 
-export class EgressInterceptor {
-  constructor(private engine: EgressEngine) {}
-
-  /** Make an HTTP request that is subject to egress policy. */
-  async request(url: string, opts?: Dispatcher.RequestOptions) {
-    const decision = await this.engine.evaluate(url);
-    if (!decision.allowed) {
-      logger.warn({ url, reason: decision.reason }, 'Egress blocked');
-      throw new LoopError('NODE_EGRESS_BLOCKED', `Egress blocked: ${decision.reason}`, 403);
-    }
-    return undiciRequest(url, opts);
-  }
-}
-
 /** Options controlling when the gate enforces policy evaluation. */
 export interface EgressGateOptions {
   /** Kill switch — when true, every outbound call is blocked (fail closed). */
@@ -194,10 +137,53 @@ export interface EgressGateOptions {
  * dispatching.
  */
 export class EgressGate {
+  /**
+   * Audit #8 (DNS-rebinding TOCTOU): check() resolves the host once, but the
+   * adapter's HTTP client resolves AGAIN at connect time — an attacker with
+   * TTL=0 DNS can answer public during the check and private during connect.
+   * This dispatcher re-validates the private-range blocklist inside the
+   * connect-time lookup, so the address actually connected to is the address
+   * validated. Install it process-wide via installEgressDispatcher(gate).
+   */
+  readonly dispatcher: Agent;
+
   constructor(
     private engine: EgressEngine,
     private opts: EgressGateOptions,
-  ) {}
+  ) {
+    const allowPrivate = opts.allowPrivate ?? false;
+    this.dispatcher = new Agent({
+      connect: {
+        lookup: (hostname, _options, callback) => {
+          lookup(hostname, { all: true }, (err, addresses) => {
+            if (err) {
+              callback(err, '', 0);
+              return;
+            }
+            const list = addresses as unknown as Array<{ address: string; family: number }>;
+            if (!allowPrivate) {
+              for (const a of list) {
+                if (isPrivateIp(a.address)) {
+                  callback(
+                    new Error(`Egress blocked: '${a.address}' is a private/reserved address (connect-time validation)`),
+                    '',
+                    0,
+                  );
+                  return;
+                }
+              }
+            }
+            const first = list[0];
+            if (!first) {
+              callback(new Error('Egress: empty DNS answer'), '', 0);
+              return;
+            }
+            callback(null, first.address, first.family);
+          });
+        },
+      },
+    });
+  }
 
   /** Throw a 403 `NODE_EGRESS_BLOCKED` error when the URL may not be reached. */
   async check(url: string): Promise<void> {
@@ -233,4 +219,14 @@ export class EgressGate {
       throw new LoopError('NODE_EGRESS_BLOCKED', `Egress blocked: ${decision.reason}`, 403);
     }
   }
+}
+
+/**
+ * Audit #8: install the gate's connect-time-validating dispatcher as the
+ * process-wide undici default, so EVERY outbound call (adapters, LLM
+ * providers, notifiers, OTLP fetch) is validated against the private-range
+ * blocklist at the moment of connection — closing the DNS-rebinding window.
+ */
+export function installEgressDispatcher(gate: EgressGate): void {
+  setGlobalDispatcher(gate.dispatcher);
 }

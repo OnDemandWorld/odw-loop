@@ -112,3 +112,49 @@ describe('EgressGate private blocklist (unconfigured allow)', () => {
     await expect(g.check('http://[0:0:0:0:0:ffff:a9fe:a9fe]/latest/meta-data/')).rejects.toThrow(/private\/reserved/);
   });
 });
+
+describe('EgressGate dispatcher — connect-time validation (audit #8)', () => {
+  it('rejects private targets at CONNECT time even without a prior check()', async () => {
+    const http = await import('node:http');
+    const { request } = await import('undici');
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200);
+      res.end('ok');
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const g = gate(false); // allowPrivate=false
+      // No gate.check() call — the dispatcher's lookup hook must still block
+      // the loopback connection (DNS-rebinding defense). Use a HOSTNAME:
+      // undici skips the lookup hook for IP literals (those are covered by
+      // check()'s literal path); the rebinding window is hostname resolution.
+      await expect(
+        request(`http://localhost:${port}/`, { dispatcher: g.dispatcher }),
+      ).rejects.toThrow(/private\/reserved/);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+
+  it('allows the connection when allowPrivate is set', async () => {
+    const http = await import('node:http');
+    const { request } = await import('undici');
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const g = gate(true);
+      const res = await request(`http://127.0.0.1:${port}/`, { dispatcher: g.dispatcher });
+      expect(res.statusCode).toBe(200);
+      await res.body.text();
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+});

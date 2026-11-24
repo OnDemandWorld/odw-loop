@@ -23,7 +23,10 @@ vi.mock('node:dns', () => ({
   // which really returns an ARRAY of {address,family}. The old string-only
   // mock made firstPrivateAddress iterate characters and silently no-op the
   // hostname private-address branch.
-  lookup: (hostname: string, opts: unknown, cb: (err: Error | null, address?: unknown) => void) => {
+  lookup: (hostname: string, optsOrCb: unknown, maybeCb?: (err: Error | null, address?: unknown) => void) => {
+    // dns.lookup is called both as (host, cb) and (host, opts, cb).
+    const opts = typeof optsOrCb === 'function' ? {} : optsOrCb;
+    const cb = (typeof optsOrCb === 'function' ? optsOrCb : maybeCb) as (err: Error | null, address?: unknown) => void;
     const all = typeof opts === 'object' && opts !== null && (opts as { all?: boolean }).all === true;
     if (hostname === 'api.example.com') {
       cb(null, all ? [{ address: '93.184.216.34', family: 4 }] : '93.184.216.34');

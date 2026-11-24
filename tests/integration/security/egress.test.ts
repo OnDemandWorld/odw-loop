@@ -12,11 +12,12 @@ import {
   SqliteStateStore,
   type SqliteConnection,
 } from '../../../packages/state/src/index.js';
-import { EgressEngine, EgressInterceptor } from '../../../packages/egress/src/index.js';
+import { EgressEngine, EgressGate } from '../../../packages/egress/src/index.js';
 import { LoopError } from '../../../packages/types/src/index.js';
 
 // Mock the resolver so tests are deterministic (no real DNS).
-vi.mock('../../../packages/egress/src/resolver.js', () => ({
+vi.mock('../../../packages/egress/src/resolver.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   resolveIP: (hostname: string): string => {
     if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return hostname;
     const map: Record<string, string> = {
@@ -159,16 +160,14 @@ describe('Egress policy enforcement', () => {
     expect(decision.allowed).toBe(false);
   });
 
-  it('EgressInterceptor throws LoopError when egress is blocked', async () => {
+  it('EgressGate.check throws LoopError when egress is blocked (audit #115: interceptor removed)', async () => {
     // No allow policy → default deny
-    const interceptor = new EgressInterceptor(engine);
+    const gate = new EgressGate(engine, { airgap: false, unconfiguredPolicy: 'deny', allowPrivate: true });
 
-    await expect(
-      interceptor.request('https://blocked.example.com/anything'),
-    ).rejects.toThrow(/Egress blocked/);
+    await expect(gate.check('https://blocked.example.com/anything')).rejects.toThrow(/Egress blocked/);
 
     try {
-      await interceptor.request('https://blocked.example.com/anything');
+      await gate.check('https://blocked.example.com/anything');
     } catch (err) {
       // Verify via duck-typing because module identity can differ across
       // pnpm's module graph.

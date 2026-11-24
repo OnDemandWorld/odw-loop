@@ -117,8 +117,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** isPrivateIPv6() compares strings against '::1'/'::' and a dotted-decimal v4-mapped regex only. '0:0:0:0:0:0:0:1' (expanded loopback) fails equality; first label '0' parses to 0x0000 (not fc00/fe80) -> false. '::ffff:7f00:1' (hex v4-mapped 127.0.0.1) fails the dotted regex; first label '' -> returns false at line 59. isIP() accepts both as valid IPv6, so firstPrivateAddress (93) takes the literal path and returns null -> EgressGate.check allows the URL even with allowPrivate=false (the config default).
   - **Failure scenario:** With LOOP_EGRESS_ALLOW_PRIVATE=false (default), a generic.rest_call node targeting http://[0:0:0:0:0:0:0:1]:3000/ or http://[::ffff:7f00:1]:3000/ passes the gate and undici connects to the API's own loopback listener / internal services — the exact SSRF the blocklist claims to stop.
   - **Suggested fix:** Parse IPv6 literals into 16 bytes (expand :: and groups) and evaluate ranges numerically: ::1/128, ::/128, fc00::/7, fe80::/10, ::ffff:0:0/96 with embedded IPv4 run through isPrivateIPv4. Never rely on string forms.
-- [ ] **#8 — DNS rebinding TOCTOU between egress check and actual connection**
+- [x] **#8 — DNS rebinding TOCTOU between egress check and actual connection**
   - `packages/egress/src/interceptor.ts:85-103` · category: security
+  - **Status:** fixed — EgressGate now builds an undici Agent whose connect-time lookup re-validates the private-range blocklist on the ACTUAL resolution used for the connection; installEgressDispatcher(gate) sets it process-wide in server.ts, covering every outbound undici call (adapters, providers, notifiers, OTLP fetch). Closes the check-vs-connect DNS-rebinding window. Regression: private-blocklist.test.ts audit #8 (hostname resolving to loopback blocked at connect without any check(); allowPrivate permits). Verified: typecheck 0; unit 771/771; integration 179/180 (pre-existing only); e2e 29/29.
   - **Status:** skipped — Skipped this round: a correct fix must pin the validated IP to the actual connection (custom undici Agent connect/lookup or connect-time re-validation) across ALL adapters (vault/desk/recap/generic/llm providers) — a cross-cutting connection-layer design change too risky for a minimal-edit batch. Recommended design: shared egress-safe undici dispatcher in @loop/egress whose lookup hook resolves+validates at connect time (fail-closed), injected via ExecuteParams. Needs design review. NOT fixed — remains open.
   - **Root cause:** firstPrivateAddress() resolves the host via dns.lookup (getaddrinfo), then EgressGate.check returns and the adapter calls undici request(), which resolves the hostname again independently at connect time. The resolved-and-validated IP is never pinned to the connection; Node performs a fresh lookup per call.
   - **Failure scenario:** Attacker-controlled authoritative DNS with TTL=0 alternates A records: public IP during the gate's lookup, 127.0.0.1/169.254.169.254 during undici's connect lookup. A workflow node pointing at rebinding.attacker.tld passes the private-address blocklist and reaches cloud metadata or internal services despite allowPrivate=false.
@@ -755,13 +756,15 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** callVault returns {text} for any non-JSON 200 (needed for get_text raw text), so ragQuery maps answer:'' citations:[] from it. Recap added an explicit non-JSON guard for this misconfiguration class (recap/adapter.ts:124-131); Vault's /query path has none.
   - **Failure scenario:** LOOP_VAULT_URL points at a proxy serving a 200 HTML page: RAG node 'succeeds' with an empty answer instead of failing loudly; workflow continues on garbage.
   - **Suggested fix:** Require JSON for /query responses (keep lenient path only for /files/{id}/text).
-- [ ] **#115 — EgressInterceptor is dead code diverging from EgressGate**
+- [x] **#115 — EgressInterceptor is dead code diverging from EgressGate**
   - `packages/egress/src/interceptor.ts:105-117` · category: maintainability
+  - **Status:** fixed — Dead EgressInterceptor class removed (diverged from EgressGate: no airgap/blocklist); exports updated; the two test usages converted to EgressGate.check. Verified: typecheck 0; unit 771/771; integration 179/180 (pre-existing only); e2e 29/29.
   - **Root cause:** EgressInterceptor exported (index.ts:3) but never used in apps/ or packages/ (only dist typings and tests). Its request() applies only engine.evaluate — no airgap kill switch, no private-address blocklist — unlike EgressGate which all adapters actually use.
   - **Failure scenario:** Developer wires EgressInterceptor.request believing it the sanctioned choke point -> outbound calls silently lose airgap and SSRF private-range protections EgressGate provides.
   - **Suggested fix:** Delete EgressInterceptor or make it delegate to EgressGate so the two enforcement paths cannot diverge.
-- [ ] **#116 — resolveIP forces IPv4; ip_range policies never match IPv6 targets**
+- [x] **#116 — resolveIP forces IPv4; ip_range policies never match IPv6 targets**
   - `packages/egress/src/resolver.ts:17-28` · category: bug
+  - **Status:** fixed — resolveIP resolves both families; ipInCIDR supports IPv6 via 128-bit prefix comparison (parseIPv6Bytes moved to resolver, shared with the blocklist); engine strips IPv6 brackets from URL.hostname (Node keeps them, which broke matching). Regression: engine.test.ts audit #116 (::1/128 deny matches; 2001:db8::/32 allow matches inside, not outside). Verified: typecheck 0; unit 771/771.
   - **Root cause:** resolveIP looks up with {family:4}; for IPv6-only hosts lookup throws and the hostname is returned, so ipInCIDR/ipToNum (engine.ts:121-144, IPv4-only) never match. ip_range allow/deny policies silently inapplicable to IPv6 literals and IPv6-only DNS names.
   - **Failure scenario:** Admin adds deny ip_range for an IPv6 range and allows a domain resolving IPv6-only -> evaluate() compares hostname string against CIDR, never matches the deny; an ip_range ALLOW for IPv6 can never permit traffic, breaking intended policy.
   - **Suggested fix:** Resolve both families and implement IPv6-aware CIDR matching (or explicitly reject ip_range evaluation for IPv6 with a logged reason).
@@ -873,13 +876,15 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** On duplicate id the key is `${id}-${this.templates.size}` with no uniqueness check; the suffix can equal an id already loaded from an earlier file. Comment ('later file wins but keeps a unique key') misdescribes behavior.
   - **Failure scenario:** Files sorted a.json(id 'x-2'), b.json(id 'x'), c.json(id 'x'): c gets key 'x-2' (size=2), Map.set silently replaces a's template — a shipped template disappears with no load error.
   - **Suggested fix:** Loop incrementing a counter until the key is unused (while templates.has(key)).
-- [ ] **#137 — NotFoundError cast emits error codes outside the ErrorCode union**
+- [x] **#137 — NotFoundError cast emits error codes outside the ErrorCode union**
   - `packages/types/src/errors.ts:82-88` · category: bug
+  - **Status:** fixed — ErrorCode union gained NOT_FOUND_TEMPLATE, NOT_FOUND_WORKFLOW_VERSION, NOT_FOUND_EGRESS_POLICY — the codes NotFoundError callers actually emit (incl. the new egress 404s). Verified: typecheck 0; unit 771/771.
   - **Root cause:** `NOT_FOUND_${resource.toUpperCase()}` as ErrorCode accepts any resource string. Real callers pass 'template' and 'workflow_version', producing NOT_FOUND_TEMPLATE / NOT_FOUND_WORKFLOW_VERSION which are not ErrorCode members (§12.1 envelope contract).
   - **Failure scenario:** GET /api/v1/templates/<unknown> returns NOT_FOUND_TEMPLATE; typed clients switching on ErrorCode fall through to the generic handler; contract tests against the documented enum fail.
   - **Suggested fix:** Constrain resource to a keyof-derived union of NOT_FOUND_* codes, or add the missing codes to ErrorCode.
-- [ ] **#138 — Retry bounds still allow exponential backoff setTimeout overflow**
+- [x] **#138 — Retry bounds still allow exponential backoff setTimeout overflow**
   - `packages/types/src/schemas/workflow.ts:13-17` · category: bug
+  - **Status:** fixed — calculateBackoff clamps to 2_147_483_647 ms — exponential delays can no longer overflow setTimeout into a ~1ms retry burst. Regression: retry.test.ts audit #138 (60000*2^19 clamps; small delays unchanged). Verified: typecheck 0; unit 771/771.
   - **Root cause:** RetryConfigSchema caps max_attempts at 20 and initial_delay_ms at 60000, but exponential delay = 60000 * 2^attempt exceeds 2^31-1 from attempt 16 (~3.9e9 ms); Node fires such timers after 1ms; engine calculateBackoff has no cap.
   - **Failure scenario:** Node with retry {max_attempts:20, initial_delay_ms:60000, backoff:'exponential'} against a persistently failing upstream: attempts 16-19 retry ~1ms apart, hammering the upstream instead of backing off.
   - **Suggested fix:** Clamp computed backoff to <= 2_147_483_647 (or a sane max like 60s) in the engine, and/or tighten schema bounds.

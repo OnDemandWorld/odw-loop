@@ -4,7 +4,7 @@
  */
 
 import { createLogger } from '@loop/observability';
-import { resolveIP, lookupRegion } from './resolver.js';
+import { resolveIP, lookupRegion, parseIPv6Bytes } from './resolver.js';
 
 const logger = createLogger({ name: 'loop:egress:engine', component: 'egress' });
 
@@ -42,7 +42,9 @@ export class EgressEngine {
       return { allowed: false, matched_policy: null, reason: 'Invalid URL' };
     }
 
-    const hostname = parsed.hostname;
+    // Strip IPv6 brackets — URL.hostname keeps them on some Node versions,
+    // which broke ip_range matching and DNS resolution for IPv6 literals.
+    const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
     const ip = await resolveIP(hostname);
     const region = lookupRegion(ip);
 
@@ -117,12 +119,24 @@ function matchDomain(hostname: string, pattern: string): boolean {
   return false;
 }
 
-/** Check if an IP is within a CIDR range. */
+/** Check if an IP is within a CIDR range (IPv4 and IPv6 — audit #116). */
 function ipInCIDR(ip: string, cidr: string): boolean {
   const [range, bitsStr] = cidr.split('/');
   if (!range || !bitsStr) return false;
   const bits = parseInt(bitsStr, 10);
+  if (Number.isNaN(bits)) return false;
 
+  // IPv6: compare the leading `bits` of the 128-bit addresses.
+  if (ip.includes(':') || range.includes(':')) {
+    const a = parseIPv6Bytes(ip);
+    const b = parseIPv6Bytes(range);
+    if (!a || !b || bits < 0 || bits > 128) return false;
+    const toBig = (bytes: number[]): bigint => bytes.reduce((acc, x) => (acc << 8n) | BigInt(x), 0n);
+    const shift = BigInt(128 - bits);
+    return (toBig(a) >> shift) === (toBig(b) >> shift);
+  }
+
+  if (bits < 0 || bits > 32) return false;
   const ipNum = ipToNum(ip);
   const rangeNum = ipToNum(range);
   if (ipNum === null || rangeNum === null) return false;

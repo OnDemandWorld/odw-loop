@@ -165,3 +165,13 @@ describe('calculateBackoff', () => {
     });
   });
 });
+
+describe('calculateBackoff — setTimeout overflow clamp (audit #138)', () => {
+  it('clamps exponential delays to the setTimeout maximum', async () => {
+    const { calculateBackoff } = await import('../../../packages/engine/src/retry');
+    // 60000 * 2^19 far exceeds 2^31-1 — must clamp, not overflow to ~1ms.
+    const delay = calculateBackoff('exponential', 60_000, 19);
+    expect(delay).toBe(2_147_483_647);
+    expect(calculateBackoff('exponential', 1000, 0)).toBe(1000);
+  });
+});

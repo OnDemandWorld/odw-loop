@@ -25,6 +25,10 @@ export type ErrorCode =
   | 'NOT_FOUND_CONNECTOR'
   | 'NOT_FOUND_USER'
   | 'NOT_FOUND_SECRET'
+  // Audit #137: codes actually emitted by NotFoundError callers.
+  | 'NOT_FOUND_TEMPLATE'
+  | 'NOT_FOUND_WORKFLOW_VERSION'
+  | 'NOT_FOUND_EGRESS_POLICY'
   // Conflict 409
   | 'CONFLICT_VERSION'
   | 'CONFLICT_DUPLICATE'

@@ -18,7 +18,7 @@ import { GitBackend, VersioningService } from '@loop/versioning';
 import { ExecutionExecutor, ExecutionRecovery, executionEventBus } from '@loop/engine';
 import type { WorkflowDefinition } from '@loop/types';
 import { TriggerDispatcher, CronTriggerHandler, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
-import { EgressEngine, EgressGate } from '@loop/egress';
+import { EgressEngine, EgressGate, installEgressDispatcher } from '@loop/egress';
 import { SecretsManager } from '@loop/secrets';
 import { TemplateRegistry } from '@loop/templates';
 import { createLLMRouter } from '@loop/llm';
@@ -136,6 +136,9 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   // Audit #39: readiness probes go through the same egress policy as workflow
   // connector calls (airgap + private-range blocklist).
   connectors.setEgressGate(egressGate);
+  // Audit #8: validate the private-range blocklist at CONNECT time for every
+  // outbound undici call in the process (closes the DNS-rebinding TOCTOU).
+  installEgressDispatcher(egressGate);
   // V1.7 (L-2): encrypted secrets store — created early so the legacy
   // credential migration below and the executor's secretResolver share it.
   const secretsManager = new SecretsManager(store, cfg.LOOP_ENCRYPTION_KEY);

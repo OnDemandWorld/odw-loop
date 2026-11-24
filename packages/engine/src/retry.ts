@@ -31,7 +31,10 @@ export function calculateBackoff(strategy: string, baseDelay: number, attempt: n
     delay += (Math.random() * 2 - 1) * variation;
   }
 
-  return Math.max(0, Math.round(delay));
+  // Audit #138: clamp to the setTimeout maximum — exponential backoff with a
+  // large base/attempt otherwise overflows 2^31-1 and fires after ~1ms,
+  // turning "bounded" retries into a near-zero-delay burst.
+  return Math.min(Math.max(0, Math.round(delay)), 2_147_483_647);
 }
 
 /** Sleep for a given number of milliseconds, abortable via `signal`. */
