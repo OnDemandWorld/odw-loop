@@ -17,7 +17,10 @@ function readInitial(): Theme {
   } catch {
     /* storage unavailable */
   }
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  // Audit #98: match index.html's pre-paint script — OS dark → dark, else
+  // light. The old inverted query disagreed with the script when the OS had
+  // no preference (light flash then dark flip).
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 let current: Theme = readInitial();

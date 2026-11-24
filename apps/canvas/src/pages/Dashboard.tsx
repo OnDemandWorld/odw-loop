@@ -25,6 +25,10 @@ import { useTheme } from '../lib/theme';
 interface DashboardData {
   workflows: Workflow[];
   executions: Execution[];
+  // Audit #100: server-side totals — headline counts must not cap at the
+  // first fetched page.
+  workflowTotal: number;
+  executionTotal: number;
   ready: { status: string; checks: Record<string, string> } | null;
 }
 
@@ -44,7 +48,13 @@ function useDashboardData(refreshKey: number) {
       api.ready().catch(() => null),
     ]).then(([wf, ex, ready]) => {
       if (!alive) return;
-      setData({ workflows: wf.data ?? [], executions: ex.data ?? [], ready });
+      setData({
+        workflows: wf.data ?? [],
+        executions: ex.data ?? [],
+        workflowTotal: wf.total ?? (wf.data ?? []).length,
+        executionTotal: ex.total ?? (ex.data ?? []).length,
+        ready,
+      });
       setError(null);
     }).catch((e) => alive && setError(String(e)));
     return () => {
@@ -97,13 +107,15 @@ interface ChartTooltipProps {
   label?: string;
 }
 
-const ChartTooltip = ({ active, payload, label }: ChartTooltipProps) => {
+// Audit #101: the unit is a prop — the node-usage chart counts nodes, not
+// executions, and previously mislabelled them.
+const ChartTooltip = ({ active, payload, label, unit = 'executions' }: ChartTooltipProps & { unit?: string }) => {
   const p = (payload as Array<{ value: number; name: string }> | undefined)?.[0];
   if (!active || !p) return null;
   return (
     <div className="panel px-3 py-2 text-xs">
       <div className="text-ink-400 font-mono">{label}</div>
-      <div className="text-ink-100 font-semibold mt-0.5">{p.value} executions</div>
+      <div className="text-ink-100 font-semibold mt-0.5">{p.value} {unit}</div>
     </div>
   );
 };
@@ -137,7 +149,17 @@ export function Dashboard() {
     const running = executions.filter((e) => e.status === 'running').length;
     const finished = succeeded + failed;
     const successRate = finished > 0 ? Math.round((succeeded / finished) * 100) : 100;
-    return { workflows, executions, active, succeeded, failed, running, successRate };
+    return {
+      workflows,
+      executions,
+      active,
+      succeeded,
+      failed,
+      running,
+      successRate,
+      workflowTotal: data.workflowTotal,
+      executionTotal: data.executionTotal,
+    };
   }, [data]);
 
   const timeline = useMemo(() => {
@@ -212,7 +234,7 @@ export function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <StatCard
           label="Workflows"
-          value={stats.workflows.length}
+          value={stats.workflowTotal}
           sub={`${stats.active} active`}
           icon="workflow"
           accent={chart.accent}
@@ -220,7 +242,7 @@ export function Dashboard() {
         />
         <StatCard
           label="Executions"
-          value={stats.executions.length}
+          value={stats.executionTotal}
           sub={`${stats.running} running now`}
           icon="bolt"
           accent="#8b5cf6"
@@ -229,7 +251,7 @@ export function Dashboard() {
         <StatCard
           label="Success Rate"
           value={`${stats.successRate}%`}
-          sub={`${stats.succeeded} ok · ${stats.failed} failed`}
+          sub={`${stats.succeeded} ok · ${stats.failed} failed (last ${stats.executions.length})`}
           icon="check"
           accent="#10b981"
           delay={120}
@@ -302,7 +324,7 @@ export function Dashboard() {
                     tickLine={false}
                     width={70}
                   />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: chart.cursorFill }} />
+                  <Tooltip content={<ChartTooltip unit="nodes" />} cursor={{ fill: chart.cursorFill }} />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={16}>
                     {nodeDistribution.map((entry) => (
                       <Cell key={entry.name} fill={entry.fill} />

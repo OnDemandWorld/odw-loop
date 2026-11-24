@@ -674,28 +674,33 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** requestEnvelope awaits res.json() without a catch. When the API is down and the Vite proxy/gateway returns HTML/text 502, the thrown SyntaxError replaces the intended ApiError with HTTP status.
   - **Failure scenario:** API crashes; Dashboard shows 'SyntaxError: Unexpected token <' instead of 'API unreachable (502)'.
   - **Suggested fix:** Parse defensively (res.json().catch(() => null)) and throw ApiError with status when body is not a JSON envelope, as api/client.ts does.
-- [ ] **#98 — No-preference theme default disagrees with pre-mount script (dark vs light)**
+- [x] **#98 — No-preference theme default disagrees with pre-mount script (dark vs light)**
   - `apps/canvas/src/lib/theme.ts:13-21` · category: bug
+  - **Status:** fixed — theme.readInitial now matches index.html's pre-paint script (OS dark -> dark, else light) — no more light-flash-then-dark flip with no OS preference. Verified: canvas tsc 0; vite build OK. (Component behaviour; no RTL in repo.)
   - **Root cause:** readInitial returns 'dark' unless prefers-color-scheme: light matches; index.html's pre-paint script (line 22) defaults to 'light' unless prefers-color-scheme: dark matches. With no OS preference both queries are false: page paints light then flips to dark at module load.
   - **Failure scenario:** User with no OS color-scheme preference: light flash then dark UI; documented suite-wide light default not honored.
   - **Suggested fix:** Use the same query and fallback in both places (OS dark -> dark, else light).
-- [ ] **#99 — No React error boundary anywhere; one render exception white-screens app**
+- [x] **#99 — No React error boundary anywhere; one render exception white-screens app**
   - `apps/canvas/src/main.tsx:6-10` · category: error-handling
+  - **Status:** fixed — Added components/ErrorBoundary.tsx (error card + reload) wrapping <App/> in main.tsx — render exceptions no longer white-screen the SPA. Verified: canvas tsc 0; vite build OK.
   - **Root cause:** Tree rendered without any ErrorBoundary. Any render-time throw (malformed server payload reaching .map/.toLowerCase on a non-string) unmounts the entire SPA to a blank page.
   - **Failure scenario:** Workflow row arrives with tags:null from an API variant; Workflows' w.tags.some throws during render and the whole app blanks out.
   - **Suggested fix:** Wrap routes in an error boundary with reload/back fallback.
-- [ ] **#100 — Dashboard stats computed from first 100 rows only; totals ignored**
+- [x] **#100 — Dashboard stats computed from first 100 rows only; totals ignored**
   - `apps/canvas/src/pages/Dashboard.tsx:41-47` · category: bug
+  - **Status:** fixed — Dashboard headline counts use server meta.total (workflowTotal/executionTotal) instead of the first 100-row page; success-rate sub-label now states the sample size honestly. Verified: canvas tsc 0; vite build OK.
   - **Root cause:** listWorkflows/listExecutions fetched with per_page:100; stats (counts, success rate, 24h volume) computed over that page; meta.total discarded.
   - **Failure scenario:** Installation with 350 workflows / 2,000 executions shows 'Workflows 100', 'Executions 100' and success rate from only the 100 most recent runs.
   - **Suggested fix:** Use meta.total for counts and server-side aggregates (or paged fetch) for rates/timeline.
-- [ ] **#101 — Node-usage chart tooltip mislabels counts as 'executions'**
+- [x] **#101 — Node-usage chart tooltip mislabels counts as 'executions'**
   - `apps/canvas/src/pages/Dashboard.tsx:100-109` · category: bug
+  - **Status:** fixed — ChartTooltip takes a unit prop; the node-usage BarChart passes unit='nodes' (was mislabelled 'executions'). Verified: canvas tsc 0; vite build OK.
   - **Root cause:** ChartTooltip hardcodes '{value} executions' and is reused for the 'Node usage by agent' BarChart (line 305) where values are node counts.
   - **Failure scenario:** Hover 'vault' bar in 'Node usage by agent': shows '12 executions' instead of 12 nodes — misleading operational data.
   - **Suggested fix:** Pass a unit label prop or use a separate tooltip for the node chart.
-- [ ] **#102 — load() lacks stale-response guard when route id changes**
+- [x] **#102 — load() lacks stale-response guard when route id changes**
   - `apps/canvas/src/pages/ExecutionDetail.tsx:114-125` · category: concurrency
+  - **Status:** fixed — ExecutionDetail initial load is an id-scoped effect with an alive flag — stale responses from a previous route id can no longer overwrite the current execution. Verified: canvas tsc 0; vite build OK.
   - **Root cause:** api.getExecution(id).then(setExecution) has no alive/request-id check. Back/forward navigation between execution URLs re-runs load with a new id while the old fetch may be in flight; the late old response overwrites the new execution.
   - **Failure scenario:** View execution A (slow request), Back then open B quickly: A's response lands last, page shows A's data under B's URL while B's live events mutate it.
   - **Suggested fix:** Track an effect-scoped alive flag or compare id before applying the response.

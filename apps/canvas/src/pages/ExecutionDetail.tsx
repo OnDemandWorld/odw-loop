@@ -140,7 +140,26 @@ export function ExecutionDetail() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [id]);
 
-  useEffect(load, [load]);
+  // Audit #102: guard against stale responses when the route id changes
+  // mid-flight (back/forward navigation) — the old fetch must not overwrite
+  // the new execution.
+  useEffect(() => {
+    let alive = true;
+    if (!id) return;
+    api
+      .getExecution(id)
+      .then((ex) => {
+        if (!alive) return;
+        setExecution(ex);
+        setError(null);
+      })
+      .catch((e) => {
+        if (alive) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [id]);
 
   // Poll while the execution is still active
   useEffect(() => {
