@@ -67,3 +67,23 @@ describe('LoopNode', () => {
     expect(LoopNode.shouldContinue('true', {}, 1000)).toBe(false);
   });
 });
+
+describe('BranchNode — escaped string literals (audit #46)', () => {
+  const branches = (condition: string) => [{ id: 'yes', condition }];
+
+  it('equal values containing double quotes compare true (JSON-escaped interpolation)', () => {
+    const ctx = { ctx: { name: 'O"Brien', expected: 'O"Brien' } };
+    expect(BranchNode.evaluate(branches('{{ctx.name}} == {{ctx.expected}}'), ctx)).toBe('yes');
+  });
+
+  it('different quoted values still compare false', () => {
+    const ctx = { ctx: { name: 'O"Brien', expected: 'O"Connor' } };
+    expect(BranchNode.evaluate(branches('{{ctx.name}} == {{ctx.expected}}'), ctx)).toBeNull();
+  });
+
+  it('values with backslashes and newlines round-trip through interpolation', () => {
+    const ctx = { ctx: { a: 'back\\slash', b: 'back\\slash', multi: 'line1\nline2' } };
+    expect(BranchNode.evaluate(branches('{{ctx.a}} == {{ctx.b}}'), ctx)).toBe('yes');
+    expect(BranchNode.evaluate(branches('{{ctx.multi}} == "line1\nline2"'), ctx)).toBe('yes');
+  });
+});

@@ -298,3 +298,48 @@ describe('Secrets API (audit #12, #55)', () => {
     expect(b.statusCode).toBe(201);
   });
 });
+
+describe('Cron schedule preservation on invalid PUT (audit #62)', () => {
+  let ctx: TestApp;
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    ctx = await buildTestApp();
+    app = ctx.app;
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    ctx.cronHandler.shutdown();
+    await app.close();
+    ctx.conn.close();
+  });
+
+  it('a rejected expression leaves the old schedule firing', async () => {
+    const wf = await seedWorkflow(ctx.store, { name: 'Cron-Survive' });
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workflows/${wf.id}/triggers`,
+      payload: { trigger_type: 'cron', config: { expression: '* * * * * *' } }, // every second
+    });
+    expect(created.statusCode).toBe(201);
+    const triggerId = created.json().data.id;
+
+    const bad = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/triggers/${triggerId}`,
+      payload: { config: { expression: 'not a cron' } },
+    });
+    expect(bad.statusCode).toBe(400);
+
+    // DB rolled back to the valid expression…
+    const row = await ctx.store.triggers.getById(triggerId);
+    expect((row?.config as { expression: string }).expression).toBe('* * * * * *');
+
+    // …and the OLD schedule must still fire (previously it was unregistered
+    // before validation and never restored).
+    await new Promise((r) => setTimeout(r, 1200));
+    const execs = await ctx.store.executions.list({ workflow_id: wf.id }, { page: 1, per_page: 10 });
+    expect(execs.total).toBeGreaterThan(0);
+  });
+});

@@ -287,7 +287,9 @@ export class ExecutionExecutor {
 
     // V1.1 M1 (F3): bound the WHOLE execution with a workflow-level timeout.
     // Per-definition `settings.workflow_timeout_ms` wins over the executor default.
-    const workflowTimeoutMs = definition.settings?.workflow_timeout_ms ?? this.workflowTimeoutMs;
+    // Audit #68: clamp to the setTimeout maximum — stored definitions predating
+    // the schema cap could still carry overflowing values (fire after ~1ms).
+    const workflowTimeoutMs = Math.min(definition.settings?.workflow_timeout_ms ?? this.workflowTimeoutMs, 2_147_483_647);
     const controller = new AbortController();
     let workflowTimedOut = false;
     const timer = setTimeout(() => {
@@ -700,7 +702,8 @@ export class ExecutionExecutor {
       // the executor-wide default). Retries stop once the controller aborts.
       try {
         const retryConfig = node.retry ?? this.defaultRetry ?? { max_attempts: 0, backoff: 'fixed' as const, initial_delay_ms: 0 };
-        const timeoutMs = node.timeout_ms ?? this.nodeTimeoutMs;
+        // Audit #67: clamp to the setTimeout maximum (see workflow timeout).
+        const timeoutMs = Math.min(node.timeout_ms ?? this.nodeTimeoutMs, 2_147_483_647);
         const result = await this.withTimeout(
           controller,
           executeWithRetry(

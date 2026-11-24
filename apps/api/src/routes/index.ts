@@ -510,7 +510,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
     if (existing.trigger_type === 'cron') {
       const updated = await deps.store.triggers.getById(triggerId);
-      deps.cronHandler.unregister(triggerId);
+      // Audit #62: register() validates before swapping jobs, so a rejected
+      // expression leaves the OLD schedule running. Only unregister when the
+      // trigger is being disabled.
       if (updated?.enabled) {
         try {
           deps.cronHandler.register(triggerId, updated.workflow_id, (updated.config ?? {}) as { expression: string; timezone?: string });
@@ -524,6 +526,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
           const detail = err instanceof Error ? err.message : String(err);
           throw new LoopError('VALIDATION_INVALID', `Invalid cron expression: ${detail}`, 400);
         }
+      } else {
+        deps.cronHandler.unregister(triggerId);
       }
     }
 

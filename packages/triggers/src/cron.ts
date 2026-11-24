@@ -49,12 +49,15 @@ export class CronTriggerHandler {
 
   /** Register a cron trigger. */
   register(triggerId: string, workflowId: string, config: { expression: string; timezone?: string }): void {
-    // Unregister if already exists
-    this.unregister(triggerId);
-
+    // Audit #62: validate BEFORE touching the existing job — unregistering
+    // first meant a rejected replacement left the workflow permanently
+    // unscheduled (the PUT route rolls back the DB but not the scheduler).
     if (!cron.validate(config.expression)) {
       throw new Error(`Invalid cron expression: ${config.expression}`);
     }
+
+    // Swap only once the replacement is known-valid.
+    this.unregister(triggerId);
 
     const task = cron.schedule(config.expression, async () => {
       // Read the current workflow version at fire time (not registration time)
@@ -77,13 +80,21 @@ export class CronTriggerHandler {
       }
       const executionId = randomUUID();
       const payload = { scheduled_at: new Date().toISOString() };
-      await this.store.executions.create({
-        id: executionId,
-        workflow_id: workflowId,
-        workflow_version: workflowVersion,
-        trigger_type: 'cron',
-        trigger_payload: payload,
-      });
+      // Audit #63: a tick that fails to create the execution must be logged —
+      // node-cron swallows async rejections into a 'task-failed' event that
+      // nobody listened to, losing scheduled runs without a trace.
+      try {
+        await this.store.executions.create({
+          id: executionId,
+          workflow_id: workflowId,
+          workflow_version: workflowVersion,
+          trigger_type: 'cron',
+          trigger_payload: payload,
+        });
+      } catch (err) {
+        logger.error({ triggerId, workflowId, executionId, error: String(err) }, 'Cron tick failed to create execution');
+        return;
+      }
       logger.info({ triggerId, executionId, workflowVersion }, 'Cron trigger fired');
 
       // Actually run the workflow — creating the record alone leaves it
@@ -105,6 +116,11 @@ export class CronTriggerHandler {
     }, {
       timezone: config.timezone ?? 'UTC',
       scheduled: true,
+    });
+
+    // Audit #63: surface anything node-cron catches inside the task.
+    task.on('task-failed', (err: unknown) => {
+      logger.error({ triggerId, workflowId, error: String(err) }, 'Cron task failed');
     });
 
     this.jobs.set(triggerId, { triggerId, task });

@@ -24,7 +24,9 @@ export const WorkflowNodeSchema = z.object({
   position: PositionSchema,
   config: z.record(z.unknown()).default({}),
   retry: RetryConfigSchema.optional(),
-  timeout_ms: z.number().int().positive().optional(),
+  // Audit #67: cap at the setTimeout maximum (2^31-1 ms) — larger delays
+  // overflow and fire after ~1ms, instantly failing the node.
+  timeout_ms: z.number().int().positive().max(2_147_483_647).optional(),
   input_schema: z.record(z.string()).optional(),
   output_schema: z.record(z.string()).optional(),
 });
@@ -54,7 +56,9 @@ export type VariableDefinition = z.infer<typeof VariableDefinitionSchema>;
  * `workflow_timeout_ms` is absent the engine falls back to the env default.
  */
 export const WorkflowSettingsSchema = z.object({
-  workflow_timeout_ms: z.number().int().positive().optional(),
+  // Audit #68: cap at the setTimeout maximum (2^31-1 ms) — larger delays
+  // overflow and abort the workflow after ~1ms.
+  workflow_timeout_ms: z.number().int().positive().max(2_147_483_647).optional(),
 });
 export type WorkflowSettings = z.infer<typeof WorkflowSettingsSchema>;
 

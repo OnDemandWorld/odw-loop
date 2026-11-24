@@ -44,3 +44,40 @@ describe('CronTriggerHandler', () => {
     expect((cronHandler as any).jobs.size).toBe(0);
   });
 });
+
+describe('CronTriggerHandler — schedule preservation and tick failures (audit #62, #63)', () => {
+  it('a rejected re-registration keeps the old schedule firing', async () => {
+    const created: string[] = [];
+    const mockStore = {
+      workflows: { getById: vi.fn().mockResolvedValue({ id: 'workflow-1', version: 1, status: 'active' }) },
+      executions: { create: vi.fn().mockImplementation(async ({ id }: { id: string }) => { created.push(id); }) },
+    } as unknown as ConstructorParameters<typeof CronTriggerHandler>[0];
+    const handler = new CronTriggerHandler(mockStore);
+    try {
+      handler.register('t-1', 'workflow-1', { expression: '* * * * * *' }); // every second
+      expect(() => handler.register('t-1', 'workflow-1', { expression: 'not a cron' })).toThrow();
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(created.length).toBeGreaterThan(0); // old schedule survived
+    } finally {
+      handler.shutdown();
+    }
+  });
+
+  it('a tick that cannot create the execution is logged, not silently lost', async () => {
+    const create = vi.fn().mockRejectedValue(new Error('database is locked'));
+    const mockStore = {
+      workflows: { getById: vi.fn().mockResolvedValue({ id: 'workflow-1', version: 1, status: 'active' }) },
+      executions: { create },
+    } as unknown as ConstructorParameters<typeof CronTriggerHandler>[0];
+    const handler = new CronTriggerHandler(mockStore);
+    try {
+      handler.register('t-2', 'workflow-1', { expression: '* * * * * *' });
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(create).toHaveBeenCalled();
+      // The rejection was handled inside the tick (no unhandled rejection,
+      // which vitest would surface as a test failure).
+    } finally {
+      handler.shutdown();
+    }
+  });
+});

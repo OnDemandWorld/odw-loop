@@ -587,7 +587,9 @@
     "root_cause": "evalCondition interpolates values with JSON.stringify (escapes embedded double quotes as \\\"), but tokenize's string-literal scanner uses indexOf(ch, i+1) with no escape handling (comment: 'no escapes'). A serialized value containing a double quote terminates the string early at the escaped quote; remainder fails to tokenize, parse throws, evalCondition fails closed to false — even when the comparison should be true.",
     "suggested_fix": "Handle backslash escapes in the string-literal scanner, or pass values as pre-tokenized literals instead of re-parsing JSON text.",
     "failure_scenario": "Condition {{trigger.payload.name}} == {{variables.expected}} with both equal to O\"Brien: both serialize to \"O\\\"Brien\", tokenizer reads string O\\ then chokes -> parse error -> branch=false. Equal-values case takes the false arm; any payload string containing a double quote can never match.",
-    "id": 46
+    "id": 46,
+    "status": "fixed",
+    "verification_notes": "Tokenizer string scanner now honours backslash escapes; double-quoted literals are JSON.parse'd (interpolation emits JSON.stringify) with raw-text fallback for hand-written literals. Regression: nodes.test.ts audit #46 (O\"Brien equality true, differing quotes false, backslash/newline round-trip). Verified: typecheck 0; unit 700/700; integration 177/178 (pre-existing vault failure only); e2e 30/30; eslint 0 new errors."
   },
   {
     "file": "packages/engine/src/recovery.ts",
@@ -789,7 +791,9 @@
     "root_cause": "register() calls this.unregister(triggerId) first, then cron.validate; when validation throws the previously working schedule is already stopped. PUT /api/v1/triggers/:triggerId (routes/index.ts:501-517) unregisters, relies on register throwing to roll back the DB config, but never re-registers the old schedule — DB and scheduler diverge.",
     "suggested_fix": "Validate the new expression (and construct the task) before unregistering the existing job; only swap once the replacement is created. Alternatively re-register the old config in the route's catch after rollback.",
     "failure_scenario": "PUT /api/v1/triggers/<enabled cron> {config:{expression:'not-a-cron'}} -> 400 returned, DB unchanged (enabled, valid expression), but the cron job was unregistered and never restored -> schedule silently stops firing until server restart.",
-    "id": 62
+    "id": 62,
+    "status": "fixed",
+    "verification_notes": "cron.register validates the expression BEFORE unregistering the existing job; PUT /triggers no longer pre-unregisters (register swaps atomically; unregister only on disable), so a rejected expression leaves the old schedule running and the DB rollback stays consistent. Regression: cron.test.ts (rejected re-registration keeps firing) + admin-routes.test.ts (PUT invalid -> 400, DB rolled back, old every-second schedule still creates executions). Verified: typecheck 0; unit 700/700; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/triggers/src/cron.ts",
@@ -801,7 +805,9 @@
     "root_cause": "executions.create sits outside any try/catch in the async tick callback. node-cron@3.0.3 Task.execute catches the rejected promise and emits 'task-failed', but CronTriggerHandler attaches no listener, so a tick failing before/while creating the execution vanishes with zero logs and no failed execution record.",
     "suggested_fix": "Wrap the whole tick body in try/catch that logs and records a failed execution when possible; attach task.on('task-failed', ...) logger in register().",
     "failure_scenario": "SQLite momentarily locked/IO-errors at fire time: executions.create throws, async callback rejects, node-cron emits 'task-failed' to nobody. Scheduled run lost with no log line, no execution row, no alert — operators see a cron trigger that 'didn't fire'.",
-    "id": 63
+    "id": 63,
+    "status": "fixed",
+    "verification_notes": "Cron tick wraps executions.create in try/catch with an error log; register() attaches a task-failed listener so node-cron's swallowed rejections are logged. Regression: cron.test.ts (create rejects -> tick handled, no unhandled rejection). Verified: typecheck 0; unit 700/700; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/triggers/src/dispatcher.ts",
@@ -853,7 +859,9 @@
     "root_cause": "WorkflowNodeSchema.timeout_ms is z.number().int().positive() with no max; executor uses it unclamped in withTimeout's setTimeout (executor.ts:490,684). Delays > 2^31-1 fire after 1ms.",
     "suggested_fix": "Add .max(2_147_483_647) or clamp in withTimeout.",
     "failure_scenario": "Long-running node sets timeout_ms=3000000000 (~35 days): node rejected with NODE_TIMEOUT after ~1ms on every attempt, retries exhaust, execution fails despite a 'generous' timeout.",
-    "id": 67
+    "id": 67,
+    "status": "fixed",
+    "verification_notes": "WorkflowNodeSchema.timeout_ms now .max(2_147_483_647); executor clamps node timeout at the use site (covers legacy stored definitions). Regression: timeout-bounds.test.ts (max accepted, 3e9 rejected). Verified: typecheck 0; unit 700/700; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/types/src/schemas/workflow.ts",
@@ -865,7 +873,9 @@
     "root_cause": "WorkflowSettingsSchema.workflow_timeout_ms is z.number().int().positive() with no max. Executor passes it straight to setTimeout (executor.ts:290-293); Node clamps delays > 2^31-1 to 1ms (TimeoutOverflowWarning).",
     "suggested_fix": "Cap at 2_147_483_647 (or a product max like 7 days) in the schema and/or clamp in the executor.",
     "failure_scenario": "Approval workflow sets workflow_timeout_ms=2592000000 (30 days): every execution aborts after ~1ms with WORKFLOW_TIMEOUT; workflow can never succeed and the error misreports the configured timeout.",
-    "id": 68
+    "id": 68,
+    "status": "fixed",
+    "verification_notes": "WorkflowSettingsSchema.workflow_timeout_ms now .max(2_147_483_647); executor clamps the workflow deadline at the use site. Regression: timeout-bounds.test.ts (max accepted, 30-day value rejected). Verified: typecheck 0; unit 700/700; integration 177/178 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/versioning/src/git.ts",

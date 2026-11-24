@@ -286,8 +286,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** validateInlineDefinition checks only structure (ids, edges, cycles). dispatchNode (793-804) passes unknown connector types through as input=output with only a warning. The API's assertKnownNodeTypes guard (routes/index.ts:210) covers stored definitions only, so inline workflow.invoke children reintroduce the 'green no-op' bug class it was added to fix.
   - **Failure scenario:** workflow.invoke with inline definition containing typo'd type 'vualt.search': child node 'succeeds' echoing its input, child and parent report success, no Vault call ever happens — silent no-op execution.
   - **Suggested fix:** Run the known-node-type check inside validateInlineDefinition, or make dispatchNode fail on unknown non-control connector types.
-- [ ] **#46 — Branch tokenizer ignores escapes; quoted strings invert decisions**
+- [x] **#46 — Branch tokenizer ignores escapes; quoted strings invert decisions**
   - `packages/engine/src/nodes/index.ts:38-44` · category: bug
+  - **Status:** fixed — Tokenizer string scanner now honours backslash escapes; double-quoted literals are JSON.parse'd (interpolation emits JSON.stringify) with raw-text fallback for hand-written literals. Regression: nodes.test.ts audit #46 (O"Brien equality true, differing quotes false, backslash/newline round-trip). Verified: typecheck 0; unit 700/700; integration 177/178 (pre-existing vault failure only); e2e 30/30; eslint 0 new errors.
   - **Root cause:** evalCondition interpolates values with JSON.stringify (escapes embedded double quotes as \"), but tokenize's string-literal scanner uses indexOf(ch, i+1) with no escape handling (comment: 'no escapes'). A serialized value containing a double quote terminates the string early at the escaped quote; remainder fails to tokenize, parse throws, evalCondition fails closed to false — even when the comparison should be true.
   - **Failure scenario:** Condition {{trigger.payload.name}} == {{variables.expected}} with both equal to O"Brien: both serialize to "O\"Brien", tokenizer reads string O\ then chokes -> parse error -> branch=false. Equal-values case takes the false arm; any payload string containing a double quote can never match.
   - **Suggested fix:** Handle backslash escapes in the string-literal scanner, or pass values as pre-tokenized literals instead of re-parsing JSON text.
@@ -371,13 +372,15 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** update passes all six optional fields straight into drizzle .set(); an empty patch leaves every value undefined and drizzle 0.29.5 mapUpdateSet throws Error('No values to set'). PG adapter (postgres/index.ts:688) returns early when setClauses is empty.
   - **Failure scenario:** PUT /api/v1/egress/policies/:id with body {} passes the all-optional schema and reaches store.egressPolicies.update(id,{}): Core (SQLite) throws -> 500; Scale (PG) no-ops -> 200.
   - **Suggested fix:** Mirror PG: build the set conditionally and return early when no field is provided.
-- [ ] **#62 — register() unregisters existing job before validating; PUT rollback never restores schedule**
+- [x] **#62 — register() unregisters existing job before validating; PUT rollback never restores schedule**
   - `packages/triggers/src/cron.ts:51-57` · category: bug
+  - **Status:** fixed — cron.register validates the expression BEFORE unregistering the existing job; PUT /triggers no longer pre-unregisters (register swaps atomically; unregister only on disable), so a rejected expression leaves the old schedule running and the DB rollback stays consistent. Regression: cron.test.ts (rejected re-registration keeps firing) + admin-routes.test.ts (PUT invalid -> 400, DB rolled back, old every-second schedule still creates executions). Verified: typecheck 0; unit 700/700; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** register() calls this.unregister(triggerId) first, then cron.validate; when validation throws the previously working schedule is already stopped. PUT /api/v1/triggers/:triggerId (routes/index.ts:501-517) unregisters, relies on register throwing to roll back the DB config, but never re-registers the old schedule — DB and scheduler diverge.
   - **Failure scenario:** PUT /api/v1/triggers/<enabled cron> {config:{expression:'not-a-cron'}} -> 400 returned, DB unchanged (enabled, valid expression), but the cron job was unregistered and never restored -> schedule silently stops firing until server restart.
   - **Suggested fix:** Validate the new expression (and construct the task) before unregistering the existing job; only swap once the replacement is created. Alternatively re-register the old config in the route's catch after rollback.
-- [ ] **#63 — Cron tick failures silently swallowed (no task-failed listener)**
+- [x] **#63 — Cron tick failures silently swallowed (no task-failed listener)**
   - `packages/triggers/src/cron.ts:78-86` · category: error-handling
+  - **Status:** fixed — Cron tick wraps executions.create in try/catch with an error log; register() attaches a task-failed listener so node-cron's swallowed rejections are logged. Regression: cron.test.ts (create rejects -> tick handled, no unhandled rejection). Verified: typecheck 0; unit 700/700; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** executions.create sits outside any try/catch in the async tick callback. node-cron@3.0.3 Task.execute catches the rejected promise and emits 'task-failed', but CronTriggerHandler attaches no listener, so a tick failing before/while creating the execution vanishes with zero logs and no failed execution record.
   - **Failure scenario:** SQLite momentarily locked/IO-errors at fire time: executions.create throws, async callback rejects, node-cron emits 'task-failed' to nobody. Scheduled run lost with no log line, no execution row, no alert — operators see a cron trigger that 'didn't fire'.
   - **Suggested fix:** Wrap the whole tick body in try/catch that logs and records a failed execution when possible; attach task.on('task-failed', ...) logger in register().
@@ -398,13 +401,15 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** TriggerConfigSchema unions typed configs with z.record(z.unknown()) so any object validates; WebhookTriggerConfigSchema.secret has no min length. The create route (routes/index.ts:429+) enforces cron/event branches but not webhook, and WebhookTriggerHandler accepts unsigned events when config.secret is falsy (triggers/webhook.ts:37).
   - **Failure scenario:** POST /api/v1/workflows/:id/triggers {trigger_type:'webhook',config:{}} creates a secret-less trigger; anyone learning the trigger UUID can fire executions with arbitrary payloads via POST /webhooks/:triggerId without signature — unauthenticated side effects.
   - **Suggested fix:** Discriminate the union on trigger_type (or validate per-type in the route), require secret.min(16) for webhook triggers, auto-generate a secret at creation.
-- [ ] **#67 — Unbounded node timeout_ms overflows setTimeout, instant NODE_TIMEOUT**
+- [x] **#67 — Unbounded node timeout_ms overflows setTimeout, instant NODE_TIMEOUT**
   - `packages/types/src/schemas/workflow.ts:27-27` · category: bug
+  - **Status:** fixed — WorkflowNodeSchema.timeout_ms now .max(2_147_483_647); executor clamps node timeout at the use site (covers legacy stored definitions). Regression: timeout-bounds.test.ts (max accepted, 3e9 rejected). Verified: typecheck 0; unit 700/700; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** WorkflowNodeSchema.timeout_ms is z.number().int().positive() with no max; executor uses it unclamped in withTimeout's setTimeout (executor.ts:490,684). Delays > 2^31-1 fire after 1ms.
   - **Failure scenario:** Long-running node sets timeout_ms=3000000000 (~35 days): node rejected with NODE_TIMEOUT after ~1ms on every attempt, retries exhaust, execution fails despite a 'generous' timeout.
   - **Suggested fix:** Add .max(2_147_483_647) or clamp in withTimeout.
-- [ ] **#68 — Unbounded workflow_timeout_ms overflows setTimeout, aborts in 1ms**
+- [x] **#68 — Unbounded workflow_timeout_ms overflows setTimeout, aborts in 1ms**
   - `packages/types/src/schemas/workflow.ts:56-58` · category: bug
+  - **Status:** fixed — WorkflowSettingsSchema.workflow_timeout_ms now .max(2_147_483_647); executor clamps the workflow deadline at the use site. Regression: timeout-bounds.test.ts (max accepted, 30-day value rejected). Verified: typecheck 0; unit 700/700; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** WorkflowSettingsSchema.workflow_timeout_ms is z.number().int().positive() with no max. Executor passes it straight to setTimeout (executor.ts:290-293); Node clamps delays > 2^31-1 to 1ms (TimeoutOverflowWarning).
   - **Failure scenario:** Approval workflow sets workflow_timeout_ms=2592000000 (30 days): every execution aborts after ~1ms with WORKFLOW_TIMEOUT; workflow can never succeed and the error misreports the configured timeout.
   - **Suggested fix:** Cap at 2_147_483_647 (or a product max like 7 days) in the schema and/or clamp in the executor.

@@ -34,12 +34,37 @@ function tokenize(input: string): Token[] {
       i++;
       continue;
     }
-    // String literal ('…' or "…") — no escapes, conditions compare scalars.
+    // String literal ('…' or "…"). Audit #46: honour backslash escapes —
+    // interpolated values arrive JSON-stringified (embedded quotes as \"),
+    // and the old indexOf scanner terminated the literal at the escaped
+    // quote, failing the parse closed to false even for equal values.
     if (ch === '\'' || ch === '"') {
-      const end = input.indexOf(ch, i + 1);
-      if (end === -1) throw new Error('unterminated string literal');
-      tokens.push({ kind: 'string', value: input.slice(i + 1, end) });
-      i = end + 1;
+      let j = i + 1;
+      while (j < input.length) {
+        if (input[j] === '\\') {
+          j += 2;
+          continue;
+        }
+        if (input[j] === ch) break;
+        j++;
+      }
+      if (j >= input.length) throw new Error('unterminated string literal');
+      const raw = input.slice(i, j + 1);
+      let value: string;
+      if (ch === '"') {
+        // Double-quoted literals use JSON string syntax (interpolation emits
+        // JSON.stringify); fall back to the raw text for hand-written literals
+        // with non-JSON escapes.
+        try {
+          value = JSON.parse(raw) as string;
+        } catch {
+          value = input.slice(i + 1, j);
+        }
+      } else {
+        value = input.slice(i + 1, j);
+      }
+      tokens.push({ kind: 'string', value });
+      i = j + 1;
       continue;
     }
     // Number literal.
