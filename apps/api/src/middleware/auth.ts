@@ -148,11 +148,15 @@ interface Identity {
  * Resolve the authenticated identity (principal + role) from the request
  * credentials. Returns null when no presented credential is valid.
  */
+/** Minimal store shape needed for account re-validation (audit #17). */
+type UserStatusStore = { users: { getById(id: string): Promise<{ is_active: boolean } | null> } };
+
 async function resolveIdentity(
   request: FastifyRequest,
   apiKey: string | undefined,
   apiKeyRole: Role,
   jwtSecret: Uint8Array,
+  store?: UserStatusStore,
 ): Promise<Identity | null> {
   const headerKey = request.headers['x-api-key'];
   const bearer = extractBearer(request);
@@ -169,6 +173,15 @@ async function resolveIdentity(
     try {
       const { payload } = await jose.jwtVerify(bearer, jwtSecret);
       if (typeof payload.sub === 'string' && payload.sub.length > 0) {
+        // Audit #17: re-check the account on every request — deactivating a
+        // user must invalidate already-issued tokens (12h life otherwise).
+        if (store) {
+          const user = await store.users.getById(payload.sub);
+          if (!user || !user.is_active) {
+            logger.debug({ principal: payload.sub }, 'JWT rejected: account missing or deactivated');
+            return null;
+          }
+        }
         return { principal: payload.sub, role: roleFromClaims(payload) };
       }
     } catch {
@@ -234,7 +247,7 @@ export function requireRole(min: Role) {
  * Build the onRequest auth + RBAC guard hook bound to the given config.
  * The hook is a no-op while `LOOP_REQUIRE_AUTH` is false (open access).
  */
-export function createAuthGuard(config: LoopConfig) {
+export function createAuthGuard(config: LoopConfig, store?: UserStatusStore) {
   const requireAuth = config.LOOP_REQUIRE_AUTH;
   const apiKey = config.LOOP_API_KEY;
   const apiKeyRole = config.LOOP_API_KEY_ROLE;
@@ -244,7 +257,7 @@ export function createAuthGuard(config: LoopConfig) {
     if (!requireAuth) return; // Backward-compatible: open by default.
     if (!isProtectedPath(request.url)) return; // Public endpoints bypass auth.
 
-    const identity = await resolveIdentity(request, apiKey, apiKeyRole, jwtSecret);
+    const identity = await resolveIdentity(request, apiKey, apiKeyRole, jwtSecret, store);
     if (!identity) {
       throw new AuthenticationError('AUTH_MISSING', 'A valid API key or JWT is required');
     }

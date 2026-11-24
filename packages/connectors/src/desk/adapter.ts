@@ -39,8 +39,16 @@ export class DeskAdapter implements ConnectorAdapter {
     const idemKey = params.idempotencyKey;
 
     switch (params.operation) {
-      case 'list_conversations':
-        return this.callDesk(baseUrl, apiKey, 'GET', PREFIX, undefined, idemKey, params);
+      case 'list_conversations': {
+        // Audit #32: forward the canvas status filter (open/pending/resolved);
+        // 'all' means no filter. Previously input was ignored entirely.
+        const status = params.input['status'];
+        const query =
+          typeof status === 'string' && status.length > 0 && status !== 'all'
+            ? `?status=${encodeURIComponent(status)}`
+            : '';
+        return this.callDesk(baseUrl, apiKey, 'GET', `${PREFIX}${query}`, undefined, idemKey, params);
+      }
       case 'get_conversation':
         return this.callDesk(baseUrl, apiKey, 'GET', `${PREFIX}/${encodeURIComponent(String(params.input['id']))}`, undefined, idemKey, params);
       case 'send_response': {

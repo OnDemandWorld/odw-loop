@@ -167,7 +167,7 @@ export interface RouteDeps {
 
 export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   // ─── Auth guard (§11) — no-op unless LOOP_REQUIRE_AUTH=true ──────────────
-  app.addHook('onRequest', createAuthGuard(deps.config));
+  app.addHook('onRequest', createAuthGuard(deps.config, deps.store));
 
   // ─── JIT user provisioning ───────────────────────────────────────────────
   // created_by columns FK-reference the users table, but only the 'system'

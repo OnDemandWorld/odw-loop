@@ -47,3 +47,41 @@ describe('DeskAdapter — takeover/resolve contract', () => {
     expect(last.url).toContain('/api/v1/agents/conversations/conv-2/resolve?');
   });
 });
+
+describe('DeskAdapter — list_conversations status filter (audit #32)', () => {
+  const seen: string[] = [];
+  const server = http.createServer((req, res) => {
+    seen.push(req.url ?? '');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{"conversations":[]}');
+  });
+  beforeAll(async () => {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  });
+  afterAll(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('forwards the status filter as a query parameter', async () => {
+    const port = (server.address() as { port: number }).port;
+    const adapter = new DeskAdapter();
+    await adapter.execute({
+      operation: 'list_conversations',
+      input: { status: 'open' },
+      config: { base_url: `http://127.0.0.1:${port}` },
+    } as never);
+    expect(seen[seen.length - 1]).toContain('status=open');
+  });
+
+  it('omits the filter for all', async () => {
+    const port = (server.address() as { port: number }).port;
+    const adapter = new DeskAdapter();
+    await adapter.execute({
+      operation: 'list_conversations',
+      input: { status: 'all' },
+      config: { base_url: `http://127.0.0.1:${port}` },
+    } as never);
+    expect(seen[seen.length - 1]).not.toContain('status=');
+  });
+});

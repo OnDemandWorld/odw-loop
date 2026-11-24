@@ -632,6 +632,18 @@ export function WorkflowEditor() {
     );
   }, [nodes, edges]);
 
+  // Audit #28: warn on tab close / reload while the graph is dirty.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) ?? null, [nodes, selectedId]);
   const categories = useMemo(() => [...new Set(PALETTE.map((p) => p.category))], []);
   // Searchable palette (n8n-style): match on label, dotted type or category.
@@ -663,7 +675,15 @@ export function WorkflowEditor() {
     <div className="h-screen flex flex-col">
       {/* ── Editor toolbar ──────────────────────────────────────────────── */}
       <div className="shrink-0 flex items-center gap-3 px-5 py-3 border-b border-ink-700/60 bg-ink-900/70 backdrop-blur-md">
-        <Link to="/workflows" className="btn-ghost !px-2.5" title="Back">
+        <Link
+          to="/workflows"
+          className="btn-ghost !px-2.5"
+          title="Back"
+          onClick={(e) => {
+            // Audit #28: confirm before discarding unsaved edits.
+            if (dirty && !window.confirm('Discard unsaved changes to this workflow?')) e.preventDefault();
+          }}
+        >
           <Icon name="arrowLeft" />
         </Link>
         <div className="min-w-0">

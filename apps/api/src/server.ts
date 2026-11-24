@@ -14,6 +14,7 @@ import { ConnectorRegistry, VaultAdapter, DeskAdapter, RecapAdapter, GenericAdap
 import { WorkflowAuthoringService } from '@loop/workflow-authoring';
 import { GitBackend, VersioningService } from '@loop/versioning';
 import { ExecutionExecutor, ExecutionRecovery, executionEventBus } from '@loop/engine';
+import type { WorkflowDefinition } from '@loop/types';
 import { TriggerDispatcher, CronTriggerHandler, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
 import { EgressEngine, EgressGate } from '@loop/egress';
 import { attachRawBodyParser } from './raw-body.js';
@@ -271,8 +272,26 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     workflowId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    const workflow = await authoring.getById(workflowId);
-    void executor.execute(executionId, workflow.definition, payload).catch((err) => {
+    // Audit #21: dispatch the execution's STAMPED version snapshot, not the
+    // live definition — a workflow edited between crash and restart (or
+    // between trigger and dispatch) must not resume against a different graph.
+    const execution = await store.executions.getById(executionId);
+    let definition: WorkflowDefinition | undefined;
+    if (execution) {
+      const snapshot = await store.workflowDefinitions.getByWorkflowAndVersion(workflowId, execution.workflow_version);
+      definition = snapshot?.definition;
+    }
+    if (!definition) {
+      const workflow = await authoring.getById(workflowId);
+      definition = workflow.definition;
+      if (execution) {
+        logger.warn(
+          { executionId, workflowId, version: execution.workflow_version },
+          'No version snapshot found — dispatching the live definition',
+        );
+      }
+    }
+    void executor.execute(executionId, definition, payload).catch((err) => {
       // Guarded transition — never overwrite an API-initiated 'cancelled'.
       store.executions
         .completeIfActive(executionId, {

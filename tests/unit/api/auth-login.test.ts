@@ -43,7 +43,7 @@ async function buildServer(config: LoopConfig) {
   });
   await bootstrapAdminUser(store, config);
   const app = Fastify();
-  app.addHook('onRequest', createAuthGuard(config));
+  app.addHook('onRequest', createAuthGuard(config, store));
   registerAuthRoutes(app, { store, config });
   return { app, store };
 }
@@ -135,6 +135,38 @@ describe('POST /api/v1/auth/login', () => {
     const { app } = await buildServer(cfg);
     const res = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { username: 'admin' } });
     expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+});
+
+describe('account re-validation (audit #17)', () => {
+  it('deactivating a user invalidates already-issued JWTs', async () => {
+    const { app, store } = await buildServer(testConfig());
+    app.get('/api/v1/workflows', async () => ({ success: true, data: [] }));
+    await store.users.create({
+      id: crypto.randomUUID(),
+      username: 'editor1',
+      password_hash: hashPassword('user-pass-123'),
+      email: 'editor1@test.local',
+      role: 'write',
+      display_name: 'Editor One',
+    });
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { username: 'editor1', password: 'user-pass-123' },
+    });
+    expect(login.statusCode).toBe(200);
+    const token = login.json().data.token as string;
+    const headers = { authorization: `Bearer ${token}` };
+    const before = await app.inject({ method: 'GET', url: '/api/v1/workflows', headers });
+    expect(before.statusCode).toBe(200);
+
+    const user = await store.users.getByUsername('editor1');
+    await store.users.deactivate(user!.id);
+
+    const after = await app.inject({ method: 'GET', url: '/api/v1/workflows', headers });
+    expect(after.statusCode).toBe(401);
     await app.close();
   });
 });

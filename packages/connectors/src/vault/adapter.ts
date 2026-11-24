@@ -123,11 +123,14 @@ export class VaultAdapter implements ConnectorAdapter {
     idempotencyKey?: string,
     io?: Pick<ExecuteParams, 'egress' | 'signal'>,
   ): Promise<Record<string, unknown>> {
+    // Audit #40: accept the canvas field names as aliases — the editor form
+    // sends question/limit/filters, which previously arrived as an empty query.
     const body: Record<string, unknown> = {
-      query: input['query'] ?? '',
-      top_k_chunks: input['top_k_chunks'] ?? input['top_k'] ?? 8,
+      query: input['query'] ?? input['question'] ?? '',
+      top_k_chunks: input['top_k_chunks'] ?? input['top_k'] ?? input['limit'] ?? 8,
     };
-    if (input['folder_filter'] !== undefined) body['folder_filter'] = input['folder_filter'];
+    const folderFilter = input['folder_filter'] ?? input['filters'];
+    if (folderFilter !== undefined) body['folder_filter'] = folderFilter;
     if (input['conversation_id'] !== undefined) body['conversation_id'] = input['conversation_id'];
     return this.callVault(baseUrl, apiKey, 'POST', '/query', body, idempotencyKey, io);
   }
@@ -146,6 +149,9 @@ export class VaultAdapter implements ConnectorAdapter {
 
     const form = new FormData();
     form.append('files', new File([content], filename, { type: 'text/markdown' }));
+    // Audit #40: forward the canvas tags/folder fields (previously dropped).
+    if (input['tags'] !== undefined) form.append('tags', JSON.stringify(input['tags']));
+    if (input['folder'] !== undefined) form.append('folder', String(input['folder']));
 
     try {
       const url = `${baseUrl}/files/upload`;

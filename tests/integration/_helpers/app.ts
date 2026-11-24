@@ -17,7 +17,7 @@ import {
 import { ConnectorRegistry, VaultAdapter, DeskAdapter } from '../../../packages/connectors/src/index.js';
 import { WorkflowAuthoringService } from '../../../packages/workflow-authoring/src/index.js';
 import { VersioningService, GitBackend } from '../../../packages/versioning/src/index.js';
-import { ExecutionExecutor, executionEventBus } from '../../../packages/engine/src/index.js';
+import { ExecutionExecutor, ExecutionRecovery, executionEventBus } from '../../../packages/engine/src/index.js';
 import {
   TriggerDispatcher,
   WebhookTriggerHandler,
@@ -42,6 +42,7 @@ export interface TestApp {
   connectors: ConnectorRegistry;
   authoring: WorkflowAuthoringService;
   executor: ExecutionExecutor;
+  recovery: ExecutionRecovery;
   cronHandler: CronTriggerHandler;
   webhookHandler: WebhookTriggerHandler;
   manualHandler: ManualTriggerHandler;
@@ -194,6 +195,17 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     },
   );
 
+  // ── Recovery (audit #21 parity with server.ts) ─────────────────────
+  // Re-dispatch recovered executions against their STAMPED version snapshot.
+  const recovery = new ExecutionRecovery(store, async (execution) => {
+    const snapshot = await store.workflowDefinitions.getByWorkflowAndVersion(
+      execution.workflow_id,
+      execution.workflow_version,
+    );
+    const definition = snapshot?.definition ?? (await authoring.getById(execution.workflow_id)).definition;
+    await executor.execute(execution.id, definition, (execution.trigger_payload ?? {}) as Record<string, unknown>);
+  });
+
   // ── Templates ──────────────────────────────────────────────────────
   // Loads the real repo templates/ directory (resolved module-relative).
   const templates = new TemplateRegistry();
@@ -250,6 +262,7 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     connectors,
     authoring,
     executor,
+    recovery,
     cronHandler,
     webhookHandler,
     manualHandler,

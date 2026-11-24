@@ -233,7 +233,9 @@
     "root_cause": "resolveIdentity() trusts any signature-valid JWT's sub/role claims and never consults users.is_active or existence. routes/auth.ts:118 hard-codes 12-hour expiry (ignoring LOOP_JWT_ACCESS_TTL); no revocation mechanism. Store supports deactivation (sqlite/index.ts:523) but it has no effect on already-issued tokens.",
     "suggested_fix": "On each authenticated request (or via short access TTL + revocation list) verify the user still exists and is_active; honour LOOP_JWT_ACCESS_TTL for issued tokens.",
     "failure_scenario": "Operator deactivates a compromised editor account -> previously issued JWT keeps passing the guard with editor role for up to 12 more hours, continuing to create/execute workflows and read data.",
-    "id": 17
+    "id": 17,
+    "status": "fixed",
+    "verification_notes": "createAuthGuard accepts the store; resolveIdentity re-checks users.getById(sub).is_active on every JWT request — deactivation now invalidates issued tokens. Wired in routes/index.ts (deps.store). Regression: auth-login.test.ts audit #17 (login -> 200, deactivate -> 401 with same token). Note: per-request user lookup adds one PK query; WS token path has the same gap (follow-up). Verified: typecheck 0; unit 728/728; integration 178/179 (pre-existing only); e2e 30/30; eslint 0 new errors."
   },
   {
     "file": "apps/api/src/routes/index.ts",
@@ -285,7 +287,9 @@
     "root_cause": "dispatchToExecutor loads authoring.getById(workflowId) (live current definition) instead of resolving the execution's stamped workflow_version snapshot. A workflow edited between crash and restart resumes against a different graph while loadCompletedOutputs seeds outputs from the old version's nodes; cron/webhook executions can likewise run a newer version than stamped on the execution row. Engine-side replay.ts resolveDefinition is versioned and correct — the gap is in the injected dispatcher (verified during cross-pass review).",
     "suggested_fix": "Resolve the definition via the execution's workflow_version (workflowDefinitions.getByWorkflowAndVersion, falling back explicitly and logging when absent) before executor.execute; stamp-and-resolve consistently on all dispatch paths.",
     "failure_scenario": "Execution of workflow v3 crashes mid-run; operator edits the workflow to v4 (renames/removes nodes); restart resumes the v3 execution against the v4 graph — seeded outputs reference nodes that no longer exist, branch decisions misalign, and the audit trail claims v3 while v4 ran.",
-    "id": 21
+    "id": 21,
+    "status": "fixed",
+    "verification_notes": "dispatchToExecutor resolves the execution's stamped workflow_version via workflowDefinitions.getByWorkflowAndVersion, falling back to the live definition with a warning only when no snapshot exists. buildTestApp exposes a recovery instance with the same resolution. Regression: recovery-version.test.ts (workflow edited v1->v2 after stamping; recovered execution runs the v1 snapshot, output 'old'). Verified: typecheck 0; unit 728/728; integration 178/179 (pre-existing only); e2e 30/30."
   },
   {
     "file": "apps/api/src/server.ts",
@@ -379,7 +383,9 @@
     "root_cause": "The toolbar Back link (and browser back) navigate without checking dirty; no router blocker or beforeunload handler.",
     "suggested_fix": "Add useBlocker/beforeunload prompt when dirty, or autosave.",
     "failure_scenario": "User spends minutes wiring a graph, forgets Save, clicks Back — all edits vanish without warning.",
-    "id": 28
+    "id": 28,
+    "status": "fixed",
+    "verification_notes": "WorkflowEditor: beforeunload handler warns while dirty; Back link asks for confirmation before discarding unsaved edits. Verified: canvas tsc 0; canvas vite build OK; unit 728/728. (Component interaction not unit-testable without RTL.)"
   },
   {
     "file": "apps/canvas/src/pages/WorkflowEditor.tsx",
@@ -431,7 +437,9 @@
     "root_cause": "list_conversations calls callDesk with no query parameters and ignores params.input entirely, while the canvas form offers a status select (open/pending/resolved/all, WorkflowEditor.tsx:146-148).",
     "suggested_fix": "Forward input.status (and other supported filters) as URLSearchParams on the GET.",
     "failure_scenario": "Workflow configured to list only open conversations receives all including resolved ones; a downstream auto-responder replies to already-resolved tickets.",
-    "id": 32
+    "id": 32,
+    "status": "fixed",
+    "verification_notes": "desk.list_conversations forwards input.status as a query parameter ('all' = no filter). Regression: desk-adapter.test.ts audit #32 (status=open reaches the server; all omits the param). Verified: typecheck 0; unit 728/728; integration 178/179 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/connectors/src/generic/adapter.ts",
@@ -533,7 +541,9 @@
     "root_cause": "postQuery builds the Vault body from input['query']/top_k/top_k_chunks/folder_filter, but canvas FIELD_SPECS for vault.rag_query use question/context/output_format (WorkflowEditor.tsx:133-137); vault.search offers limit/filters while the adapter reads top_k/folder_filter; create_document offers tags/folder which uploadDocument (143-148) never sends. Executor passes node.config through verbatim — no mapping layer.",
     "suggested_fix": "Accept canvas keys as aliases (question->query, limit->top_k_chunks, filters->folder_filter) or align canvas field keys; forward tags/folder in the upload form.",
     "failure_scenario": "User builds a RAG node and types a question: node POSTs /query with {query:'',top_k_chunks:8}; Vault answers an empty query and the workflow silently continues with irrelevant/empty results.",
-    "id": 40
+    "id": 40,
+    "status": "fixed",
+    "verification_notes": "Vault postQuery accepts canvas aliases (question->query, limit->top_k_chunks, filters->folder_filter); uploadDocument forwards tags (JSON) and folder form fields. Regression: vault-adapter.test.ts (3 cases; undici request mocked because multipart streaming against raw node:http is unreliable on this Node version — same root as the pre-existing vault integration failure). Verified: typecheck 0; unit 728/728; integration 178/179 (pre-existing only); e2e 30/30."
   },
   {
     "file": "packages/connectors/src/vault/adapter.ts",

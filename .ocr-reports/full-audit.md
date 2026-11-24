@@ -138,8 +138,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
 
 Remediation checklist — tick each item after fixing and verifying (IDs match full-audit.json).
 
-- [ ] **#17 — JWT accepted without rechecking user status; 12h hard-coded life**
+- [x] **#17 — JWT accepted without rechecking user status; 12h hard-coded life**
   - `apps/api/src/middleware/auth.ts:167-178` · category: security
+  - **Status:** fixed — createAuthGuard accepts the store; resolveIdentity re-checks users.getById(sub).is_active on every JWT request — deactivation now invalidates issued tokens. Wired in routes/index.ts (deps.store). Regression: auth-login.test.ts audit #17 (login -> 200, deactivate -> 401 with same token). Note: per-request user lookup adds one PK query; WS token path has the same gap (follow-up). Verified: typecheck 0; unit 728/728; integration 178/179 (pre-existing only); e2e 30/30; eslint 0 new errors.
   - **Root cause:** resolveIdentity() trusts any signature-valid JWT's sub/role claims and never consults users.is_active or existence. routes/auth.ts:118 hard-codes 12-hour expiry (ignoring LOOP_JWT_ACCESS_TTL); no revocation mechanism. Store supports deactivation (sqlite/index.ts:523) but it has no effect on already-issued tokens.
   - **Failure scenario:** Operator deactivates a compromised editor account -> previously issued JWT keeps passing the guard with editor role for up to 12 more hours, continuing to create/execute workflows and read data.
   - **Suggested fix:** On each authenticated request (or via short access TTL + revocation list) verify the user still exists and is_active; honour LOOP_JWT_ACCESS_TTL for issued tokens.
@@ -160,8 +161,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** When body.provider is set the route builds chain=[provider, ...every other configured vendor] and the router (llm/router.ts:37-76) tries each in order on ANY failure — including an egress block. With default LOOP_EGRESS_ALLOW_PRIVATE=false (config.ts:172) the local Ollama URL (localhost:11434) is always blocked by the private-address gate, so the 'forced' local provider deterministically fails over to cloud vendors.
   - **Failure scenario:** Deployment with Ollama + OpenAI key configured; caller POSTs /api/v1/llm/complete {provider:'ollama',prompt:'<confidential data>'} expecting local-only processing -> gate blocks localhost -> router sends the prompt to api.openai.com -> confidential data leaves the sovereign boundary contrary to the explicit provider choice.
   - **Suggested fix:** When provider explicitly specified pass chain=[body.provider] only (no fallback), or require an explicit allow_fallback flag; surface the egress block as the error instead of switching vendors.
-- [ ] **#21 — Recovery/cron/webhook dispatch resumes with LIVE definition, not version snapshot**
+- [x] **#21 — Recovery/cron/webhook dispatch resumes with LIVE definition, not version snapshot**
   - `apps/api/src/server.ts:269-285` · category: bug
+  - **Status:** fixed — dispatchToExecutor resolves the execution's stamped workflow_version via workflowDefinitions.getByWorkflowAndVersion, falling back to the live definition with a warning only when no snapshot exists. buildTestApp exposes a recovery instance with the same resolution. Regression: recovery-version.test.ts (workflow edited v1->v2 after stamping; recovered execution runs the v1 snapshot, output 'old'). Verified: typecheck 0; unit 728/728; integration 178/179 (pre-existing only); e2e 30/30.
   - **Root cause:** dispatchToExecutor loads authoring.getById(workflowId) (live current definition) instead of resolving the execution's stamped workflow_version snapshot. A workflow edited between crash and restart resumes against a different graph while loadCompletedOutputs seeds outputs from the old version's nodes; cron/webhook executions can likewise run a newer version than stamped on the execution row. Engine-side replay.ts resolveDefinition is versioned and correct — the gap is in the injected dispatcher (verified during cross-pass review).
   - **Failure scenario:** Execution of workflow v3 crashes mid-run; operator edits the workflow to v4 (renames/removes nodes); restart resumes the v3 execution against the v4 graph — seeded outputs reference nodes that no longer exist, branch decisions misalign, and the audit trail claims v3 while v4 ran.
   - **Suggested fix:** Resolve the definition via the execution's workflow_version (workflowDefinitions.getByWorkflowAndVersion, falling back explicitly and logging when absent) before executor.execute; stamp-and-resolve consistently on all dispatch paths.
@@ -200,8 +202,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** save() catches its own errors and resolves normally (592-593); run() and validate() do `if (dirty) await save()` then unconditionally call executeWorkflow/validateWorkflow. A failed PUT is followed by execution of the old server-side graph plus a success toast.
   - **Failure scenario:** User edits a node config and clicks Run while the API briefly rejects the PUT: error toast flashes, then 'Execution started' appears and the workflow runs with the previous config — wrong side effects with no indication.
   - **Suggested fix:** Make save() return a boolean or rethrow; abort run/validate when the pre-save fails.
-- [ ] **#28 — No unsaved-changes guard; Back navigation silently discards dirty graph**
+- [x] **#28 — No unsaved-changes guard; Back navigation silently discards dirty graph**
   - `apps/canvas/src/pages/WorkflowEditor.tsx:652-654` · category: bug
+  - **Status:** fixed — WorkflowEditor: beforeunload handler warns while dirty; Back link asks for confirmation before discarding unsaved edits. Verified: canvas tsc 0; canvas vite build OK; unit 728/728. (Component interaction not unit-testable without RTL.)
   - **Root cause:** The toolbar Back link (and browser back) navigate without checking dirty; no router blocker or beforeunload handler.
   - **Failure scenario:** User spends minutes wiring a graph, forgets Save, clicks Back — all edits vanish without warning.
   - **Suggested fix:** Add useBlocker/beforeunload prompt when dirty, or autosave.
@@ -222,8 +225,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** values.yaml enables postgresql/redis (87-121) and deployments reference {{ .Release.Name }}-postgresql and -redis-master, but Chart.yaml declares no dependencies and templates/ contains no postgres/redis resources. LOOP_REDIS_URL also omits the password despite redis.auth.enabled=true.
   - **Failure scenario:** helm install with default values deploys an API configured for LOOP_DB_TYPE=postgres against a nonexistent host; every pod crash-loops on DB connection. Scale-tier chart unusable as shipped.
   - **Suggested fix:** Add bitnami postgresql/redis as chart dependencies (or document external endpoints and make hosts configurable); include the Redis password in LOOP_REDIS_URL.
-- [ ] **#32 — desk.list_conversations silently drops the canvas status filter**
+- [x] **#32 — desk.list_conversations silently drops the canvas status filter**
   - `packages/connectors/src/desk/adapter.ts:42-43` · category: bug
+  - **Status:** fixed — desk.list_conversations forwards input.status as a query parameter ('all' = no filter). Regression: desk-adapter.test.ts audit #32 (status=open reaches the server; all omits the param). Verified: typecheck 0; unit 728/728; integration 178/179 (pre-existing only); e2e 30/30.
   - **Root cause:** list_conversations calls callDesk with no query parameters and ignores params.input entirely, while the canvas form offers a status select (open/pending/resolved/all, WorkflowEditor.tsx:146-148).
   - **Failure scenario:** Workflow configured to list only open conversations receives all including resolved ones; a downstream auto-responder replies to already-resolved tickets.
   - **Suggested fix:** Forward input.status (and other supported filters) as URLSearchParams on the GET.
@@ -265,8 +269,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** healthCheck issues undici request(baseUrl+'/health') with no egress.check and no signal/timeout; same in desk/adapter.ts:75-84 and recap/adapter.ts:57-66. interface.ts:43-44 gives healthCheck no egress/signal parameters. Connector instances (editor+ role) accept arbitrary config.base_url with no URL validation (routes/index.ts:625-662). /ready (server.ts:333-350) calls healthCheckAll() on every registered instance, so the private-address blocklist and LOOP_AIRGAP_MODE are not applied on this path.
   - **Failure scenario:** LOOP_AIRGAP_MODE=true yet /ready still makes outbound GETs to configured hosts. With allowPrivate=false an editor registers base_url=http://169.254.169.254/latest/meta-data: every /ready probe issues a blind GET into the metadata/internal network, bypassing the SSRF blocklist enforced on execute().
   - **Suggested fix:** Route probes through the same EgressGate (or skip probing in airgap), validate base_url at instance creation, add a short abortable timeout.
-- [ ] **#40 — Canvas rag_query sends 'question'; adapter reads 'query' -> empty RAG query**
+- [x] **#40 — Canvas rag_query sends 'question'; adapter reads 'query' -> empty RAG query**
   - `packages/connectors/src/vault/adapter.ts:126-132` · category: bug
+  - **Status:** fixed — Vault postQuery accepts canvas aliases (question->query, limit->top_k_chunks, filters->folder_filter); uploadDocument forwards tags (JSON) and folder form fields. Regression: vault-adapter.test.ts (3 cases; undici request mocked because multipart streaming against raw node:http is unreliable on this Node version — same root as the pre-existing vault integration failure). Verified: typecheck 0; unit 728/728; integration 178/179 (pre-existing only); e2e 30/30.
   - **Root cause:** postQuery builds the Vault body from input['query']/top_k/top_k_chunks/folder_filter, but canvas FIELD_SPECS for vault.rag_query use question/context/output_format (WorkflowEditor.tsx:133-137); vault.search offers limit/filters while the adapter reads top_k/folder_filter; create_document offers tags/folder which uploadDocument (143-148) never sends. Executor passes node.config through verbatim — no mapping layer.
   - **Failure scenario:** User builds a RAG node and types a question: node POSTs /query with {query:'',top_k_chunks:8}; Vault answers an empty query and the workflow silently continues with irrelevant/empty results.
   - **Suggested fix:** Accept canvas keys as aliases (question->query, limit->top_k_chunks, filters->folder_filter) or align canvas field keys; forward tags/folder in the upload form.
