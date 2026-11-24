@@ -33,6 +33,44 @@ Categories: bug (76), test (23), security (18), concurrency (10), maintainabilit
 
 ---
 
+## Fix round 1 — progress (branch fix/ocr-full-audit-round-1)
+
+**Status: 70 fixed · 11 skipped (documented) · 70 open** (of 151)
+
+- High: 15/16 fixed, 1 skipped (#8 DNS-rebinding pinning — needs cross-adapter connection-layer design)
+- Medium: 55/71 fixed, 10 skipped for design review (#19, #23, #31, #43, #47, #53, #60, #65, #70, #71 — see each entry's verification_notes)
+- Low: 0/64 addressed (out of scope this round; all remain open)
+- Open Mediums for the next round: #72, #73, #74, #76, #78, #86 (test-suite improvements)
+
+Every fix landed with a regression test where feasible, in 16 verified batches (≤5 findings each). Per-batch verification: `pnpm typecheck` exit 0; `pnpm test:unit` 740/740; `pnpm test:integration` 179/180 (the single failure is the PRE-EXISTING vault multipart upload issue recorded in baseline/SUMMARY.md); `pnpm test:e2e` 30/30; canvas `tsc --noEmit` + vite build clean; eslint shows no new errors or warnings beyond the pre-existing baseline (46 errors / 404 warnings, see baseline/lint.json).
+
+| Batch | Commit | Findings |
+|---|---|---|
+| 1 Docker images | eaacfd4 | #4 #5 #6 |
+| 2 Engine resume/replay | f99512b | #9 #10 #11 |
+| 3 IPv6 + secret uniqueness | f3b2952 | #7 #12 (+#8 skipped) |
+| 4 Test wiring | a344565 | #13 #14 #15 #16 |
+| 5 Canvas auth/ids/save | 66f381a | #1 #2 #3 |
+| 6 API security | 922a8a7 | #18 #20 #22 #64 #66 |
+| 7 State parity | 2fb9772 | #55 #56 #57 #58 #61 |
+| 8 Triggers/engine | d6336a2 | #46 #62 #63 #67 #68 |
+| 9 Connectors/LLM | e2cc7e3 | #38 #41 #48 #50 #52 |
+| 10 Canvas editor | f60eff0 | #24 #25 #26 #27 #29 |
+| 11 Observability/infra | 4c84212 | #30 #34 #49 #51 #54 |
+| 12 Engine/state locking | 22d642d | #33 #44 #45 #59 #69 |
+| 13 Auth/version/contracts | 38c2915 | #17 #21 #28 #32 #40 |
+| 14 Notifiers/probes/region | 198dd1a | #35 #36 #37 #39 #42 |
+| 15 Test assertions | 8c88cbf | #79 #80 #81 #84 #87 |
+| 16 Test infra | 354f9b8 | #75 #77 #82 #83 #85 |
+
+Notes for the reviewer (Jack):
+- The pre-existing vault multipart integration failure (baseline) appears related to undici multipart streaming on Node 26; the new vault unit tests mock undici for that reason. Worth investigating separately.
+- #57 aligned both tiers to substring tag/search semantics as an interim; exact-element matching is blocked by #60 (double-encoded SQLite JSON columns).
+- #42 rejects region policies at the API until a GeoIP source exists — intentional fail-loud interim, not the full GeoIP implementation.
+- Skipped items carry concrete recommended designs in their verification_notes.
+
+---
+
 ## High severity (16)
 
 Remediation checklist — tick each item after fixing and verifying (IDs match full-audit.json).
@@ -152,6 +190,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Apply redactTriggerSecrets to the PUT response (521) as done for the GET list.
 - [ ] **#19 — Connector header credentials stored plaintext; migration gap**
   - `apps/api/src/routes/index.ts:643-662` · category: security
+  - **Status:** skipped — Deferred for design review: extracting header credentials into the secrets store needs a dispatch-time resolution path for headers (like api_key) plus a migration for existing plaintext rows, and a policy for which headers count as sensitive. Root cause confirmed (POST /connectors extracts only api_key; server.ts migration comment overstates coverage). NOT fixed.
   - **Root cause:** POST /connectors extracts only api_key into the encrypted secrets store; config.headers (e.g. authorization) remains plaintext in connectors.config JSON. server.ts:174-176 comment claims the L-2 migration moves 'api_key (and headers.authorization)' into the encrypted store, but migration code (182-200) only handles api_key. GET redaction hides headers from API reads but the live credential stays unencrypted at rest.
   - **Failure scenario:** Editor creates a generic connector with config.headers.authorization='Bearer <live token>' -> token persisted as plaintext JSON in SQLite/PG -> anyone with DB/file access (backups, snapshots) reads the upstream credential, violating the encryption-at-rest guarantee the L-2 work claims.
   - **Suggested fix:** Extract sensitive header values into the secrets store on create and in the startup migration (resolve at dispatch like api_key), or encrypt the whole config column; align migration with its comment.
@@ -175,6 +214,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Probe the store (trivial query) and return 503 with status:'not_ready' when DB or required connectors are down.
 - [ ] **#23 — Bearer token sent as WS URL query param; leaked into access logs**
   - `apps/canvas/src/api/client.ts:141-145` · category: security
+  - **Status:** skipped — Deferred for design review: removing the token from the WS URL needs a single-use ticket exchange (REST -> short-lived ticket -> WS) or a Sec-WebSocket-Protocol carrier, spanning apps/api ws route + canvas client. Interim: server URL-log redaction recommended. NOT fixed.
   - **Root cause:** buildExecutionWsUrl appends ?token=<JWT/API key>. Fastify request logging and intermediary proxies record full URLs including query strings, persisting credentials in plaintext logs (CWE-598).
   - **Failure scenario:** Auth-enforced deployment: a viewer opens an execution monitor; their JWT is written to API/proxy access logs. Anyone with log read access can replay the token until expiry.
   - **Suggested fix:** Use a short-lived single-use ticket exchanged over REST, or Sec-WebSocket-Protocol carrier; at minimum redact token from server URL logging.
@@ -222,6 +262,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** COPY templates/ ./templates/ in the runtime stage (after fixing the @loop/templates package copy).
 - [ ] **#31 — Helm chart points at PostgreSQL/Redis services it never creates**
   - `helm/loop/templates/api-deployment.yaml:38-52` · category: bug
+  - **Status:** skipped — Deferred for packaging decision: adding bitnami postgresql/redis as chart dependencies vs documenting external endpoints (and fixing the Redis password in LOOP_REDIS_URL) is a Scale-tier deployment choice for Jack. Chart remains unusable with default values until decided. NOT fixed.
   - **Root cause:** values.yaml enables postgresql/redis (87-121) and deployments reference {{ .Release.Name }}-postgresql and -redis-master, but Chart.yaml declares no dependencies and templates/ contains no postgres/redis resources. LOOP_REDIS_URL also omits the password despite redis.auth.enabled=true.
   - **Failure scenario:** helm install with default values deploys an API configured for LOOP_DB_TYPE=postgres against a nonexistent host; every pod crash-loops on DB connection. Scale-tier chart unusable as shipped.
   - **Suggested fix:** Add bitnami postgresql/redis as chart dependencies (or document external endpoints and make hosts configurable); include the Redis password in LOOP_REDIS_URL.
@@ -293,6 +334,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Implement GeoIP (e.g. MaxMind) or surface the limitation in the policy API/docs and reject region policies at creation until supported; add a test asserting the shipped resolver's actual behavior.
 - [ ] **#43 — LOOP_MAX_CONCURRENT caps nodes per level, not concurrent executions**
   - `packages/engine/src/executor.ts:443-465` · category: concurrency
+  - **Status:** skipped — Deferred for scheduler design: an execution-level semaphore on LOOP_MAX_CONCURRENT interacts with sub-workflow recursion (child executions consume slots -> deadlock risk at low limits) and per-level batching semantics. Needs a deliberate design (e.g. exempt child executions, queue at dispatch). NOT fixed.
   - **Root cause:** maxConcurrent only used as batch size inside one execution's executeLevel (449). Nothing limits simultaneous execute() calls: every trigger path (cron/webhook/event/manual/recovery) fire-and-forgets executor.execute immediately. TSD §13 defines LOOP_MAX_CONCURRENT as 'Max concurrent executions' (50 Core); §8.1 requires a concurrency limit check at trigger time.
   - **Failure scenario:** */1 cron on a 10-minute workflow plus webhook bursts produces hundreds of simultaneous executions, each running up to 50 nodes per level. Documented 50-execution cap and SQLite 'hard cap at 50 concurrent' assumption violated -> SQLITE_BUSY write contention, memory growth, upstream rate-limit failures.
   - **Suggested fix:** Add an executor-wide semaphore/queue gating execute() entry at maxConcurrent (or per-workflow/in-flight cap in dispatch paths).
@@ -316,6 +358,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Handle backslash escapes in the string-literal scanner, or pass values as pre-tokenized literals instead of re-parsing JSON text.
 - [ ] **#47 — Resume re-dispatches ambiguous in-flight node despite unsafe-side-effect policy**
   - `packages/engine/src/recovery.ts:38-56` · category: bug
+  - **Status:** skipped — Deferred for product decision: settle-vs-resume policy for crash-interrupted in-flight nodes trades side-effect safety against availability; mandatory Idempotency-Key forwarding for mutating connector ops is the alternative. Current inconsistency (0 completed -> fail, >=1 -> resume) confirmed. NOT fixed.
   - **Root cause:** recover() marks a 'running' execution failed when zero nodes completed ('in-flight node's side effects are ambiguous') but resumes when >=1 completed — re-dispatching the same ambiguous in-flight node (executeNodeInner resets a 'running' row and dispatches again). Idempotency-key mitigation is best-effort: GenericAdapter never forwards an Idempotency-Key header, so generic REST side effects have no dedup vector.
   - **Failure scenario:** Node A succeeds; node B (generic POST /charge) in flight when process crashes after upstream applied the charge. Restart -> recovery resumes (lastCompleted=A) -> B re-dispatched -> second charge. Identical crash with zero completed nodes deliberately failed instead — policy inconsistent.
   - **Suggested fix:** Apply the ambiguity policy per node: on resume settle crash-interrupted 'running' node rows to failed (or require explicit confirmation) instead of silently re-dispatching; alternatively make idempotency-key forwarding mandatory for mutating connector operations.
@@ -351,6 +394,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Break when io?.signal?.aborted; exclude abort/cancellation, egress denials, and permanent 4xx (except 429) from failure counting.
 - [ ] **#53 — OTLP exporter: unbounded per-span fetches, no queue or batching**
   - `packages/observability/src/exporters.ts:81-99` · category: performance
+  - **Status:** skipped — Deferred: OTLP exporter needs a bounded queue + batch flush redesign (drop-oldest overflow, concurrency cap). Current per-span fetch with 2s abort is degraded-but-functional; defaults are local/console. NOT fixed.
   - **Root cause:** Every span.end() fires an individual HTTP POST (single-span OTLP batch) with a 2s abort budget, no cap on in-flight requests, no queue, no batching; JSON.stringify runs synchronously in the span-end hot path. Default TRACE_SAMPLE_RATE=1.0 exports every span.
   - **Failure scenario:** TRACE_EXPORTER=otlp with a slow/unreachable collector: 50 concurrent workflows emitting node spans accumulate hundreds of in-flight 2s POSTs; sockets/memory grow without bound, degrading the API.
   - **Suggested fix:** Buffer spans and flush batches on interval/size with a bounded queue (drop-oldest on overflow) and concurrency limit; keep export() non-blocking.
@@ -392,6 +436,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Take pg_advisory_lock around the whole migration run; re-read applied versions inside the lock.
 - [ ] **#60 — SQLite json-mode columns double-encode JSON (callers pre-stringify)**
   - `packages/state/src/sqlite/index.ts:113-120` · category: bug
+  - **Status:** skipped — Deferred for data-migration design: switching json-mode columns to single-encoding requires migrating existing double-encoded rows and a read-compat shim (safeJsonParse currently masks both forms). Also blocks exact-element tag matching on both tiers (#57 aligned to substring semantics as the interim). NOT fixed.
   - **Root cause:** schema.ts declares definition/tags/trigger_payload/input/output/metadata/payload/config/details as text(...,{mode:'json'}); drizzle 0.29.5 SQLiteTextJson.mapToDriverValue already JSON.stringify's. The store passes an ALREADY-stringified string (JSON.stringify(data.definition) as never), so the DB stores a JSON-string-of-JSON. Reads round-trip only because mapFromDriverValue parses once and safeJsonParse re-parses. Systemic across every json column in this file.
   - **Failure scenario:** SELECT json_extract(definition,'$.nodes') FROM workflows returns NULL on SQLite (top-level value is a JSON string, not object); the equivalent PG JSONB column works. Core->Scale data migration or any external SQL/analytics consumer sees corrupted double-encoded data masked in-app by safeJsonParse.
   - **Suggested fix:** Pass raw objects to drizzle json-mode columns (let drizzle serialize once), or switch columns to plain text mode and keep manual stringify. Never both.
@@ -421,6 +466,7 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Load the workflow in dispatch() and skip (or disable the trigger) when status==='archived', mirroring cron/webhook.
 - [ ] **#65 — Spec-mandated webhook timestamp replay protection is missing**
   - `packages/triggers/src/webhook.ts:36-49` · category: security
+  - **Status:** skipped — Deferred for protocol decision: adding a signed timestamp (TSD §11.6) breaks existing webhook senders unless versioned/negotiated. Needs a signature-scheme migration plan. HMAC itself is correct and mandatory when a secret is set; secret-less creation is now blocked (#66). NOT fixed.
   - **Root cause:** File header claims 'HMAC-SHA256 signature verification + replay protection (§11.6)' but TSD §11.6 requires 'timestamp in signature payload; reject if > 5 minutes old'. handle() verifies only HMAC over the raw body; no timestamp/nonce check. The 60/min rate limit is not replay protection.
   - **Failure scenario:** Attacker capturing one valid signed webhook request (log, proxy, browser history) replays it indefinitely at up to 60/min; each replay passes HMAC and creates a new execution, re-firing side effects with no expiry.
   - **Suggested fix:** Require a signed timestamp (header included in HMAC input or signed payload field), reject requests older than 5 minutes, optionally track recent signature nonces per trigger.
@@ -450,11 +496,13 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Suggested fix:** Serialize all GitBackend mutations per repo (async mutex around write+add+commit, or single-writer queue).
 - [ ] **#70 — createVersion commits to git before DB insert with no compensation**
   - `packages/versioning/src/service.ts:29-48` · category: error-handling
+  - **Status:** skipped — Deferred: atomic git+DB versioning needs a store API extension (workflowDefinitions.update/delete for compensation) or a DB-first design with commit_hash backfill. Git commit serialization (#69) removes the concurrent-index race; the cross-system atomicity gap remains. NOT fixed.
   - **Root cause:** git.commit runs first (line 30), then store.workflowDefinitions.create (line 40). Two-phase write spans git + DB with no transaction/compensation; if the DB insert fails the git commit is already persisted.
   - **Failure scenario:** git.commit succeeds, workflowDefinitions.create throws (UNIQUE conflict from concurrent update, DB outage). Caller sees error but git history advanced with an unreferenced commit; retries add more. Git history permanently diverges from the authoritative snapshot table.
   - **Suggested fix:** Insert the DB snapshot first, or add a compensating action on failure; treat git as rebuildable from the snapshot table.
 - [ ] **#71 — Sandbox isolation asserted against a test-local mock, not the system**
   - `tests/e2e/code-node-isolation.test.ts:32-81` · category: test
+  - **Status:** skipped — Deferred until the real sandbox lands: apps/sandbox is a stub and production registers no 'code' adapter, so the suite can only be a contract sketch. Decision (rename/skip vs keep as aspirational contract) belongs with the sandbox implementation work. NOT fixed.
   - **Root cause:** startMockSandbox is a regex-based fake defined inside the test; tests 1-3 assert the fake blocks fs/network. 'Integrates with executor' tests register a test-local 'code' adapter proxying to the fake. Production registers no 'code' adapter (server.ts:119-146) so code.* nodes are rejected at creation; apps/sandbox/src/server.ts returns status:'stub' with empty output. Nothing in the real dispatch chain is exercised.
   - **Failure scenario:** A future real code adapter ignoring the sandbox 'blocked' status (or treating stub output as success) ships green: the suite only proves its own mock returns 'blocked' for code containing 'fs'.
   - **Suggested fix:** Mark the suite as a contract sketch until the real sandbox lands; then drive code nodes through the real adapter + apps/sandbox and assert blocked status fails the execution. At minimum assert the stub's status:'stub' is treated as failure, not success.

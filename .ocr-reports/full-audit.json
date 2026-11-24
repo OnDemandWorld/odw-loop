@@ -261,7 +261,9 @@
     "root_cause": "POST /connectors extracts only api_key into the encrypted secrets store; config.headers (e.g. authorization) remains plaintext in connectors.config JSON. server.ts:174-176 comment claims the L-2 migration moves 'api_key (and headers.authorization)' into the encrypted store, but migration code (182-200) only handles api_key. GET redaction hides headers from API reads but the live credential stays unencrypted at rest.",
     "suggested_fix": "Extract sensitive header values into the secrets store on create and in the startup migration (resolve at dispatch like api_key), or encrypt the whole config column; align migration with its comment.",
     "failure_scenario": "Editor creates a generic connector with config.headers.authorization='Bearer <live token>' -> token persisted as plaintext JSON in SQLite/PG -> anyone with DB/file access (backups, snapshots) reads the upstream credential, violating the encryption-at-rest guarantee the L-2 work claims.",
-    "id": 19
+    "id": 19,
+    "status": "skipped",
+    "verification_notes": "Deferred for design review: extracting header credentials into the secrets store needs a dispatch-time resolution path for headers (like api_key) plus a migration for existing plaintext rows, and a policy for which headers count as sensitive. Root cause confirmed (POST /connectors extracts only api_key; server.ts migration comment overstates coverage). NOT fixed."
   },
   {
     "file": "apps/api/src/routes/index.ts",
@@ -315,7 +317,9 @@
     "root_cause": "buildExecutionWsUrl appends ?token=<JWT/API key>. Fastify request logging and intermediary proxies record full URLs including query strings, persisting credentials in plaintext logs (CWE-598).",
     "suggested_fix": "Use a short-lived single-use ticket exchanged over REST, or Sec-WebSocket-Protocol carrier; at minimum redact token from server URL logging.",
     "failure_scenario": "Auth-enforced deployment: a viewer opens an execution monitor; their JWT is written to API/proxy access logs. Anyone with log read access can replay the token until expiry.",
-    "id": 23
+    "id": 23,
+    "status": "skipped",
+    "verification_notes": "Deferred for design review: removing the token from the WS URL needs a single-use ticket exchange (REST -> short-lived ticket -> WS) or a Sec-WebSocket-Protocol carrier, spanning apps/api ws route + canvas client. Interim: server URL-log redaction recommended. NOT fixed."
   },
   {
     "file": "apps/canvas/src/components/canvas/nodes/ControlNode.tsx",
@@ -425,7 +429,9 @@
     "root_cause": "values.yaml enables postgresql/redis (87-121) and deployments reference {{ .Release.Name }}-postgresql and -redis-master, but Chart.yaml declares no dependencies and templates/ contains no postgres/redis resources. LOOP_REDIS_URL also omits the password despite redis.auth.enabled=true.",
     "suggested_fix": "Add bitnami postgresql/redis as chart dependencies (or document external endpoints and make hosts configurable); include the Redis password in LOOP_REDIS_URL.",
     "failure_scenario": "helm install with default values deploys an API configured for LOOP_DB_TYPE=postgres against a nonexistent host; every pod crash-loops on DB connection. Scale-tier chart unusable as shipped.",
-    "id": 31
+    "id": 31,
+    "status": "skipped",
+    "verification_notes": "Deferred for packaging decision: adding bitnami postgresql/redis as chart dependencies vs documenting external endpoints (and fixing the Redis password in LOOP_REDIS_URL) is a Scale-tier deployment choice for Jack. Chart remains unusable with default values until decided. NOT fixed."
   },
   {
     "file": "packages/connectors/src/desk/adapter.ts",
@@ -591,7 +597,9 @@
     "root_cause": "maxConcurrent only used as batch size inside one execution's executeLevel (449). Nothing limits simultaneous execute() calls: every trigger path (cron/webhook/event/manual/recovery) fire-and-forgets executor.execute immediately. TSD §13 defines LOOP_MAX_CONCURRENT as 'Max concurrent executions' (50 Core); §8.1 requires a concurrency limit check at trigger time.",
     "suggested_fix": "Add an executor-wide semaphore/queue gating execute() entry at maxConcurrent (or per-workflow/in-flight cap in dispatch paths).",
     "failure_scenario": "*/1 cron on a 10-minute workflow plus webhook bursts produces hundreds of simultaneous executions, each running up to 50 nodes per level. Documented 50-execution cap and SQLite 'hard cap at 50 concurrent' assumption violated -> SQLITE_BUSY write contention, memory growth, upstream rate-limit failures.",
-    "id": 43
+    "id": 43,
+    "status": "skipped",
+    "verification_notes": "Deferred for scheduler design: an execution-level semaphore on LOOP_MAX_CONCURRENT interacts with sub-workflow recursion (child executions consume slots -> deadlock risk at low limits) and per-level batching semantics. Needs a deliberate design (e.g. exempt child executions, queue at dispatch). NOT fixed."
   },
   {
     "file": "packages/engine/src/executor.ts",
@@ -645,7 +653,9 @@
     "root_cause": "recover() marks a 'running' execution failed when zero nodes completed ('in-flight node's side effects are ambiguous') but resumes when >=1 completed — re-dispatching the same ambiguous in-flight node (executeNodeInner resets a 'running' row and dispatches again). Idempotency-key mitigation is best-effort: GenericAdapter never forwards an Idempotency-Key header, so generic REST side effects have no dedup vector.",
     "suggested_fix": "Apply the ambiguity policy per node: on resume settle crash-interrupted 'running' node rows to failed (or require explicit confirmation) instead of silently re-dispatching; alternatively make idempotency-key forwarding mandatory for mutating connector operations.",
     "failure_scenario": "Node A succeeds; node B (generic POST /charge) in flight when process crashes after upstream applied the charge. Restart -> recovery resumes (lastCompleted=A) -> B re-dispatched -> second charge. Identical crash with zero completed nodes deliberately failed instead — policy inconsistent.",
-    "id": 47
+    "id": 47,
+    "status": "skipped",
+    "verification_notes": "Deferred for product decision: settle-vs-resume policy for crash-interrupted in-flight nodes trades side-effect safety against availability; mandatory Idempotency-Key forwarding for mutating connector ops is the alternative. Current inconsistency (0 completed -> fail, >=1 -> resume) confirmed. NOT fixed."
   },
   {
     "file": "packages/llm/src/factory.ts",
@@ -727,7 +737,9 @@
     "root_cause": "Every span.end() fires an individual HTTP POST (single-span OTLP batch) with a 2s abort budget, no cap on in-flight requests, no queue, no batching; JSON.stringify runs synchronously in the span-end hot path. Default TRACE_SAMPLE_RATE=1.0 exports every span.",
     "suggested_fix": "Buffer spans and flush batches on interval/size with a bounded queue (drop-oldest on overflow) and concurrency limit; keep export() non-blocking.",
     "failure_scenario": "TRACE_EXPORTER=otlp with a slow/unreachable collector: 50 concurrent workflows emitting node spans accumulate hundreds of in-flight 2s POSTs; sockets/memory grow without bound, degrading the API.",
-    "id": 53
+    "id": 53,
+    "status": "skipped",
+    "verification_notes": "Deferred: OTLP exporter needs a bounded queue + batch flush redesign (drop-oldest overflow, concurrency cap). Current per-span fetch with 2s abort is degraded-but-functional; defaults are local/console. NOT fixed."
   },
   {
     "file": "packages/observability/src/metrics.ts",
@@ -823,7 +835,9 @@
     "root_cause": "schema.ts declares definition/tags/trigger_payload/input/output/metadata/payload/config/details as text(...,{mode:'json'}); drizzle 0.29.5 SQLiteTextJson.mapToDriverValue already JSON.stringify's. The store passes an ALREADY-stringified string (JSON.stringify(data.definition) as never), so the DB stores a JSON-string-of-JSON. Reads round-trip only because mapFromDriverValue parses once and safeJsonParse re-parses. Systemic across every json column in this file.",
     "suggested_fix": "Pass raw objects to drizzle json-mode columns (let drizzle serialize once), or switch columns to plain text mode and keep manual stringify. Never both.",
     "failure_scenario": "SELECT json_extract(definition,'$.nodes') FROM workflows returns NULL on SQLite (top-level value is a JSON string, not object); the equivalent PG JSONB column works. Core->Scale data migration or any external SQL/analytics consumer sees corrupted double-encoded data masked in-app by safeJsonParse.",
-    "id": 60
+    "id": 60,
+    "status": "skipped",
+    "verification_notes": "Deferred for data-migration design: switching json-mode columns to single-encoding requires migrating existing double-encoded rows and a read-compat shim (safeJsonParse currently masks both forms). Also blocks exact-element tag matching on both tiers (#57 aligned to substring semantics as the interim). NOT fixed."
   },
   {
     "file": "packages/state/src/sqlite/index.ts",
@@ -891,7 +905,9 @@
     "root_cause": "File header claims 'HMAC-SHA256 signature verification + replay protection (§11.6)' but TSD §11.6 requires 'timestamp in signature payload; reject if > 5 minutes old'. handle() verifies only HMAC over the raw body; no timestamp/nonce check. The 60/min rate limit is not replay protection.",
     "suggested_fix": "Require a signed timestamp (header included in HMAC input or signed payload field), reject requests older than 5 minutes, optionally track recent signature nonces per trigger.",
     "failure_scenario": "Attacker capturing one valid signed webhook request (log, proxy, browser history) replays it indefinitely at up to 60/min; each replay passes HMAC and creates a new execution, re-firing side effects with no expiry.",
-    "id": 65
+    "id": 65,
+    "status": "skipped",
+    "verification_notes": "Deferred for protocol decision: adding a signed timestamp (TSD §11.6) breaks existing webhook senders unless versioned/negotiated. Needs a signature-scheme migration plan. HMAC itself is correct and mandatory when a secret is set; secret-less creation is now blocked (#66). NOT fixed."
   },
   {
     "file": "packages/types/src/schemas/trigger.ts",
@@ -959,7 +975,9 @@
     "root_cause": "git.commit runs first (line 30), then store.workflowDefinitions.create (line 40). Two-phase write spans git + DB with no transaction/compensation; if the DB insert fails the git commit is already persisted.",
     "suggested_fix": "Insert the DB snapshot first, or add a compensating action on failure; treat git as rebuildable from the snapshot table.",
     "failure_scenario": "git.commit succeeds, workflowDefinitions.create throws (UNIQUE conflict from concurrent update, DB outage). Caller sees error but git history advanced with an unreferenced commit; retries add more. Git history permanently diverges from the authoritative snapshot table.",
-    "id": 70
+    "id": 70,
+    "status": "skipped",
+    "verification_notes": "Deferred: atomic git+DB versioning needs a store API extension (workflowDefinitions.update/delete for compensation) or a DB-first design with commit_hash backfill. Git commit serialization (#69) removes the concurrent-index race; the cross-system atomicity gap remains. NOT fixed."
   },
   {
     "file": "tests/e2e/code-node-isolation.test.ts",
@@ -971,7 +989,9 @@
     "root_cause": "startMockSandbox is a regex-based fake defined inside the test; tests 1-3 assert the fake blocks fs/network. 'Integrates with executor' tests register a test-local 'code' adapter proxying to the fake. Production registers no 'code' adapter (server.ts:119-146) so code.* nodes are rejected at creation; apps/sandbox/src/server.ts returns status:'stub' with empty output. Nothing in the real dispatch chain is exercised.",
     "suggested_fix": "Mark the suite as a contract sketch until the real sandbox lands; then drive code nodes through the real adapter + apps/sandbox and assert blocked status fails the execution. At minimum assert the stub's status:'stub' is treated as failure, not success.",
     "failure_scenario": "A future real code adapter ignoring the sandbox 'blocked' status (or treating stub output as success) ships green: the suite only proves its own mock returns 'blocked' for code containing 'fs'.",
-    "id": 71
+    "id": 71,
+    "status": "skipped",
+    "verification_notes": "Deferred until the real sandbox lands: apps/sandbox is a stub and production registers no 'code' adapter, so the suite can only be a contract sketch. Decision (rename/skip vs keep as aspirational contract) belongs with the sandbox implementation work. NOT fixed."
   },
   {
     "file": "tests/e2e/egress-policy.test.ts",
