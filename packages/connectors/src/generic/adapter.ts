@@ -75,7 +75,26 @@ export class GenericAdapter implements ConnectorAdapter {
     // made body.json() throw a bare SyntaxError — not an UpstreamError, so
     // retry/error classification and reporting lost the failure context.
     // >=400 is an UpstreamError, never "data".
-    const text = await response.body.text();
+    // Audit #34: cap the buffered size — the target is arbitrary workflow
+    // input, and an unbounded .text() on a multi-GB export OOM-crashes the
+    // whole monolith (every in-flight execution dies with it).
+    const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    for await (const chunk of response.body) {
+      const buf = Buffer.from(chunk as Uint8Array);
+      totalBytes += buf.length;
+      if (totalBytes > MAX_RESPONSE_BYTES) {
+        // Release the socket without draining the (huge) remainder.
+        response.body.destroy();
+        throw new UpstreamError(
+          'UPSTREAM_GENERIC_HTTP_ERROR',
+          `Upstream response exceeds the ${MAX_RESPONSE_BYTES} byte cap`,
+        );
+      }
+      chunks.push(buf);
+    }
+    const text = Buffer.concat(chunks).toString('utf8');
     if (response.statusCode >= 400) {
       throw new UpstreamError(
         'UPSTREAM_GENERIC_HTTP_ERROR',

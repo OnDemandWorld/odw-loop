@@ -211,8 +211,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** onNodesChange/onEdgesChange are wired straight to useNodesState setters (lines 459-460, 791-792) without setDirty(true). Only addNode/deleteNode/onConnect/applyConfig mark dirty; Save is disabled when !dirty. React Flow's default Backspace deletion and node drags produce unsaveable changes.
   - **Failure scenario:** User repositions nodes or deletes an edge with Backspace, clicks Save — button disabled. Navigates away; layout/deletion silently lost on reload.
   - **Suggested fix:** Inspect changes in the handlers and setDirty(true) for position/remove/add changes (ignore select/dimensions).
-- [ ] **#30 — templates/*.json data directory not copied into runtime image**
+- [x] **#30 — templates/*.json data directory not copied into runtime image**
   - `docker/Dockerfile.app:63-65` · category: bug
+  - **Status:** fixed — Dockerfile.app runtime stage now COPYs templates/ into /app/templates (TemplateRegistry's module-relative resolution). Verified statically (no local docker); CI docker-build step exercises it. typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** TemplateRegistry.resolveDir looks for <moduleRoot>/templates (= /app/templates in image) and cwd walk-ups; the repo-root templates/ directory with marketplace JSON is never COPYed into the runtime layout.
   - **Failure scenario:** Docker deployments load 0 templates with 0 load errors — silent feature loss; POST /api/v1/templates/:id/instantiate 404s for every shipped template.
   - **Suggested fix:** COPY templates/ ./templates/ in the runtime stage (after fixing the @loop/templates package copy).
@@ -231,8 +232,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** headers read only from params.config['headers']; the canvas generic.rest_call form exposes 'Headers (JSON)' landing in params.input['headers'] (WorkflowEditor.tsx:186), never consulted.
   - **Failure scenario:** Node whose Authorization header is set in the UI form sends the request unauthenticated — 401, or silently different behavior on anonymous-access endpoints.
   - **Suggested fix:** Merge input.headers over config.headers (string values only) before dispatch.
-- [ ] **#34 — Unbounded response buffering in generic REST adapter**
+- [x] **#34 — Unbounded response buffering in generic REST adapter**
   - `packages/connectors/src/generic/adapter.ts:78-78` · category: performance
+  - **Status:** fixed — GenericAdapter buffers the response with a 10 MB cap (chunked read; destroys the body and throws UPSTREAM_GENERIC_HTTP_ERROR when exceeded). Regression: generic-cap.test.ts (11 MB response rejects with /exceeds/; small response round-trips). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30; eslint 0 new errors.
   - **Root cause:** response.body.text() buffers the entire upstream response with no size cap; target URL is arbitrary workflow input (egress-gated for destination, not size).
   - **Failure scenario:** rest_call node pointed at a large data-export/file URL buffers gigabytes into the heap; the modular-monolith API OOM-crashes, killing every in-flight execution.
   - **Suggested fix:** Stream the body with a byte cap (e.g. 10 MB) and throw a clear UpstreamError when exceeded; consider configurable limit.
@@ -310,8 +312,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** logger.warn({ extra }, ...) serializes the whole parsed entry — including api_key — when name/base_url validation fails. Line 147's JSON-parse error log can also echo a snippet of the raw string.
   - **Failure scenario:** LOOP_LLM_EXTRA_PROVIDERS='[{"name":"gw","api_key":"sk-live-..."}]' (base_url typo/omitted) writes the live vendor key into server logs on every startup.
   - **Suggested fix:** Log only the entry name and which fields are missing; never the raw object.
-- [ ] **#49 — Gemini prompt-level block returns empty content as 'STOP'**
+- [x] **#49 — Gemini prompt-level block returns empty content as 'STOP'**
   - `packages/llm/src/gemini.ts:77-87` · category: bug
+  - **Status:** fixed — Gemini provider throws UpstreamError when promptFeedback.blockReason is set instead of returning an empty 'STOP' completion. Regression: providers.test.ts audit #49 (SAFETY block rejects). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** promptFeedback.blockReason never inspected; a blocked prompt yields no candidates so content='' and finish_reason defaults to 'STOP' — indistinguishable from a legitimate empty completion. Candidate-level SAFETY at least visible via finishReason.
   - **Failure scenario:** Prompt hits Gemini's blocklist: API returns {promptFeedback:{blockReason:'SAFETY'}} and the workflow proceeds with an empty string as a successful answer, silently corrupting downstream steps.
   - **Suggested fix:** When promptFeedback.blockReason set, throw UpstreamError or map to a distinct finish_reason.
@@ -321,8 +324,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** signal: io?.signal ?? AbortSignal.timeout(this.timeoutMs) — the executor always passes a fused node-timeout signal (executor.ts:675-697,837), so the configured provider timeout never applies on the workflow path. Identical at anthropic.ts:45, azure.ts:36, gemini.ts:60, ollama.ts:36 and 74.
   - **Failure scenario:** Admin sets LOOP_LLM_TIMEOUT_MS=15000 to fail fast; a node with timeout_ms=600000 against a blackholed provider hangs 10 minutes instead of 15s, stalling the workflow past the intended LLM budget.
   - **Suggested fix:** Combine deadlines: AbortSignal.any([io.signal, AbortSignal.timeout(this.timeoutMs)]) (Node 20+), or race whichever fires first.
-- [ ] **#51 — Non-JSON 200 provider reply crashes with raw SyntaxError**
+- [x] **#51 — Non-JSON 200 provider reply crashes with raw SyntaxError**
   - `packages/llm/src/openai.ts:64-71` · category: error-handling
+  - **Status:** fixed — All six provider parse sites (openai/anthropic/azure/gemini/ollama chat+embed) read text first and JSON.parse with an UpstreamError carrying a 200-char snippet on failure (mirrors the generic adapter's existing guard); bodies drained on every path. Regression: providers.test.ts audit #51 (200 HTML page -> UpstreamError /non-JSON/, not SyntaxError). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30.
   - **Root cause:** response.body.json() on a 200 HTML page (proxy/captive portal/wrong port) throws bare SyntaxError — not UpstreamError — losing upstream context; body left undrained (socket held). Same at anthropic.ts:53, azure.ts:44, gemini.ts:68, ollama.ts:44 and 80. Generic connector already fixed this pattern (generic/adapter.ts:74-92).
   - **Failure scenario:** Corporate proxy returns a 200 login page for api.openai.com: node fails with "Unexpected token '<'...", circuit counts an unclassifiable failure, socket leaks.
   - **Suggested fix:** Read text first, attempt JSON.parse, throw UpstreamError with short snippet on failure; drain on every path.
@@ -337,8 +341,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** Every span.end() fires an individual HTTP POST (single-span OTLP batch) with a 2s abort budget, no cap on in-flight requests, no queue, no batching; JSON.stringify runs synchronously in the span-end hot path. Default TRACE_SAMPLE_RATE=1.0 exports every span.
   - **Failure scenario:** TRACE_EXPORTER=otlp with a slow/unreachable collector: 50 concurrent workflows emitting node spans accumulate hundreds of in-flight 2s POSTs; sockets/memory grow without bound, degrading the API.
   - **Suggested fix:** Buffer spans and flush batches on interval/size with a bounded queue (drop-oldest on overflow) and concurrency limit; keep export() non-blocking.
-- [ ] **#54 — require() in ESM makes all Prometheus metrics silent no-ops**
+- [x] **#54 — require() in ESM makes all Prometheus metrics silent no-ops**
   - `packages/observability/src/metrics.ts:52-60` · category: bug
+  - **Status:** fixed — tryLoadPromClient uses createRequire(import.meta.url) — metrics are real again in the ESM build. Regression: metrics.test.ts (counter recorded; collectMetrics renders loop_executions_total with labels; non-empty output). Verified: typecheck 0; unit 719/719; integration 177/178 (pre-existing only); e2e 30/30; eslint warnings back to baseline after import-order fix.
   - **Root cause:** Package is ESM (package.json type:module, tsconfig Node16); bare require('prom-client') throws ReferenceError at runtime; tryLoadPromClient swallows it and returns undefined. metricsRegistry() always returns no-op stubs and collectMetrics() (207-211) always returns '' in the built product despite prom-client being installed.
   - **Failure scenario:** Production /metrics (server.ts:351) returns 200 with empty body; loop_executions_total, egress_blocked_total, circuit-breaker gauges never record. Monitoring dashboards/alerts silently blind.
   - **Suggested fix:** Use createRequire(import.meta.url)('prom-client') or a cached dynamic import; add a unit test asserting real counters when prom-client is installed.

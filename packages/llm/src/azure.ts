@@ -41,7 +41,7 @@ export class AzureOpenAIProvider implements LLMProvider {
       throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `Azure OpenAI returned ${response.statusCode}: ${detail.slice(0, 500)}`);
     }
 
-    const data = await response.body.json() as {
+    const data = await response.body.text().then((t) => { try { return JSON.parse(t); } catch { throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `${this.name} returned a non-JSON response: ${t.slice(0, 200)}`); } }) as {
       choices?: Array<{ message?: { content: string }; finish_reason?: string }>;
       usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
     };

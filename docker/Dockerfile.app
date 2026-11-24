@@ -63,6 +63,9 @@ COPY --from=builder /app/packages/triggers/dist ./packages/triggers/dist
 COPY --from=builder /app/packages/triggers/package.json ./packages/triggers/
 COPY --from=builder /app/packages/templates/dist ./packages/templates/dist
 COPY --from=builder /app/packages/templates/package.json ./packages/templates/
+# Audit #30: the marketplace template data directory (TemplateRegistry resolves
+# <repo>/templates) — without it Docker deployments load 0 templates silently.
+COPY templates/ ./templates/
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/turbo.json ./

@@ -65,13 +65,20 @@ export class GeminiProvider implements LLMProvider {
       throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `Gemini returned ${response.statusCode}: ${detail.slice(0, 500)}`);
     }
 
-    const data = await response.body.json() as {
+    const data = await response.body.text().then((t) => { try { return JSON.parse(t); } catch { throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `${this.name} returned a non-JSON response: ${t.slice(0, 200)}`); } }) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
       usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+      promptFeedback?: { blockReason?: string };
       error?: { message?: string };
     };
     if (data.error) {
       throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `Gemini returned an error: ${data.error.message ?? 'unknown'}`);
+    }
+    // Audit #49: a prompt-level block yields no candidates — surface it as an
+    // error instead of a successful empty completion that corrupts downstream
+    // steps.
+    if (data.promptFeedback?.blockReason) {
+      throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `Gemini prompt blocked: ${data.promptFeedback.blockReason}`);
     }
 
     const text = (data.candidates?.[0]?.content?.parts ?? [])

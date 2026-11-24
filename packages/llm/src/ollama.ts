@@ -41,7 +41,7 @@ export class OllamaProvider implements LLMProvider {
       throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `Ollama returned ${response.statusCode}: ${detail.slice(0, 500)}`);
     }
 
-    const data = await response.body.json() as {
+    const data = await response.body.text().then((t) => { try { return JSON.parse(t); } catch { throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `${this.name} returned a non-JSON response: ${t.slice(0, 200)}`); } }) as {
       message?: { content: string };
       error?: string;
       eval_count?: number;
@@ -77,7 +77,7 @@ export class OllamaProvider implements LLMProvider {
       const detail = await response.body.text().catch(() => '');
       throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `Ollama embed returned ${response.statusCode}: ${detail.slice(0, 500)}`);
     }
-    const data = await response.body.json() as { embeddings?: number[][] };
+    const data = await response.body.text().then((t) => { try { return JSON.parse(t); } catch { throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `${this.name} returned a non-JSON response: ${t.slice(0, 200)}`); } }) as { embeddings?: number[][] };
     return { embeddings: data.embeddings ?? [], model: req.model, usage: { total_tokens: 0 } };
   }
 

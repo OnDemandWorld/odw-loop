@@ -229,3 +229,27 @@ describe('Provider deadlines — combined signals (audit #50)', () => {
     await expect(pending).rejects.toThrow('request aborted');
   });
 });
+
+describe('Provider response guards (audit #49, #51)', () => {
+  beforeEach(() => {
+    requestMock.mockReset();
+  });
+
+  it('Gemini prompt-level block surfaces as an error, not an empty success', async () => {
+    requestMock.mockResolvedValue(jsonResponse(200, { promptFeedback: { blockReason: 'SAFETY' } }));
+    const provider = new GeminiProvider('gk');
+    await expect(provider.complete(baseReq)).rejects.toThrow(/prompt blocked: SAFETY/);
+  });
+
+  it('a non-JSON 200 (proxy login page) fails as UpstreamError, not SyntaxError', async () => {
+    requestMock.mockResolvedValue({
+      statusCode: 200,
+      body: {
+        text: async () => '<!DOCTYPE html><html>login</html>',
+        json: async () => { throw new SyntaxError('Unexpected token <'); },
+      },
+    });
+    const provider = new OpenAICompatibleProvider('test', 'sk', 'https://api.test.example/v1');
+    await expect(provider.complete(baseReq)).rejects.toThrow(/non-JSON response/);
+  });
+});

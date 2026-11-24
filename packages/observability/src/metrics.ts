@@ -6,6 +6,8 @@
  * never fail at load time.
  */
 
+import { createRequire } from 'node:module';
+
 import { createLogger } from './logger.js';
 
 const logger = createLogger({ name: 'loop:metrics', component: 'observability' });
@@ -51,9 +53,10 @@ let cached: LoopMetrics | undefined;
 
 function tryLoadPromClient(): unknown {
   try {
-    // Dynamic require to keep prom-client optional
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('prom-client');
+    // Audit #54: this package is ESM — a bare require() throws ReferenceError,
+    // which silently disabled ALL Prometheus metrics. createRequire resolves
+    // prom-client while keeping it optional at runtime.
+    return createRequire(import.meta.url)('prom-client');
   } catch {
     return undefined;
   }

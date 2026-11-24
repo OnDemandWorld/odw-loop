@@ -50,7 +50,7 @@ export class AnthropicProvider implements LLMProvider {
       throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `Anthropic returned ${response.statusCode}: ${detail.slice(0, 500)}`);
     }
 
-    const data = await response.body.json() as {
+    const data = await response.body.text().then((t) => { try { return JSON.parse(t); } catch { throw new UpstreamError('UPSTREAM_LLM_UNAVAILABLE', `${this.name} returned a non-JSON response: ${t.slice(0, 200)}`); } }) as {
       content?: Array<{ text: string }>;
       usage?: { input_tokens: number; output_tokens: number };
       stop_reason?: string;
