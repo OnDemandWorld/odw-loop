@@ -296,6 +296,14 @@ export class PostgresStateStore implements StateStore {
       if (result.rows.length === 0) return null;
       return mapWorkflowDefinition(result.rows[0] as Record<string, unknown>);
     },
+
+    updateCommitHash: async (id: string, commitHash: string) => {
+      await this.conn.pool.query('UPDATE workflow_definitions SET commit_hash = $2 WHERE id = $1', [id, commitHash]);
+    },
+
+    delete: async (id: string) => {
+      await this.conn.pool.query('DELETE FROM workflow_definitions WHERE id = $1', [id]);
+    },
   };
 
   // ── Executions ────────────────────────────────────────────────────────────

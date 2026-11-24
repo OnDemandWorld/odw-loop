@@ -40,6 +40,11 @@ export class CircuitBreaker {
         this.failures = 0;
         logger.info({ name: this.name }, 'Circuit breaker → closed');
         this.updateMetric();
+      } else if (this.state === 'closed' && this.failures > 0) {
+        // Audit #117: consecutive-failure semantics — a success while closed
+        // resets the count, so isolated failures across long healthy periods
+        // cannot accumulate and open the circuit against a healthy service.
+        this.failures = 0;
       }
       return result;
     } catch (err) {

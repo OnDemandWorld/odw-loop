@@ -173,7 +173,16 @@ async function resolveDefinition(store: StateStore, execution: WorkflowExecution
   if (versioned) return versioned.definition;
 
   const workflow = await store.workflows.getById(execution.workflow_id);
-  if (workflow) return workflow.definition;
+  if (workflow) {
+    // Audit #139: make the fallback explicit — replaying against the LIVE
+    // definition means the stamped snapshot is missing (e.g. crash between
+    // update and snapshot); the result may differ from the original run.
+    logger.warn(
+      { executionId: execution.id, workflowId: execution.workflow_id, version: execution.workflow_version },
+      'No version snapshot found — replaying against the live definition',
+    );
+    return workflow.definition;
+  }
 
   throw new NotFoundError('WORKFLOW', execution.workflow_id);
 }

@@ -1,5 +1,11 @@
 /**
- * Execution state machine — enforces valid state transitions (§6.1, §4.3).
+ * Execution state machine — documents the valid state transitions (§6.1, §4.3).
+ *
+ * Audit #121: advisory reference, NOT enforced at the store boundary (stores
+ * apply transitions directly). The tables include the legitimate recovery /
+ * retry / replay edges the system actually performs: running→pending
+ * (crash recovery), failed→running (retry/resume), succeeded→running
+ * (explicit replay). Keep this in sync when adding transitions.
  */
 
 import { createLogger } from '@loop/observability';
@@ -11,9 +17,9 @@ export type NodeState = 'pending' | 'running' | 'succeeded' | 'failed' | 'skippe
 
 const EXECUTION_TRANSITIONS: Record<ExecutionState, ExecutionState[]> = {
   pending: ['running', 'cancelled'],
-  running: ['succeeded', 'failed', 'cancelled', 'paused'],
-  succeeded: [],
-  failed: [],
+  running: ['succeeded', 'failed', 'cancelled', 'paused', 'pending'],
+  succeeded: ['running'],
+  failed: ['running'],
   cancelled: [],
   paused: ['running', 'cancelled', 'failed'],
 };
@@ -21,8 +27,8 @@ const EXECUTION_TRANSITIONS: Record<ExecutionState, ExecutionState[]> = {
 const NODE_TRANSITIONS: Record<NodeState, NodeState[]> = {
   pending: ['running', 'skipped'],
   running: ['succeeded', 'failed'],
-  succeeded: [],
-  failed: [],
+  succeeded: ['running'],
+  failed: ['running'],
   skipped: [],
 };
 

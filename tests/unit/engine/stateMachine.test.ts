@@ -54,16 +54,12 @@ describe('StateMachine - Execution State Transitions', () => {
       );
     });
 
-    it('should throw on succeeded → running', () => {
-      expect(() => StateMachine.transitionExecution('succeeded', 'running')).toThrow(
-        /Invalid execution state transition/
-      );
+    it('should allow succeeded → running (explicit replay, audit #121)', () => {
+      expect(() => StateMachine.transitionExecution('succeeded', 'running')).not.toThrow();
     });
 
-    it('should throw on failed → running', () => {
-      expect(() => StateMachine.transitionExecution('failed', 'running')).toThrow(
-        /Invalid execution state transition/
-      );
+    it('should allow failed → running (retry/resume, audit #121)', () => {
+      expect(() => StateMachine.transitionExecution('failed', 'running')).not.toThrow();
     });
 
     it('should throw on cancelled → running', () => {
@@ -157,16 +153,12 @@ describe('StateMachine - Node State Transitions', () => {
       );
     });
 
-    it('should throw on succeeded → running', () => {
-      expect(() => StateMachine.transitionNode('succeeded', 'running')).toThrow(
-        /Invalid node state transition/
-      );
+    it('should allow succeeded → running (replay, audit #121)', () => {
+      expect(() => StateMachine.transitionNode('succeeded', 'running')).not.toThrow();
     });
 
-    it('should throw on failed → running', () => {
-      expect(() => StateMachine.transitionNode('failed', 'running')).toThrow(
-        /Invalid node state transition/
-      );
+    it('should allow failed → running (retry, audit #121)', () => {
+      expect(() => StateMachine.transitionNode('failed', 'running')).not.toThrow();
     });
 
     it('should throw on skipped → running', () => {
@@ -182,13 +174,19 @@ describe('StateMachine - Query methods', () => {
     expect(StateMachine.isValidExecutionTransition('pending', 'running')).toBe(true);
     expect(StateMachine.isValidExecutionTransition('running', 'succeeded')).toBe(true);
     expect(StateMachine.isValidExecutionTransition('pending', 'succeeded')).toBe(false);
-    expect(StateMachine.isValidExecutionTransition('succeeded', 'running')).toBe(false);
+    expect(StateMachine.isValidExecutionTransition('succeeded', 'running')).toBe(true); // replay, audit #121
   });
 
   it('should correctly identify valid node transitions', () => {
     expect(StateMachine.isValidNodeTransition('pending', 'running')).toBe(true);
     expect(StateMachine.isValidNodeTransition('running', 'succeeded')).toBe(true);
     expect(StateMachine.isValidNodeTransition('pending', 'succeeded')).toBe(false);
-    expect(StateMachine.isValidNodeTransition('succeeded', 'running')).toBe(false);
+    expect(StateMachine.isValidNodeTransition('succeeded', 'running')).toBe(true); // replay, audit #121
+  });
+});
+
+describe('StateMachine — recovery edge (audit #121)', () => {
+  it('allows running → pending (crash recovery reset)', () => {
+    expect(() => StateMachine.transitionExecution('running', 'pending')).not.toThrow();
   });
 });

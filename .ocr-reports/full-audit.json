@@ -976,8 +976,8 @@
     "suggested_fix": "Insert the DB snapshot first, or add a compensating action on failure; treat git as rebuildable from the snapshot table.",
     "failure_scenario": "git.commit succeeds, workflowDefinitions.create throws (UNIQUE conflict from concurrent update, DB outage). Caller sees error but git history advanced with an unreferenced commit; retries add more. Git history permanently diverges from the authoritative snapshot table.",
     "id": 70,
-    "status": "skipped",
-    "verification_notes": "Deferred: atomic git+DB versioning needs a store API extension (workflowDefinitions.update/delete for compensation) or a DB-first design with commit_hash backfill. Git commit serialization (#69) removes the concurrent-index race; the cross-system atomicity gap remains. NOT fixed."
+    "status": "fixed",
+    "verification_notes": "createVersion is DB-first: snapshot row persisted (commit_hash ''), git commit, hash backfill via new workflowDefinitions.updateCommitHash; git failure compensates with workflowDefinitions.delete (both methods added to interface + SQLite + PG). Crash window leaves a rebuildable empty-hash row, never an unreferenced git commit. Regression: service.test.ts (happy path hash backfilled; git failure -> no orphan row). Verified: typecheck 0; unit 764/764; integration 175/176 (pre-existing only); e2e 29/29."
   },
   {
     "file": "tests/e2e/code-node-isolation.test.ts",
@@ -1575,7 +1575,9 @@
     "root_cause": "failures only reset when a half_open probe succeeds or via reset(). Successes while closed leave the counter intact, so intermittent failures accumulate across arbitrarily long healthy periods until threshold opens the circuit against a currently-healthy service. Exported utility; not yet wired into dispatch.",
     "suggested_fix": "Reset this.failures = 0 on any successful execute() while closed (consecutive-failure semantics), or use a sliding window.",
     "failure_scenario": "threshold=5: four isolated failures spread over days (each followed by thousands of successes), then one more transient failure -> state open, all calls rejected for cooldown despite a 99.9%-healthy upstream.",
-    "id": 117
+    "id": 117,
+    "status": "fixed",
+    "verification_notes": "CircuitBreaker resets failures on any success while closed (consecutive-failure semantics) — isolated failures across healthy periods can no longer accumulate to open. Regression: circuitBreaker.test.ts audit #117 (2+2 failures with a success between stay closed at threshold 3). Verified: typecheck 0; unit 764/764."
   },
   {
     "file": "packages/engine/src/executor.ts",
@@ -1629,7 +1631,9 @@
     "root_cause": "StateMachine exported but never invoked in production (grep-verified); stores apply transitions directly. Its tables forbid transitions the system performs: recovery running->pending (recovery.ts:54), retry/resume failed->running (executor.ts:612), replay terminal->running (executor.ts:272). Documented state machine misdescribes real behavior.",
     "suggested_fix": "Enforce transitions at the store/executor boundary (adding legitimate resume/recovery edges explicitly) or delete/annotate the module as aspirational.",
     "failure_scenario": "Developer adds a guard using StateMachine.transitionExecution for recovery: running->pending throws and crash recovery breaks — or trusts the table and assumes terminal states immutable, which replay violates.",
-    "id": 121
+    "id": 121,
+    "status": "fixed",
+    "verification_notes": "StateMachine documented as advisory reference and its tables corrected to include the real recovery/retry/replay edges (running->pending, failed->running, succeeded->running; node failed/succeeded->running). Tests updated to the corrected contract + running->pending case. Verified: typecheck 0; unit 764/764."
   },
   {
     "file": "packages/llm/src/anthropic.ts",
@@ -1851,7 +1855,9 @@
     "root_cause": "store.workflows.update (read-then-increment version) and versioning.createVersion run as separate operations with no transaction and no unique constraint on (workflow_id,version) (migrations create only a plain index). Concurrent definition updates can both write version N+1 and snapshot two different definitions under it; a crash between calls leaves a version with no snapshot and replay's resolveDefinition silently falls back to the live definition.",
     "suggested_fix": "Perform version bump + snapshot atomically (transaction / INSERT...RETURNING with unique (workflow_id,version) constraint); make replay's fallback explicit rather than silent.",
     "failure_scenario": "Two editors PUT different definitions simultaneously: both read version 4, both write 5, two divergent definitions snapshotted as v5. An execution stamped v5 later replays against whichever row getByWorkflowAndVersion returns first — potentially the other editor's graph.",
-    "id": 139
+    "id": 139,
+    "status": "fixed",
+    "verification_notes": "Unique index (workflow_id, version) added in SQLite migration 005 + PG migration 004; combined with the atomic version bump (#134) concurrent updates can no longer snapshot divergent definitions under one version. Replay's live-definition fallback now logs a warning (explicit, not silent). Regression: service.test.ts unique-version test (duplicate -> UNIQUE error). Verified: typecheck 0; unit 764/764; integration 175/176 (pre-existing only)."
   },
   {
     "file": "packages/workflow-authoring/src/validator.ts",
@@ -1863,7 +1869,9 @@
     "root_cause": "definition.variables[varName] assumes variables present, but DB-loaded definitions are raw JSON (mapWorkflow/safeJsonParse applies no zod defaults), so a stored definition lacking variables throws TypeError inside validateWorkflow. Accepted patterns out of sync with executor: variables.* and raw-node-id references ({{fetch.output.x}}, hyphenated ids) valid at runtime but flagged 'may not resolve'; variables.foo looked up as literal key instead of stripping the prefix.",
     "suggested_fix": "Use (definition.variables ?? {})[...], strip the variables. prefix before lookup, accept the executor's reference grammar (trigger.payload.*, variables.*, any <nodeId>.output.*).",
     "failure_scenario": "POST /api/v1/workflows/:id/validate on a legacy/imported row without variables key and config containing {{variables.recipient}} -> TypeError -> 500; on current rows valid {{variables.x}}/{{fetch.output.y}} references produce spurious warnings.",
-    "id": 140
+    "id": 140,
+    "status": "fixed",
+    "verification_notes": "Validator rule 5 uses (definition.variables ?? {}) (no crash on legacy rows), strips the variables. prefix, and accepts the executor's grammar (trigger.*, variables.*, any <nodeId>.output.*). Regression: validator.test.ts audit #140 (no variables block -> warning not crash; defined variables + node refs -> no warnings). Verified: typecheck 0; unit 764/764."
   },
   {
     "file": "tests/e2e/meeting-to-tasks.test.ts",

@@ -111,6 +111,12 @@ export interface StateStore {
       workflowId: string,
       version: number,
     ): Promise<WorkflowDefinitionVersion | null>;
+
+    /** Audit #70: backfill the git hash after the snapshot row is persisted. */
+    updateCommitHash(id: string, commitHash: string): Promise<void>;
+
+    /** Audit #70: compensation — remove a snapshot whose git commit failed. */
+    delete(id: string): Promise<void>;
   };
 
   // ── Executions ────────────────────────────────────────────────────────────

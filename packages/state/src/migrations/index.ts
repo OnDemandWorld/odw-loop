@@ -231,4 +231,13 @@ UPDATE audit_events SET details = json_extract(details, '$') WHERE json_type(det
 UPDATE connectors SET config = json_extract(config, '$') WHERE json_type(config) = 'text';
 `,
   },
+  {
+    version: '005',
+    name: 'unique_workflow_version',
+    // Audit #139: one snapshot per (workflow_id, version) — concurrent updates
+    // must not persist two divergent definitions under the same version.
+    sql: `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wf_defs_version ON workflow_definitions(workflow_id, version);
+`,
+  },
 ];

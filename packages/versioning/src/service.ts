@@ -26,26 +26,36 @@ export class VersioningService {
     created_by: string;
     change_summary?: string;
   }): Promise<{ id: string; commit_hash: string }> {
-    // Commit to git
-    const commit_hash = await this.git.commit({
-      workflow_id: params.workflow_id,
-      version: params.version,
-      definition: JSON.stringify(params.definition, null, 2),
-      author: params.created_by,
-      message: params.change_summary ?? `Version ${params.version}`,
-    });
-
-    // Store the versioned snapshot
+    // Audit #70: persist the authoritative snapshot FIRST, then commit to git
+    // and backfill the hash. A git failure compensates by deleting the row;
+    // a crash in the window leaves a row with an empty hash (git history is
+    // rebuildable from snapshots) — never an unreferenced git commit with no
+    // DB record, which the old git-first order produced.
     const id = randomUUID();
     await this.store.workflowDefinitions.create({
       id,
       workflow_id: params.workflow_id,
       version: params.version,
       definition: params.definition,
-      commit_hash,
+      commit_hash: '',
       created_by: params.created_by,
       change_summary: params.change_summary,
     });
+
+    let commit_hash: string;
+    try {
+      commit_hash = await this.git.commit({
+        workflow_id: params.workflow_id,
+        version: params.version,
+        definition: JSON.stringify(params.definition, null, 2),
+        author: params.created_by,
+        message: params.change_summary ?? `Version ${params.version}`,
+      });
+    } catch (err) {
+      await this.store.workflowDefinitions.delete(id).catch(() => {});
+      throw err;
+    }
+    await this.store.workflowDefinitions.updateCommitHash(id, commit_hash);
 
     logger.info(
       { workflow_id: params.workflow_id, version: params.version, commit_hash: commit_hash.slice(0, 12) },

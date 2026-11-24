@@ -167,3 +167,23 @@ describe('validateWorkflow', () => {
     expect(result.warnings.some(w => w.includes('no outgoing edges'))).toBe(true);
   });
 });
+
+describe('validateWorkflow — variable reference grammar (audit #140)', () => {
+  const base = {
+    version: '1.0',
+    nodes: [{ id: 'fetch', type: 'vault.search', position: { x: 0, y: 0 }, config: { q: '{{variables.recipient}} and {{fetch.output.x}} and {{trigger.payload.id}}' } }],
+    edges: [],
+    metadata: { name: 'refs' },
+  };
+
+  it('does not crash on definitions without a variables block', () => {
+    const result = validateWorkflow(base as never);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some((w: string) => w.includes('variables.recipient'))).toBe(true);
+  });
+
+  it('accepts variables.* when defined, and any nodeId.output.* reference', () => {
+    const result = validateWorkflow({ ...base, variables: { recipient: { default: 'ops' } } } as never);
+    expect(result.warnings.filter((w: string) => w.includes('may not resolve'))).toEqual([]);
+  });
+});

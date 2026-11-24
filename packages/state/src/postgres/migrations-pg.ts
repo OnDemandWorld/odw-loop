@@ -192,4 +192,12 @@ ALTER TABLE secrets DROP CONSTRAINT IF EXISTS secrets_name_key;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_name_scope ON secrets(name, scope, COALESCE(scope_id::text, ''));
 `,
   },
+  {
+    version: '004',
+    name: 'unique_workflow_version_pg',
+    // Audit #139: mirror the SQLite unique (workflow_id, version) index.
+    sql: `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wf_defs_version ON workflow_definitions(workflow_id, version);
+`,
+  },
 ];

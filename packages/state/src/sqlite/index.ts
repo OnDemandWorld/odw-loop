@@ -241,6 +241,14 @@ export class SqliteStateStore implements StateStore {
         definition: safeJsonParse(row.definition) as unknown as WorkflowDefinition,
         commit_hash: row.commit_hash, created_by: row.created_by, created_at: row.created_at, change_summary: row.change_summary };
     },
+
+    updateCommitHash: async (id: string, commitHash: string) => {
+      this.db.update(schema.workflowDefinitions).set({ commit_hash: commitHash }).where(eq(schema.workflowDefinitions.id, id)).run();
+    },
+
+    delete: async (id: string) => {
+      this.db.delete(schema.workflowDefinitions).where(eq(schema.workflowDefinitions.id, id)).run();
+    },
   };
 
   // ── Executions ────────────────────────────────────────────────────────────

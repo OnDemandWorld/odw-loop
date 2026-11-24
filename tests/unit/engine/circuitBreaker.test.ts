@@ -229,3 +229,18 @@ describe('CircuitBreaker', () => {
     });
   });
 });
+
+describe('CircuitBreaker — consecutive-failure semantics (audit #117)', () => {
+  it('a success while closed resets the failure count', async () => {
+    const cb = new CircuitBreaker('reset-test', 3, 1000);
+    const fail = () => Promise.reject(new Error('transient'));
+    const ok = () => Promise.resolve('ok');
+    await expect(cb.execute(fail)).rejects.toThrow();
+    await expect(cb.execute(fail)).rejects.toThrow();
+    await cb.execute(ok); // resets
+    await expect(cb.execute(fail)).rejects.toThrow();
+    await expect(cb.execute(fail)).rejects.toThrow();
+    // 2+2 isolated failures with a success between must NOT open (threshold 3).
+    expect(cb.getState()).toBe('closed');
+  });
+});

@@ -49,15 +49,26 @@ export function validateWorkflow(definition: WorkflowDefinition): ValidationResu
   // Rule 4: Required config — nodes with config schemas should have required fields
   // (This would require connector-specific config schemas; for now we skip deep validation)
 
-  // Rule 5: Variable references — check {{variable}} syntax
+  // Rule 5: Variable references — check {{...}} syntax against the executor's
+  // actual grammar (audit #140): trigger.payload.*, variables.*, any
+  // <nodeId>.output.* (ids are not restricted to node_N), or a bare variable
+  // name. DB-loaded definitions may lack `variables` entirely — no crash.
+  const variables = (definition.variables ?? {}) as Record<string, unknown>;
   for (const node of nodes) {
     const configStr = JSON.stringify(node.config);
     const varRefs = configStr.match(/\{\{([^}]+)\}\}/g);
     if (varRefs) {
       for (const ref of varRefs) {
         const varName = ref.slice(2, -2).trim();
-        // Valid patterns: trigger.payload.*, node_N.output.*, or workflow variables
-        if (!varName.startsWith('trigger.') && !varName.match(/^node_\w+\.output\./) && !definition.variables[varName]) {
+        if (varName.startsWith('trigger.')) continue;
+        if (varName.startsWith('variables.')) {
+          if (variables[varName.slice('variables.'.length)] === undefined) {
+            warnings.push(`Node '${node.id}': variable reference '${varName}' may not resolve`);
+          }
+          continue;
+        }
+        if (/^[A-Za-z0-9_-]+\.output\./.test(varName)) continue;
+        if (variables[varName] === undefined) {
           warnings.push(`Node '${node.id}': variable reference '${varName}' may not resolve`);
         }
       }
