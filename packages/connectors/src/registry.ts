@@ -92,12 +92,19 @@ export class ConnectorRegistry {
           return [id, false] as const;
         }
       }
+      // Audit #113: cancel the losing probe — the old race left the request
+      // running (up to undici's 300s default), accumulating sockets on
+      // repeated /ready scrapes against a blackholed sibling.
+      const controller = new AbortController();
       const timeout = new Promise<boolean>((resolve) => {
-        const t = setTimeout(() => resolve(false), timeoutMs);
+        const t = setTimeout(() => {
+          controller.abort();
+          resolve(false);
+        }, timeoutMs);
         if (typeof t.unref === 'function') t.unref();
       });
       try {
-        const ok = await Promise.race([Promise.resolve(adapter.healthCheck(baseUrl)), timeout]);
+        const ok = await Promise.race([Promise.resolve(adapter.healthCheck(baseUrl, controller.signal)), timeout]);
         return [id, Boolean(ok)] as const;
       } catch {
         return [id, false] as const;

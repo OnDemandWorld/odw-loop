@@ -22,7 +22,12 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async complete(req: CompletionRequest, io?: ProviderIO): Promise<CompletionResponse> {
-    const systemMsg = req.messages.find((m) => m.role === 'system');
+    // Audit #122: honour ALL system messages (gemini joins them; dropping
+    // every but the first silently lost instructions on this vendor).
+    const systemContent = req.messages
+      .filter((m) => m.role === 'system')
+      .map((m) => m.content)
+      .join('\n');
     const nonSystemMsg = req.messages.filter((m) => m.role !== 'system');
 
     const url = `${this.baseUrl}/messages`;
@@ -38,7 +43,7 @@ export class AnthropicProvider implements LLMProvider {
       body: JSON.stringify({
         model: req.model,
         max_tokens: req.max_tokens ?? 4096,
-        ...(systemMsg ? { system: systemMsg.content } : {}),
+        ...(systemContent ? { system: systemContent } : {}),
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
         messages: nonSystemMsg,
       }),

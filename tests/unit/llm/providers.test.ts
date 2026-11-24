@@ -253,3 +253,43 @@ describe('Provider response guards (audit #49, #51)', () => {
     await expect(provider.complete(baseReq)).rejects.toThrow(/non-JSON response/);
   });
 });
+
+describe('Provider parity fixes (audit #122, #123)', () => {
+  beforeEach(() => requestMock.mockReset());
+
+  it('Anthropic joins ALL system messages (audit #122)', async () => {
+    requestMock.mockResolvedValueOnce(jsonResponse(200, {
+      content: [{ text: 'answer' }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+      stop_reason: 'end_turn',
+    }));
+    const provider = new AnthropicProvider('ak-test', 'claude-3-5-haiku-latest');
+    await provider.complete({
+      model: 'm',
+      messages: [
+        { role: 'system', content: 'rule A' },
+        { role: 'system', content: 'rule B' },
+        { role: 'user', content: 'hi' },
+      ],
+    });
+    const body = JSON.parse(requestMock.mock.calls[0]![1].body as string);
+    expect(body.system).toBe('rule A\nrule B');
+  });
+
+  it('Ollama uses a real default model, not the literal "default" (audit #123)', async () => {
+    requestMock.mockResolvedValueOnce(jsonResponse(200, {
+      message: { content: 'ok' },
+      done_reason: 'stop',
+      prompt_eval_count: 1,
+      eval_count: 1,
+    }));
+    const provider = new OllamaProvider('http://localhost:11434');
+    expect(provider.defaultModel).toBe('llama3.2');
+    // The router substitutes the provider default for model-less requests.
+    const { LLMRouter } = await import('../../../packages/llm/src/router');
+    const router = new LLMRouter([provider]);
+    await router.complete({ model: '', messages: [{ role: 'user', content: 'hi' }] });
+    const body = JSON.parse(requestMock.mock.calls[0]![1].body as string);
+    expect(body.model).toBe('llama3.2');
+  });
+});

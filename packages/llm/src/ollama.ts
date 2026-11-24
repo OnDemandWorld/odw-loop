@@ -17,7 +17,10 @@ export class OllamaProvider implements LLMProvider {
     defaultModel?: string,
     private timeoutMs: number = DEFAULT_TIMEOUT_MS,
   ) {
-    this.defaultModel = defaultModel;
+    // Audit #123: a real default model — the router previously sent the
+    // literal 'default', which Ollama 404s. Operators can override with
+    // LOOP_LLM_OLLAMA_MODEL; llama3.2 is a common small local model.
+    this.defaultModel = defaultModel ?? 'llama3.2';
   }
 
   async complete(req: CompletionRequest, io?: ProviderIO): Promise<CompletionResponse> {

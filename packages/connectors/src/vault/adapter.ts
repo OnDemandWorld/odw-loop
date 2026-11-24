@@ -52,9 +52,9 @@ export class VaultAdapter implements ConnectorAdapter {
     }
   }
 
-  async healthCheck(baseUrl: string = DEFAULT_BASE_URL): Promise<boolean> {
+  async healthCheck(baseUrl: string = DEFAULT_BASE_URL, signal?: AbortSignal): Promise<boolean> {
     try {
-      const response = await request(`${baseUrl}/health`, { method: 'GET', signal: AbortSignal.timeout(3000) });
+      const response = await request(`${baseUrl}/health`, { method: 'GET', signal: signal ?? AbortSignal.timeout(3000) });
       // Drain the body so the socket can be released.
       await response.body.text();
       return response.statusCode === 200;
@@ -88,6 +88,15 @@ export class VaultAdapter implements ConnectorAdapter {
     io?: Pick<ExecuteParams, 'egress' | 'signal'>,
   ): Promise<ExecuteResult> {
     const data = await this.postQuery(baseUrl, apiKey, input, idempotencyKey, io);
+    // Audit #114: a non-JSON 200 (proxy login page, wrong port) comes back as
+    // {text} from callVault's lenient path — mapping that to an empty answer
+    // let the workflow continue on garbage. /query must answer JSON.
+    if (data['answer'] === undefined && data['text'] !== undefined) {
+      throw new UpstreamError(
+        'UPSTREAM_VAULT_BAD_RESPONSE',
+        `Vault /query returned a non-JSON response: ${String(data['text']).slice(0, 200)}`,
+      );
+    }
     return {
       output: {
         answer: data['answer'] ?? '',

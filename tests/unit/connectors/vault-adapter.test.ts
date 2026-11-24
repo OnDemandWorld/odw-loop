@@ -76,3 +76,20 @@ describe('VaultAdapter — canvas field aliases (audit #40)', () => {
     expect(form.get('files')).toBeTruthy();
   });
 });
+
+describe('VaultAdapter — /query non-JSON guard (audit #114)', () => {
+  it('fails loudly when /query answers with a non-JSON 200', async () => {
+    requestMock.mockResolvedValue({
+      statusCode: 200,
+      body: { text: async () => '<!DOCTYPE html><html>login</html>' },
+    });
+    const adapter = new VaultAdapter();
+    await expect(
+      adapter.execute({
+        operation: 'rag_query',
+        input: { query: 'x' },
+        config: { base_url: 'http://vault.test' },
+      } as never),
+    ).rejects.toMatchObject({ code: 'UPSTREAM_VAULT_BAD_RESPONSE' });
+  });
+});

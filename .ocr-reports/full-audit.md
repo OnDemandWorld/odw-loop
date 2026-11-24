@@ -765,13 +765,15 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** token resolved from input['token'] (canvas recap.sync form offers a token field); create_meeting/sync pass the whole params.input — including token — as the JSON body, duplicating the credential beyond the Authorization header.
   - **Failure scenario:** JWT persisted in Recap's request-body logs in addition to the auth header, widening credential exposure on the sibling service.
   - **Suggested fix:** Strip token (and any auth material) from the body before JSON.stringify.
-- [ ] **#113 — healthCheckAll race timeout never cancels the losing probe**
+- [x] **#113 — healthCheckAll race timeout never cancels the losing probe**
   - `packages/connectors/src/registry.ts:79-88` · category: performance
+  - **Status:** fixed — healthCheckAll ties an AbortController to the race timeout and passes the signal into adapter.healthCheck (interface + vault/desk/recap accept it); timed-out probes are cancelled instead of lingering up to 300s. Regression: registry.test.ts audit #113 (blackholed probe -> false + signal.aborted). Verified: typecheck 0; unit 790/790; integration 179/180 (pre-existing only); e2e 29/29.
   - **Root cause:** Promise.race resolves false after timeoutMs but the underlying healthCheck keeps running with undici's default 300s headers/body timeout; no AbortSignal passed. /ready is unauthenticated and rate-limit-exempt (server.ts:76,333-337).
   - **Failure scenario:** Repeated /ready scrapes against a blackholed sibling accumulate pending sockets (each lives up to 300s), growing memory/FD usage on the API process.
   - **Suggested fix:** Tie an AbortController to the race timeout and forward its signal into healthCheck.
-- [ ] **#114 — Non-JSON Vault /query reply silently becomes empty answer**
+- [x] **#114 — Non-JSON Vault /query reply silently becomes empty answer**
   - `packages/connectors/src/vault/adapter.ts:215-222` · category: bug
+  - **Status:** fixed — Vault ragQuery throws UPSTREAM_VAULT_BAD_RESPONSE (new ErrorCode) when /query answers non-JSON ({text} lenient path) instead of succeeding with an empty answer. Regression: vault-adapter.test.ts audit #114. Verified: typecheck 0; unit 790/790.
   - **Root cause:** callVault returns {text} for any non-JSON 200 (needed for get_text raw text), so ragQuery maps answer:'' citations:[] from it. Recap added an explicit non-JSON guard for this misconfiguration class (recap/adapter.ts:124-131); Vault's /query path has none.
   - **Failure scenario:** LOOP_VAULT_URL points at a proxy serving a 200 HTML page: RAG node 'succeeds' with an empty answer instead of failing loudly; workflow continues on garbage.
   - **Suggested fix:** Require JSON for /query responses (keep lenient path only for /files/{id}/text).
@@ -817,18 +819,21 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** StateMachine exported but never invoked in production (grep-verified); stores apply transitions directly. Its tables forbid transitions the system performs: recovery running->pending (recovery.ts:54), retry/resume failed->running (executor.ts:612), replay terminal->running (executor.ts:272). Documented state machine misdescribes real behavior.
   - **Failure scenario:** Developer adds a guard using StateMachine.transitionExecution for recovery: running->pending throws and crash recovery breaks — or trusts the table and assumes terminal states immutable, which replay violates.
   - **Suggested fix:** Enforce transitions at the store/executor boundary (adding legitimate resume/recovery edges explicitly) or delete/annotate the module as aspirational.
-- [ ] **#122 — Anthropic drops all but the first system message**
+- [x] **#122 — Anthropic drops all but the first system message**
   - `packages/llm/src/anthropic.ts:25-26` · category: bug
+  - **Status:** fixed — Anthropic provider joins ALL system messages with newlines (parity with gemini). Regression: providers.test.ts audit #122 (two system messages -> joined body.system). Verified: typecheck 0; unit 790/790.
   - **Root cause:** find() keeps only the first system message (used at line 41); LLM connector and /llm/complete accept multiple system entries; gemini.ts:38 joins them all — behavior silently differs per vendor.
   - **Failure scenario:** messages=[system A, system B, user] on Anthropic: instruction B never reaches the model; same workflow on Gemini honors both.
   - **Suggested fix:** Join all system contents with newlines like gemini.ts:38.
-- [ ] **#123 — Ollama registered without default model -> router sends 'default'**
+- [x] **#123 — Ollama registered without default model -> router sends 'default'**
   - `packages/llm/src/factory.ts:98-98` · category: bug
+  - **Status:** fixed — OllamaProvider defaults to 'llama3.2' when LOOP_LLM_OLLAMA_MODEL is unset — the router no longer sends the literal 'default' (Ollama 404). Regression: providers.test.ts audit #123 (defaultModel + router-substituted request model). Verified: typecheck 0; unit 790/790.
   - **Root cause:** OllamaProvider always registered but LOOP_LLM_OLLAMA_MODEL optional (config.ts:84) with no fallback model; router.ts:59 substitutes the literal 'default', not a real Ollama model.
   - **Failure scenario:** Out of the box (local-first, no env tuning), an llm.complete node without explicit model fails with Ollama 404 "model 'default' not found".
   - **Suggested fix:** Default to a common model (or discover first installed model via /api/tags) when env unset.
-- [ ] **#124 — CompletionRequest.stream advertised but ignored by all providers**
+- [x] **#124 — CompletionRequest.stream advertised but ignored by all providers**
   - `packages/llm/src/interface.ts:11-11` · category: maintainability
+  - **Status:** fixed — Removed the ignored CompletionRequest.stream flag (documented as unimplemented until streaming lands) — callers can no longer expect incremental delivery. Verified: typecheck 0; unit 790/790.
   - **Root cause:** openai.ts:49 and ollama.ts:33 hardcode stream:false; anthropic/azure/gemini omit the field (non-streaming default). No provider honors req.stream.
   - **Failure scenario:** Caller sets stream:true expecting incremental delivery and silently receives a fully buffered response.
   - **Suggested fix:** Remove the flag until streaming is implemented, or implement it; document the limitation either way.

@@ -115,8 +115,8 @@ describe('ConnectorRegistry', () => {
 
     expect(results.get('pinned')).toBe(true);
     expect(results.get('unpinned')).toBe(true);
-    expect(healthCheckMock).toHaveBeenCalledWith('http://127.0.0.1:9999');
-    expect(healthCheckMock).toHaveBeenCalledWith(undefined);
+    expect(healthCheckMock).toHaveBeenCalledWith('http://127.0.0.1:9999', expect.anything());
+    expect(healthCheckMock).toHaveBeenCalledWith(undefined, expect.anything());
   });
 
   it('bounds the health probe with a timeout and reports unreachable instances', async () => {
@@ -177,5 +177,29 @@ describe('ConnectorRegistry — egress-gated readiness probes (audit #39)', () =
     const results = await registry.healthCheckAll();
     expect(results.get('svc-1')).toBe(true);
     expect(healthCheck).toHaveBeenCalled();
+  });
+});
+
+describe('ConnectorRegistry — probe cancellation (audit #113)', () => {
+  it('aborts the losing probe when the race timeout fires', async () => {
+    const registry = new ConnectorRegistry();
+    let probeSignal: AbortSignal | undefined;
+    const adapter: ConnectorAdapter = {
+      type: 'blackhole',
+      execute: vi.fn(),
+      healthCheck: (_baseUrl?: string, signal?: AbortSignal) => {
+        probeSignal = signal;
+        return new Promise<boolean>(() => {
+          /* never settles — like a blackholed sibling */
+        });
+      },
+      getCapabilities: vi.fn().mockReturnValue({ node_types: [] }),
+    };
+    registry.registerAdapter(adapter);
+    registry.registerInstance('bh-1', 'blackhole', { base_url: 'http://192.0.2.1:9999' });
+
+    const results = await registry.healthCheckAll(50);
+    expect(results.get('bh-1')).toBe(false);
+    expect(probeSignal?.aborted).toBe(true);
   });
 });

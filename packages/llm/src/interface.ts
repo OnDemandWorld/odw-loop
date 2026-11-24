@@ -8,7 +8,9 @@ export interface CompletionRequest {
   messages: ChatMessage[];
   temperature?: number;
   max_tokens?: number;
-  stream?: boolean;
+  // Audit #124: `stream` was advertised but ignored by every provider
+  // (all hardcode non-streaming). Removed until streaming is implemented —
+  // callers must not expect incremental delivery.
 }
 
 export interface CompletionResponse {

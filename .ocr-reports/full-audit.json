@@ -1573,7 +1573,9 @@
     "root_cause": "Promise.race resolves false after timeoutMs but the underlying healthCheck keeps running with undici's default 300s headers/body timeout; no AbortSignal passed. /ready is unauthenticated and rate-limit-exempt (server.ts:76,333-337).",
     "suggested_fix": "Tie an AbortController to the race timeout and forward its signal into healthCheck.",
     "failure_scenario": "Repeated /ready scrapes against a blackholed sibling accumulate pending sockets (each lives up to 300s), growing memory/FD usage on the API process.",
-    "id": 113
+    "id": 113,
+    "status": "fixed",
+    "verification_notes": "healthCheckAll ties an AbortController to the race timeout and passes the signal into adapter.healthCheck (interface + vault/desk/recap accept it); timed-out probes are cancelled instead of lingering up to 300s. Regression: registry.test.ts audit #113 (blackholed probe -> false + signal.aborted). Verified: typecheck 0; unit 790/790; integration 179/180 (pre-existing only); e2e 29/29."
   },
   {
     "file": "packages/connectors/src/vault/adapter.ts",
@@ -1585,7 +1587,9 @@
     "root_cause": "callVault returns {text} for any non-JSON 200 (needed for get_text raw text), so ragQuery maps answer:'' citations:[] from it. Recap added an explicit non-JSON guard for this misconfiguration class (recap/adapter.ts:124-131); Vault's /query path has none.",
     "suggested_fix": "Require JSON for /query responses (keep lenient path only for /files/{id}/text).",
     "failure_scenario": "LOOP_VAULT_URL points at a proxy serving a 200 HTML page: RAG node 'succeeds' with an empty answer instead of failing loudly; workflow continues on garbage.",
-    "id": 114
+    "id": 114,
+    "status": "fixed",
+    "verification_notes": "Vault ragQuery throws UPSTREAM_VAULT_BAD_RESPONSE (new ErrorCode) when /query answers non-JSON ({text} lenient path) instead of succeeding with an empty answer. Regression: vault-adapter.test.ts audit #114. Verified: typecheck 0; unit 790/790."
   },
   {
     "file": "packages/egress/src/interceptor.ts",
@@ -1695,7 +1699,9 @@
     "root_cause": "find() keeps only the first system message (used at line 41); LLM connector and /llm/complete accept multiple system entries; gemini.ts:38 joins them all — behavior silently differs per vendor.",
     "suggested_fix": "Join all system contents with newlines like gemini.ts:38.",
     "failure_scenario": "messages=[system A, system B, user] on Anthropic: instruction B never reaches the model; same workflow on Gemini honors both.",
-    "id": 122
+    "id": 122,
+    "status": "fixed",
+    "verification_notes": "Anthropic provider joins ALL system messages with newlines (parity with gemini). Regression: providers.test.ts audit #122 (two system messages -> joined body.system). Verified: typecheck 0; unit 790/790."
   },
   {
     "file": "packages/llm/src/factory.ts",
@@ -1707,7 +1713,9 @@
     "root_cause": "OllamaProvider always registered but LOOP_LLM_OLLAMA_MODEL optional (config.ts:84) with no fallback model; router.ts:59 substitutes the literal 'default', not a real Ollama model.",
     "suggested_fix": "Default to a common model (or discover first installed model via /api/tags) when env unset.",
     "failure_scenario": "Out of the box (local-first, no env tuning), an llm.complete node without explicit model fails with Ollama 404 \"model 'default' not found\".",
-    "id": 123
+    "id": 123,
+    "status": "fixed",
+    "verification_notes": "OllamaProvider defaults to 'llama3.2' when LOOP_LLM_OLLAMA_MODEL is unset — the router no longer sends the literal 'default' (Ollama 404). Regression: providers.test.ts audit #123 (defaultModel + router-substituted request model). Verified: typecheck 0; unit 790/790."
   },
   {
     "file": "packages/llm/src/interface.ts",
@@ -1719,7 +1727,9 @@
     "root_cause": "openai.ts:49 and ollama.ts:33 hardcode stream:false; anthropic/azure/gemini omit the field (non-streaming default). No provider honors req.stream.",
     "suggested_fix": "Remove the flag until streaming is implemented, or implement it; document the limitation either way.",
     "failure_scenario": "Caller sets stream:true expecting incremental delivery and silently receives a fully buffered response.",
-    "id": 124
+    "id": 124,
+    "status": "fixed",
+    "verification_notes": "Removed the ignored CompletionRequest.stream flag (documented as unimplemented until streaming lands) — callers can no longer expect incremental delivery. Verified: typecheck 0; unit 790/790."
   },
   {
     "file": "packages/llm/src/ollama.ts",
