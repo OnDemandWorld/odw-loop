@@ -8,12 +8,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createHmac } from 'node:crypto';
 import {
   createTestContext,
   meetingToTasksDefinition,
   waitForExecution,
   type TestContext,
 } from './helpers';
+import { WebhookTriggerHandler } from '../../packages/triggers/src/webhook';
 
 describe('Meeting → Tasks → KB (E2E)', () => {
   let ctx: TestContext;
@@ -53,25 +55,21 @@ describe('Meeting → Tasks → KB (E2E)', () => {
       config: { secret: 'test-webhook-secret' },
     });
 
-    // 4. Trigger via manual (simulating what the webhook handler does on receipt)
-    //    The webhook trigger handler in this repo creates an execution record.
-    //    Since the executor is not yet wired to auto-run from triggers, we drive
-    //    execution directly to demonstrate the full pipeline.
-    const executionId = 'exec-meeting-1';
+    // 4. Audit #141: fire the REAL webhook handler (HMAC-signed receipt) —
+    //    it creates the execution record; the e2e context has no dispatcher
+    //    wiring, so we then drive the executor explicitly.
     const triggerPayload = {
       meeting_id: 'm1',
       conversation_id: 'conv-42',
     };
-    await ctx.store.executions.create({
-      id: executionId,
-      workflow_id: workflowId,
-      workflow_version: 1,
-      trigger_type: 'webhook',
-      trigger_payload: triggerPayload,
-      initiated_by: 'webhook',
+    const rawBody = JSON.stringify(triggerPayload);
+    const signature = `sha256=${createHmac('sha256', 'test-webhook-secret').update(rawBody).digest('hex')}`;
+    const handler = new WebhookTriggerHandler(ctx.store);
+    const { execution_id: executionId } = await handler.handle({
+      triggerId, signature, body: triggerPayload, rawBody,
     });
 
-    // 5. Execute the workflow (this is what the engine queue would do)
+    // 5. Execute the workflow (the dispatcher's job in production)
     await ctx.executor.execute(executionId, definition, triggerPayload);
 
     // 6. Verify final execution status

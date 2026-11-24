@@ -255,8 +255,11 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
 
   // Audit #75: stop cron tasks on close — leaked node-cron timers otherwise
   // fire against a closed store in reused vitest workers.
+  // Audit #142: also remove the throwaway data dir (DB + git repo) so repeated
+  // runs don't accumulate orphaned files in os.tmpdir().
   app.addHook('onClose', () => {
     cronHandler.shutdown();
+    fs.rmSync(tmpDataDir, { recursive: true, force: true });
   });
 
   // Health endpoints
@@ -319,39 +322,6 @@ export const MINIMAL_DEFINITION: WorkflowDefinition = {
   metadata: { name: 'test-workflow', description: 'Test workflow', tags: ['test'] },
 };
 
-/**
- * Three-node linear workflow: vault.search → transform → desk.create_task.
- * Used by e2e execution tests.
- */
-export const THREE_NODE_DEFINITION: WorkflowDefinition = {
-  version: '1.0',
-  nodes: [
-    {
-      id: 'node_search',
-      type: 'vault.search',
-      position: { x: 0, y: 0 },
-      config: { query: 'integration test' },
-    },
-    {
-      id: 'node_transform',
-      type: 'transform',
-      position: { x: 200, y: 0 },
-      config: { expression: 'upper' },
-    },
-    {
-      id: 'node_task',
-      type: 'desk.create_task',
-      position: { x: 400, y: 0 },
-      config: { title: 'Processed result' },
-    },
-  ],
-  edges: [
-    { id: 'e1', source: 'node_search', target: 'node_transform' },
-    { id: 'e2', source: 'node_transform', target: 'node_task' },
-  ],
-  variables: {},
-  metadata: { name: 'e2e-workflow', tags: ['e2e'] },
-};
 
 /**
  * Create a workflow via the test app's state store directly. Returns the

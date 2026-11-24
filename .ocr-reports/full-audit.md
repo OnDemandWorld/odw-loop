@@ -935,28 +935,33 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** definition.variables[varName] assumes variables present, but DB-loaded definitions are raw JSON (mapWorkflow/safeJsonParse applies no zod defaults), so a stored definition lacking variables throws TypeError inside validateWorkflow. Accepted patterns out of sync with executor: variables.* and raw-node-id references ({{fetch.output.x}}, hyphenated ids) valid at runtime but flagged 'may not resolve'; variables.foo looked up as literal key instead of stripping the prefix.
   - **Failure scenario:** POST /api/v1/workflows/:id/validate on a legacy/imported row without variables key and config containing {{variables.recipient}} -> TypeError -> 500; on current rows valid {{variables.x}}/{{fetch.output.y}} references produce spurious warnings.
   - **Suggested fix:** Use (definition.variables ?? {})[...], strip the variables. prefix before lookup, accept the executor's reference grammar (trigger.payload.*, variables.*, any <nodeId>.output.*).
-- [ ] **#141 — Flagship scenario 'triggers via webhook' never fires the webhook handler**
+- [x] **#141 — Flagship scenario 'triggers via webhook' never fires the webhook handler**
   - `tests/e2e/meeting-to-tasks.test.ts:47-75` · category: maintainability
+  - **Status:** fixed — meeting-to-tasks now fires the REAL WebhookTriggerHandler with an HMAC-signed receipt (creates the execution), then drives the executor (the e2e context has no dispatcher wiring); stale comment removed. Verified: e2e 29/29.
   - **Root cause:** A webhook trigger row is created (47-54) but never used; the execution record is hand-inserted with trigger_type 'webhook' and driven directly by ctx.executor. Comment 56-59 ('executor not yet wired to auto-run from triggers') is stale — routes/index.ts:596-611 dispatches webhook executions. Title overstates coverage.
   - **Failure scenario:** Readers believe the flagship webhook->execution pipeline is E2E-covered here; a webhook-dispatch regression is only caught by the integration suite; stale comment misdirects maintainers.
   - **Suggested fix:** Fire the real webhook handler (HMAC-signed inject like trigger-to-execution.test.ts) or rename/recomment and delete the unused trigger.
-- [ ] **#142 — buildTestApp temp dirs and git repos are never cleaned up**
+- [x] **#142 — buildTestApp temp dirs and git repos are never cleaned up**
   - `tests/integration/_helpers/app.ts:63-64` · category: bug
+  - **Status:** fixed — buildTestApp onClose hook removes the throwaway data dir (DB + git repo) — no more orphaned loop-test-* accumulation. Shared file-backed DBs (audit #73 tests) live outside tmpDataDir and are unaffected. Verified: integration 180/181 (pre-existing only); e2e 29/29.
   - **Root cause:** Every buildTestApp call mkdtempSync's a loop-test-* dir (DB + git repo); test files close app/conn but nothing removes the directory. auth-guard/rbac/replay build one app per test, leaking dozens of dirs per run. e2e/helpers.ts:146-153 does rmSync correctly — divergent cleanup discipline.
   - **Failure scenario:** CI workers and dev machines accumulate orphaned SQLite files and git repos in os.tmpdir() across runs; disk pressure on long-lived self-hosted CI runners.
   - **Suggested fix:** Expose close() on TestApp that closes conn and rmSync(tmpDataDir,{recursive:true,force:true}); use in afterAll (or track dirs in tests/setup.ts afterEach).
-- [ ] **#143 — Unused THREE_NODE_DEFINITION references unimplemented desk.create_task**
+- [x] **#143 — Unused THREE_NODE_DEFINITION references unimplemented desk.create_task**
   - `tests/integration/_helpers/app.ts:234-262` · category: maintainability
+  - **Status:** fixed — Removed the unused THREE_NODE_DEFINITION (referenced unimplemented desk.create_task); divergent STUB copies remain in their test files (consolidation tracked under #149). Verified: integration 180/181 (pre-existing only).
   - **Root cause:** Exported but referenced nowhere in the test tree. Uses desk.create_task which the real DeskAdapter does not implement (connectors/desk.test.ts:126 asserts its absence). STUB_THREE_NODE is copy-pasted divergently in api/executions.test.ts:20-48 and engine/e2e-execution.test.ts:22-50.
   - **Failure scenario:** Maintainer picks the 'official' helper definition for a new E2E test and gets a confusing execution-time failure instead of a working fixture.
   - **Suggested fix:** Delete THREE_NODE_DEFINITION or rebuild on implemented operations (desk.send_response); hoist the shared stub into _helpers/app.ts.
-- [ ] **#144 — Egress CRUD test claims cache invalidation but never asserts its effect**
+- [x] **#144 — Egress CRUD test claims cache invalidation but never asserts its effect**
   - `tests/integration/api/admin-routes.test.ts:155-176` · category: test
+  - **Status:** fixed — Egress CRUD test asserts cache-invalidation EFFECTS: allow baseline -> true, deny created via route -> false, disabled -> true, with no manual invalidateCache calls. Verified: integration 180/181 (pre-existing only).
   - **Root cause:** Title says 'round-trips and invalidates the cache' yet only checks HTTP CRUD responses; never evaluates ctx.egressEngine before/after create/update/delete to prove invalidateCache() took effect (route calls it at routes/index.ts:694,711,718).
   - **Failure scenario:** Dropping deps.egressEngine.invalidateCache() from the policy routes leaves stale cached policies in production (new deny rules ignored until TTL) while this test stays green.
   - **Suggested fix:** After creating an allow policy via POST, assert ctx.egressEngine.evaluate flips denied->allowed without manual invalidateCache; after DELETE assert it flips back.
-- [ ] **#145 — WS tests use a private executor+bus pair, not production singleton wiring**
+- [x] **#145 — WS tests use a private executor+bus pair, not production singleton wiring**
   - `tests/integration/api/ws-executions.test.ts:107-116` · category: bug
+  - **Status:** fixed — Added a WS test using the production singleton wiring: helper executor (default executionEventBus) + registerExecutionWebSocket with the same imported singleton — live events delivered end-to-end. Verified: integration 180/181 (pre-existing only).
   - **Root cause:** Both describes build a fresh ExecutionExecutor with a dedicated EventBus and register the WS route with that bus (also 175-181). Production relies on the process-wide executionEventBus shared by executor default and registerExecutionWebSocket (server.ts:229-231,328). Deliberate per comment, but actual production wiring is never asserted.
   - **Failure scenario:** A server.ts change passing a different bus instance to the WS route than the executor publishes to breaks live monitoring in production while this suite stays green.
   - **Suggested fix:** Add one test using ctx.executor (default singleton bus) with registerExecutionWebSocket(app,{eventBus:executionEventBus}) from the same module graph.

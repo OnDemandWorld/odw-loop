@@ -153,12 +153,27 @@ describe('Egress policy management API (A3)', () => {
   });
 
   it('create → list → update → delete round-trips and invalidates the cache', async () => {
+    // Audit #144: assert the cache invalidation EFFECT, not just HTTP codes.
+    const target = 'http://169.254.169.254/latest/meta-data/';
+    // Baseline allow-all so the deny rule's effect is observable.
+    const allowRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/egress/policies',
+      payload: { name: 'allow-metadata', rule_type: 'allow', target_type: 'domain', target_value: '169.254.169.254', priority: 1 },
+    });
+    expect(allowRes.statusCode).toBe(201);
+    const before = await ctx.egressEngine.evaluate(target);
+    expect(before.allowed).toBe(true);
+
     const createRes = await app.inject({
       method: 'POST',
       url: '/api/v1/egress/policies',
       payload: { name: 'deny-metadata', rule_type: 'deny', target_type: 'domain', target_value: '169.254.169.254', priority: 100 },
     });
     expect(createRes.statusCode).toBe(201);
+    // The route must have invalidated the engine cache — no manual call here.
+    const afterCreate = await ctx.egressEngine.evaluate(target);
+    expect(afterCreate.allowed).toBe(false);
 
     const listRes = await app.inject({ method: 'GET', url: '/api/v1/egress/policies' });
     expect(listRes.statusCode).toBe(200);
@@ -167,6 +182,8 @@ describe('Egress policy management API (A3)', () => {
 
     const updRes = await app.inject({ method: 'PUT', url: `/api/v1/egress/policies/${policy.id}`, payload: { enabled: false } });
     expect(updRes.statusCode).toBe(200);
+    const afterDisable = await ctx.egressEngine.evaluate(target);
+    expect(afterDisable.allowed).toBe(true);
 
     const delRes = await app.inject({ method: 'DELETE', url: `/api/v1/egress/policies/${policy.id}` });
     expect(delRes.statusCode).toBe(200);

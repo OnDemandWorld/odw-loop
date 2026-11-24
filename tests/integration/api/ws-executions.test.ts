@@ -257,3 +257,39 @@ describe('WebSocket /ws/executions/:id — auth gate (LOOP_REQUIRE_AUTH)', () =>
     expect(closeInfo.code).toBe(4401);
   });
 });
+
+describe('WebSocket — production singleton bus wiring (audit #145)', () => {
+  let ctx: TestApp;
+  let app: FastifyInstance;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    ctx = await buildTestApp();
+    app = ctx.app;
+    // The helper's executor publishes to the process-wide executionEventBus
+    // (server.ts parity). Register the WS route with that SAME singleton —
+    // a mismatched bus instance would break live monitoring in production.
+    const { executionEventBus } = await import('../../../packages/engine/src/index.js');
+    await registerExecutionWebSocket(app, { config: ctx.config, store: ctx.store, eventBus: executionEventBus });
+    baseUrl = await app.listen({ port: 0, host: '127.0.0.1' });
+  });
+
+  afterAll(async () => {
+    await app.close();
+    ctx.conn.close();
+  });
+
+  it('delivers events from the default executor bus to the WS route', async () => {
+    const executionId = await seedExecution(ctx, ONE_NODE_DEFINITION);
+    const ws = await connect(`${baseUrl.replace('http', 'ws')}/ws/executions/${executionId}`);
+    try {
+      const collected = collectUntil(ws, (m) => m.type === 'node_succeeded');
+      await ctx.executor.execute(executionId, ONE_NODE_DEFINITION, {});
+      const messages = await collected;
+      expect(messages.some((m) => m.type === 'node_started')).toBe(true);
+      expect(messages.some((m) => m.type === 'node_succeeded')).toBe(true);
+    } finally {
+      ws.close();
+    }
+  });
+});
