@@ -1,129 +1,120 @@
 /**
- * E2E — RBAC enforcement.
+ * E2E — RBAC enforcement over real HTTP (audit #74).
  *
- * The Loop StateStore supports read/write/admin roles on users. Auth middleware
- * for the HTTP layer is planned but not yet wired in. This test therefore
- * exercises RBAC at the data layer: it verifies that the role model is
- * enforced when code paths honour it, and documents where enforcement is
- * expected but not yet implemented (HTTP middleware).
+ * Previously this suite asserted a test-local permission table with legacy
+ * read/write/admin roles and made no requests. It now drives the production
+ * guard (createAuthGuard + requiredRoleFor) with real JWTs obtained from
+ * POST /api/v1/auth/login against an auth-enabled app, covering the admin
+ * gates on /api/v1/secrets and /api/v1/egress/policies that had zero coverage.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestContext, type TestContext } from './helpers';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { buildTestApp, MINIMAL_DEFINITION, type TestApp } from '../integration/_helpers/app.js';
+import { hashPassword } from '../../apps/api/src/routes/auth';
 
-/**
- * Simulates an authorisation check that the HTTP middleware would perform.
- * Returns true if the role is allowed to perform the action, false otherwise.
- */
-function isAllowed(role: string, action: 'create_workflow' | 'manage_secrets' | 'view_only'): boolean {
-  const permissions: Record<string, string[]> = {
-    admin: ['create_workflow', 'manage_secrets', 'view_only'],
-    write: ['create_workflow', 'view_only'],
-    read: ['view_only'],
-  };
-  return permissions[role]?.includes(action) ?? false;
-}
+describe('RBAC enforcement (E2E) — real HTTP', () => {
+  let ctx: TestApp;
+  const tokens: Record<string, string> = {};
 
-describe('RBAC enforcement (E2E)', () => {
-  let ctx: TestContext;
-
-  beforeEach(async () => {
-    ctx = await createTestContext();
+  beforeAll(async () => {
+    ctx = await buildTestApp({ LOOP_REQUIRE_AUTH: true });
+    await ctx.app.ready();
+    for (const [username, role] of [
+      ['viewer', 'read'],
+      ['editor', 'write'],
+      ['admin', 'admin'],
+    ] as const) {
+      await ctx.store.users.create({
+        id: crypto.randomUUID(),
+        username,
+        password_hash: hashPassword('rbac-pass-12345'),
+        email: `${username}@loop.test`,
+        role,
+        display_name: username,
+      });
+      const res = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { username, password: 'rbac-pass-12345' },
+      });
+      expect(res.statusCode).toBe(200);
+      tokens[username] = res.json().data.token;
+    }
   });
 
-  afterEach(async () => {
-    await ctx.close();
+  afterAll(async () => {
+    await ctx.app.close();
+    ctx.conn.close();
   });
 
-  it('creates users with read, write, and admin roles', async () => {
-    const reader = await ctx.store.users.create({
-      id: 'user-reader',
-      username: 'reader',
-      password_hash: 'hashed',
-      email: 'reader@loop.test',
-      role: 'read',
-      display_name: 'Read Only',
+  const bearer = (who: string) => ({ authorization: `Bearer ${tokens[who]}` });
+
+  it('viewer can read workflows but cannot manage secrets or egress policies', async () => {
+    const read = await ctx.app.inject({ method: 'GET', url: '/api/v1/workflows', headers: bearer('viewer') });
+    expect(read.statusCode).toBe(200);
+
+    const secretsRead = await ctx.app.inject({ method: 'GET', url: '/api/v1/secrets', headers: bearer('viewer') });
+    expect(secretsRead.statusCode).toBe(403);
+
+    const secretsWrite = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/secrets',
+      headers: bearer('viewer'),
+      payload: { name: 'k', value: 'v', scope: 'global' },
     });
-    expect(reader.role).toBe('read');
+    expect(secretsWrite.statusCode).toBe(403);
 
-    const writer = await ctx.store.users.create({
-      id: 'user-writer',
-      username: 'writer',
-      password_hash: 'hashed',
-      email: 'writer@loop.test',
-      role: 'write',
-      display_name: 'Writer',
+    const egress = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/egress/policies',
+      headers: bearer('viewer'),
+      payload: { name: 'p', rule_type: 'allow', target_type: 'domain', target_value: 'x.test' },
     });
-    expect(writer.role).toBe('write');
+    expect(egress.statusCode).toBe(403);
+  });
 
-    const admin = await ctx.store.users.create({
-      id: 'user-admin',
-      username: 'admin',
-      password_hash: 'hashed',
-      email: 'admin@loop.test',
-      role: 'admin',
-      display_name: 'Admin',
+  it('editor can create workflows but cannot manage secrets', async () => {
+    const create = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/workflows',
+      headers: bearer('editor'),
+      payload: { name: 'Editor WF', description: '', definition: MINIMAL_DEFINITION },
     });
-    expect(admin.role).toBe('admin');
+    expect(create.statusCode).toBe(201);
 
-    const list = await ctx.store.users.list();
-    // 3 created + 1 seeded 'system' user from helpers
-    expect(list).toHaveLength(4);
-  });
-
-  it('read user cannot create workflows (403 semantics)', () => {
-    // When HTTP middleware is wired, POST /api/v1/workflows for a read user
-    // returns 403 FORBIDDEN_INSUFFICIENT_ROLE. We verify the semantic here.
-    expect(isAllowed('read', 'create_workflow')).toBe(false);
-  });
-
-  it('write user cannot manage secrets (403 semantics)', () => {
-    expect(isAllowed('write', 'manage_secrets')).toBe(false);
-  });
-
-  it('admin can do everything', () => {
-    expect(isAllowed('admin', 'create_workflow')).toBe(true);
-    expect(isAllowed('admin', 'manage_secrets')).toBe(true);
-    expect(isAllowed('admin', 'view_only')).toBe(true);
-  });
-
-  it('supports role promotion from read → admin', async () => {
-    await ctx.store.users.create({
-      id: 'user-promote',
-      username: 'promote',
-      password_hash: 'hashed',
-      email: 'promote@loop.test',
-      role: 'read',
-      display_name: 'Promote Me',
+    const secrets = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/secrets',
+      headers: bearer('editor'),
+      payload: { name: 'k', value: 'v', scope: 'global' },
     });
-
-    // Initially read-only
-    const before = await ctx.store.users.getById('user-promote');
-    expect(before?.role).toBe('read');
-    expect(isAllowed(before!.role, 'create_workflow')).toBe(false);
-
-    // Promote to admin
-    await ctx.store.users.updateRole('user-promote', 'admin');
-
-    const after = await ctx.store.users.getById('user-promote');
-    expect(after?.role).toBe('admin');
-    expect(isAllowed(after!.role, 'create_workflow')).toBe(true);
-    expect(isAllowed(after!.role, 'manage_secrets')).toBe(true);
+    expect(secrets.statusCode).toBe(403);
+    expect(secrets.json().error.code).toBe('FORBIDDEN_INSUFFICIENT_ROLE');
   });
 
-  it('deactivated users are flagged inactive', async () => {
-    await ctx.store.users.create({
-      id: 'user-deact',
-      username: 'deact',
-      password_hash: 'hashed',
-      email: 'deact@loop.test',
-      role: 'write',
-      display_name: 'Deactivate Me',
+  it('admin can manage secrets and egress policies', async () => {
+    const secret = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/secrets',
+      headers: bearer('admin'),
+      payload: { name: 'admin-key', value: 'v', scope: 'global' },
     });
+    expect(secret.statusCode).toBe(201);
 
-    await ctx.store.users.deactivate('user-deact');
+    const policy = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/egress/policies',
+      headers: bearer('admin'),
+      payload: { name: 'allow-x', rule_type: 'allow', target_type: 'domain', target_value: 'x.test' },
+    });
+    expect(policy.statusCode).toBe(201);
 
-    const user = await ctx.store.users.getById('user-deact');
-    expect(user?.is_active).toBe(false);
+    const list = await ctx.app.inject({ method: 'GET', url: '/api/v1/egress/policies', headers: bearer('admin') });
+    expect(list.statusCode).toBe(200);
+  });
+
+  it('unauthenticated requests to protected routes are rejected', async () => {
+    const res = await ctx.app.inject({ method: 'GET', url: '/api/v1/workflows' });
+    expect(res.statusCode).toBe(401);
   });
 });

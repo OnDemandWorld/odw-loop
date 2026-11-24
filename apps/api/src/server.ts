@@ -4,6 +4,8 @@
  * Entry point: starts the server, runs migrations, registers all routes.
  */
 
+import { pathToFileURL } from 'node:url';
+
 import Fastify, { type FastifyInstance } from 'fastify';
 import { createLogger } from '@loop/observability';
 import { collectMetrics } from '@loop/observability';
@@ -17,10 +19,11 @@ import { ExecutionExecutor, ExecutionRecovery, executionEventBus } from '@loop/e
 import type { WorkflowDefinition } from '@loop/types';
 import { TriggerDispatcher, CronTriggerHandler, WebhookTriggerHandler, ManualTriggerHandler } from '@loop/triggers';
 import { EgressEngine, EgressGate } from '@loop/egress';
-import { attachRawBodyParser } from './raw-body.js';
 import { SecretsManager } from '@loop/secrets';
 import { TemplateRegistry } from '@loop/templates';
 import { createLLMRouter } from '@loop/llm';
+
+import { attachRawBodyParser } from './raw-body.js';
 import { loadConfig, type LoopConfig } from './config.js';
 import { registerRoutes } from './routes/index.js';
 import { registerAuthRoutes, bootstrapAdminUser } from './routes/auth.js';
@@ -443,7 +446,12 @@ async function main() {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// ESM main guard: importing this module (e.g. from tests) must not start the
+// server — only direct execution does.
+const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

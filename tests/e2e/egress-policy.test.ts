@@ -12,9 +12,17 @@
  *   5. Policy cache invalidation reflects live DB changes.
  */
 
+import http from 'node:http';
+
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestContext, type TestContext } from './helpers';
-import { EgressInterceptor } from '../../packages/egress/src/interceptor';
+
+
+import { EgressInterceptor, EgressGate } from '../../packages/egress/src/interceptor';
+import { GenericAdapter } from '../../packages/connectors/src';
+import { ExecutionExecutor } from '../../packages/engine/src';
+import type { WorkflowDefinition } from '../../packages/types';
+
+import { createTestContext, createNode, type TestContext } from './helpers';
 
 describe('Egress policy enforcement (E2E)', () => {
   let ctx: TestContext;
@@ -138,23 +146,86 @@ describe('Egress policy enforcement (E2E)', () => {
     ).rejects.toThrow(/Egress blocked/);
   });
 
-  it('EgressInterceptor succeeds when an allow policy exists', async () => {
-    // Allow the domain
-    await ctx.store.egressPolicies.create({
-      id: 'allow-test',
-      name: 'Allow test',
-      rule_type: 'allow',
-      target_type: 'domain',
-      target_value: 'api.allowed.test',
-      priority: 100,
+  // Audit #72: the two tests below exercise the REAL execution path —
+  // executor wired with an EgressGate, the real GenericAdapter doing HTTP to
+  // a loopback server — instead of asserting engine decisions only.
+  it('audit #72: default-deny fails the connector node before any network I/O', async () => {
+    const hits: string[] = [];
+    const server = http.createServer((req, res) => {
+      hits.push(req.url ?? '');
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"ok":true}');
     });
-    ctx.egressEngine.invalidateCache();
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as { port: number }).port;
+    try {
+      ctx.connectors.registerAdapter(new GenericAdapter());
+      ctx.connectors.registerInstance('generic-egress', 'generic', { base_url: `http://127.0.0.1:${port}` });
+      const gate = new EgressGate(ctx.egressEngine, { airgap: false, unconfiguredPolicy: 'deny', allowPrivate: true });
+      const executor = new ExecutionExecutor(ctx.store, ctx.connectors, 5, 5_000, 30_000, undefined, undefined, undefined, gate);
 
-    // We can't easily test a real HTTP call without starting a server.
-    // Instead, we verify the engine's decision (the interceptor only proceeds
-    // when decision.allowed === true; it then calls undici which may fail
-    // for network reasons — we only test the policy decision here).
-    const decision = await ctx.egressEngine.evaluate('https://api.allowed.test/data');
-    expect(decision.allowed).toBe(true);
+      const definition: WorkflowDefinition = {
+        version: '1.0',
+        nodes: [createNode('node_1', 'generic.rest_call', { path: '/probe', method: 'GET' })],
+        edges: [],
+        variables: {},
+        metadata: { name: 'egress-deny-flow' },
+      };
+      await ctx.store.workflows.create({ id: 'wf-egress-deny', name: 'Egress deny', description: '', definition, created_by: 'system' });
+      await ctx.store.executions.create({ id: 'exec-egress-deny', workflow_id: 'wf-egress-deny', workflow_version: 1, trigger_type: 'manual', trigger_payload: {} });
+
+      await expect(executor.execute('exec-egress-deny', definition, {})).rejects.toThrow(/Egress blocked/);
+      const execution = await ctx.store.executions.getById('exec-egress-deny');
+      expect(execution?.status).toBe('failed');
+      expect(hits).toHaveLength(0);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+
+  it('audit #72: an allow policy lets the same workflow reach the service exactly once', async () => {
+    const hits: string[] = [];
+    const server = http.createServer((req, res) => {
+      hits.push(req.url ?? '');
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"ok":true}');
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as { port: number }).port;
+    try {
+      await ctx.store.egressPolicies.create({
+        id: 'allow-loopback',
+        name: 'Allow loopback service',
+        rule_type: 'allow',
+        target_type: 'domain',
+        target_value: '127.0.0.1',
+        priority: 100,
+      });
+      ctx.egressEngine.invalidateCache();
+
+      ctx.connectors.registerAdapter(new GenericAdapter());
+      ctx.connectors.registerInstance('generic-egress', 'generic', { base_url: `http://127.0.0.1:${port}` });
+      const gate = new EgressGate(ctx.egressEngine, { airgap: false, unconfiguredPolicy: 'deny', allowPrivate: true });
+      const executor = new ExecutionExecutor(ctx.store, ctx.connectors, 5, 5_000, 30_000, undefined, undefined, undefined, gate);
+
+      const definition: WorkflowDefinition = {
+        version: '1.0',
+        nodes: [createNode('node_1', 'generic.rest_call', { path: '/probe', method: 'GET' })],
+        edges: [],
+        variables: {},
+        metadata: { name: 'egress-allow-flow' },
+      };
+      await ctx.store.workflows.create({ id: 'wf-egress-allow', name: 'Egress allow', description: '', definition, created_by: 'system' });
+      await ctx.store.executions.create({ id: 'exec-egress-allow', workflow_id: 'wf-egress-allow', workflow_version: 1, trigger_type: 'manual', trigger_payload: {} });
+
+      await executor.execute('exec-egress-allow', definition, {});
+      const execution = await ctx.store.executions.getById('exec-egress-allow');
+      expect(execution?.status).toBe('succeeded');
+      expect(hits).toEqual(['/probe']);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
   });
 });

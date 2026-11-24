@@ -28,6 +28,7 @@ import { EgressEngine, EgressGate } from '../../../packages/egress/src/index.js'
 import { SecretsManager } from '../../../packages/secrets/src/index.js';
 import { TemplateRegistry } from '../../../packages/templates/src/index.js';
 import { registerRoutes } from '../../../apps/api/src/routes/index.js';
+import { registerAuthRoutes } from '../../../apps/api/src/routes/auth.js';
 import { errorHandler } from '../../../apps/api/src/middleware/errorHandler.js';
 import { createLLMRouter } from '../../../packages/llm/src/index.js';
 import type { LoopConfig } from '../../../apps/api/src/config.js';
@@ -115,21 +116,26 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
   attachRawBodyParser(app);
 
   // ── State store ─────────────────────────────────────────────────────────
-  const conn = createSqliteConnection({ path: dbPath, wal: false });
+  // Honour LOOP_DB_PATH overrides (audit #73: file-backed DBs shared across
+  // app builds for startup-recovery tests).
+  const conn = createSqliteConnection({ path: config.LOOP_DB_PATH, wal: false });
   const store = new SqliteStateStore(conn);
   await store.initialise();
 
   // ── Seed system user ────────────────────────────────────────────────────
   // The HTTP routes hardcode `created_by: 'system'` / `updated_by: 'system'`
   // until real auth middleware lands, so seed a user whose *id* is literally
-  // 'system' so foreign-key constraints resolve.
-  await store.users.create({
-    id: 'system',
-    username: 'system',
-    password_hash: 'test-hash',
-    email: 'system@loop.test',
-    role: 'admin',
-  });
+  // 'system' so foreign-key constraints resolve. Idempotent: a shared
+  // file-backed DB (audit #73) already has it on the second app build.
+  if (!(await store.users.getById('system'))) {
+    await store.users.create({
+      id: 'system',
+      username: 'system',
+      password_hash: 'test-hash',
+      email: 'system@loop.test',
+      role: 'admin',
+    });
+  }
 
   // ── Connectors ──────────────────────────────────────────────────────────
   const connectors = new ConnectorRegistry();
@@ -212,7 +218,11 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
   });
 
   const recovery = new ExecutionRecovery(store, async (execution) => {
-    await dispatchExecution(execution.id, execution.workflow_id, (execution.trigger_payload ?? {}) as Record<string, unknown>);
+    void dispatchExecution(execution.id, execution.workflow_id, (execution.trigger_payload ?? {}) as Record<string, unknown>).catch(async (err) => {
+      await store.executions
+        .completeIfActive(execution.id, { status: 'failed', completed_at: new Date().toISOString(), error: String(err) })
+        .catch(() => {});
+    });
   });
 
   // ── Templates ──────────────────────────────────────────────────────
@@ -236,6 +246,12 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
     llmRouter,
     config,
   });
+  // Production parity (server.ts): auth routes are always registered.
+  registerAuthRoutes(app, { store, config });
+
+  // Production parity (audit #73): startup runs recovery and re-dispatches
+  // interrupted executions — fire-and-forget like server.ts dispatchToExecutor.
+  await recovery.recover();
 
   // Audit #75: stop cron tasks on close — leaked node-cron timers otherwise
   // fire against a closed store in reused vitest workers.

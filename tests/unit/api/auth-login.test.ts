@@ -170,3 +170,60 @@ describe('account re-validation (audit #17)', () => {
     await app.close();
   });
 });
+
+describe('guard negative paths (audit #78)', () => {
+  async function buildGuarded(config: LoopConfig) {
+    const { app, store } = await buildServer(config);
+    app.get('/api/v1/workflows', async () => ({ success: true, data: [] }));
+    return { app, store };
+  }
+
+  it('rejects an expired JWT with 401', async () => {
+    const config = testConfig();
+    const { app } = await buildGuarded(config);
+    const jose = await import('jose');
+    const secret = new TextEncoder().encode(config.LOOP_JWT_SECRET);
+    const now = Math.floor(Date.now() / 1000);
+    const token = await new jose.SignJWT({ role: 'admin' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('system')
+      .setIssuedAt(now - 200)
+      .setExpirationTime(now - 100)
+      .sign(secret);
+    const res = await app.inject({ method: 'GET', url: '/api/v1/workflows', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('rejects a JWT signed with a different secret with 401', async () => {
+    const config = testConfig();
+    const { app } = await buildGuarded(config);
+    const jose = await import('jose');
+    const wrongSecret = new TextEncoder().encode('a-completely-different-secret-0123456789');
+    const token = await new jose.SignJWT({ role: 'admin' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('system')
+      .setIssuedAt()
+      .setExpirationTime('15m')
+      .sign(wrongSecret);
+    const res = await app.inject({ method: 'GET', url: '/api/v1/workflows', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('accepts a valid static API key with the configured role', async () => {
+    const config = testConfig({ LOOP_API_KEY: 'static-test-key-123456' });
+    const { app } = await buildGuarded(config);
+    const res = await app.inject({ method: 'GET', url: '/api/v1/workflows', headers: { 'x-api-key': 'static-test-key-123456' } });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it('rejects a wrong static API key with 401', async () => {
+    const config = testConfig({ LOOP_API_KEY: 'static-test-key-123456' });
+    const { app } = await buildGuarded(config);
+    const res = await app.inject({ method: 'GET', url: '/api/v1/workflows', headers: { 'x-api-key': 'wrong-key' } });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+});

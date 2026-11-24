@@ -1003,7 +1003,9 @@
     "root_cause": "Header claims the interceptor is wired into a workflow's connector call path but no workflow is executed anywhere in the file; all tests call egressEngine.evaluate / EgressInterceptor.request directly, duplicating integration/security/egress.test.ts. The allow-policy test explicitly abandons the real call (comment 153-156). Mock adapters in helpers.ts never do HTTP.",
     "suggested_fix": "Replace decision-only tests with real execution: executor wired with gate + real adapter pointed at loopback mock server; assert blocked domain fails NODE_EGRESS_BLOCKED and allowed domain reaches the mock exactly once.",
     "failure_scenario": "The interceptor-to-adapter contract (adapter must consult params.egress before every call) is untested end-to-end; an adapter skipping the check passes this entire 'E2E egress enforcement' suite.",
-    "id": 72
+    "id": 72,
+    "status": "fixed",
+    "verification_notes": "egress-policy E2E: replaced the decision-only interceptor tests with real execution-path tests — executor wired with EgressGate + real GenericAdapter against a loopback server. Default-deny: node fails NODE_EGRESS_BLOCKED with 0 requests; allow policy: execution succeeds with exactly 1 hit. Engine-level policy tests retained. Verified: typecheck 0; unit 744/744; integration 175/176 (pre-existing only); e2e 29/29; eslint 0 new errors."
   },
   {
     "file": "tests/e2e/failover.test.ts",
@@ -1015,7 +1017,9 @@
     "root_cause": "The test just calls new ExecutionRecovery(ctx.store).recover() directly — identical to the four preceding tests; comment (312-314) admits buildApp is not invoked. helpers.ts:135 builds ExecutionRecovery without the re-dispatch callback; crash-recovery.test.ts re-executes manually. The production startup chain (server.ts:269-294: recover -> dispatchToExecutor -> executor.execute) is never exercised end-to-end.",
     "suggested_fix": "Use a file-backed SQLite DB, seed an interrupted execution, call real buildApp() on the same DB path, assert the execution is re-dispatched to terminal state without manual executor invocation.",
     "failure_scenario": "A regression where recovery resets executions to 'pending' but nothing re-dispatches them (original bugs 12/13) ships green: every recovery test drives the executor by hand.",
-    "id": 73
+    "id": 73,
+    "status": "fixed",
+    "verification_notes": "buildTestApp now runs recovery at startup (production parity, fire-and-forget dispatch like server.ts), honours LOOP_DB_PATH overrides, and seeds the system user idempotently; server.ts gained an ESM main guard so buildApp is importable. Rewrote the failover 'startup runs recovery automatically' test: file-backed DB shared across two app builds; second build's startup re-dispatches the pending execution to succeeded with execution_recovered event — no manual executor invocation. Verified: e2e 29/29; integration 175/176 (pre-existing only)."
   },
   {
     "file": "tests/e2e/rbac-enforcement.test.ts",
@@ -1027,7 +1031,9 @@
     "root_cause": "isAllowed (18-25) is a permission map defined in the test using legacy read/write/admin roles, divergent from production requireRole's admin/editor/viewer model. Tests assert only this local table; no HTTP request is made. Meanwhile the admin gates on POST/GET/DELETE /api/v1/secrets and /api/v1/egress/policies (routes/index.ts:686-720,802-833) have zero test coverage repo-wide (no test file contains 'api/v1/secrets').",
     "suggested_fix": "Delete the local table; drive real HTTP requests with viewer/editor JWTs against /api/v1/secrets, /api/v1/egress/policies, /api/v1/audit asserting 403 FORBIDDEN_INSUFFICIENT_ROLE.",
     "failure_scenario": "Removing preHandler:[requireRole('admin')] from the secrets routes lets any editor create/read secret metadata ship green — the 'RBAC enforcement (E2E)' suite still passes checking its own map.",
-    "id": 74
+    "id": 74,
+    "status": "fixed",
+    "verification_notes": "rbac-enforcement E2E rewritten: real HTTP with JWTs from POST /auth/login against LOOP_REQUIRE_AUTH=true app (helper now registers auth routes). Covers viewer/editor/admin on /api/v1/workflows, /api/v1/secrets, /api/v1/egress/policies (previously zero coverage) + unauthenticated 401. Test-local permission table deleted. Verified: e2e 29/29; eslint 0 new errors."
   },
   {
     "file": "tests/integration/_helpers/app.ts",
@@ -1053,7 +1059,9 @@
     "root_cause": "The 'login returns access and refresh tokens' test (36-72) never calls POST /api/v1/auth/login — it hand-signs/verifies a JWT with jose and issues no refresh token. RBAC tests (118-153) assert a locally computed boolean; deactivated-user test asserts canLogin = user.is_active. Header comment about unwired routes is stale (routes/auth.ts + createAuthGuard exist). buildTestApp never registers registerAuthRoutes: zero HTTP login coverage in the integration suite.",
     "suggested_fix": "Register auth routes in buildTestApp and rewrite as HTTP tests (login, wrong password, deactivated user, lockout); delete tautological role checks (real guard coverage lives in api/rbac.test.ts).",
     "failure_scenario": "A regression in the login route's is_active check, role mapping, or token TTL passes this 'Authentication & RBAC' integration suite because it only tests the jose library and boolean algebra.",
-    "id": 76
+    "id": 76,
+    "status": "fixed",
+    "verification_notes": "auth integration suite rewritten as HTTP tests: login success (token + mapped role), wrong password 401, unknown user 401, deactivated user 401, updateRole reflected at login. jose/bcrypt tautologies removed. Verified: integration 175/176 (pre-existing only); eslint 0 new errors."
   },
   {
     "file": "tests/integration/api/llm.test.ts",
@@ -1079,7 +1087,9 @@
     "root_cause": "Auth unit tests cover issuance happy path, scrypt helpers, lockout, pure RBAC helpers. createAuthGuard's negative JWT paths (expired token — issuance sets 12h exp at routes/auth.ts:118; tampered signature; wrong secret) and the static LOOP_API_KEY / x-api-key path (middleware/auth.ts:170) have no unit test.",
     "suggested_fix": "Add guard tests: SignJWT with past exp -> 401; different-secret signature -> 401; valid x-api-key -> principal 'system' with LOOP_API_KEY_ROLE; wrong key -> 401.",
     "failure_scenario": "Refactor adds generous clockTolerance or drops exp verification (stolen tokens valid forever), or breaks constant-time API-key compare: issuance tests stay green.",
-    "id": 78
+    "id": 78,
+    "status": "fixed",
+    "verification_notes": "auth-login unit tests added: expired JWT -> 401, wrong-secret JWT -> 401, valid static x-api-key -> 200 with configured role, wrong key -> 401 (real guard + protected route). Verified: unit 744/744; eslint 0 new errors."
   },
   {
     "file": "tests/unit/api/auth-login.test.ts",
@@ -1323,7 +1333,9 @@
     "root_cause": "requestEnvelope awaits res.json() without a catch. When the API is down and the Vite proxy/gateway returns HTML/text 502, the thrown SyntaxError replaces the intended ApiError with HTTP status.",
     "suggested_fix": "Parse defensively (res.json().catch(() => null)) and throw ApiError with status when body is not a JSON envelope, as api/client.ts does.",
     "failure_scenario": "API crashes; Dashboard shows 'SyntaxError: Unexpected token <' instead of 'API unreachable (502)'.",
-    "id": 97
+    "id": 97,
+    "status": "fixed",
+    "verification_notes": "Already fixed during batch 5 (audit #1): requestEnvelope parses res.json().catch(() => null) and throws ApiError with the HTTP status for non-JSON bodies. Covered by tests/unit/canvas/api-auth.test.ts. Verified: unit 744/744; canvas tsc/build clean."
   },
   {
     "file": "apps/canvas/src/lib/theme.ts",
