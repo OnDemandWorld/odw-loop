@@ -27,7 +27,7 @@ describe('RBAC enforcement (E2E) — real HTTP', () => {
       await ctx.store.users.create({
         id: crypto.randomUUID(),
         username,
-        password_hash: hashPassword('rbac-pass-12345'),
+        password_hash: await hashPassword('rbac-pass-12345'),
         email: `${username}@loop.test`,
         role,
         display_name: username,

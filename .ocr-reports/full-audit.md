@@ -615,23 +615,27 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** Object literal defines settings twice (14-18 and 41-45); second wins, switching import/resolver from node to typescript — but eslint-import-resolver-typescript is not in devDependencies, so resolver-dependent import rules would fail to load.
   - **Failure scenario:** Enabling import/no-unresolved errors with 'unable to load resolver typescript' for every file; the dead first settings block misleads readers about the active config.
   - **Suggested fix:** Merge into one settings block; add eslint-import-resolver-typescript or keep the node resolver.
-- [ ] **#89 — runWithCorrelation with empty callback is a no-op**
+- [x] **#89 — runWithCorrelation with empty callback is a no-op**
   - `apps/api/src/middleware/requestId.ts:24-25` · category: maintainability
+  - **Status:** fixed — Removed the no-op runWithCorrelation call and misleading comment from requestIdHook; traceIdHook solely owns the ALS context (documented). Existing trace tests cover correlation. Verified: typecheck 0; unit 766/766.
   - **Root cause:** runWithCorrelation({request_id}, () => {}) runs an empty function, establishing no context for downstream handlers; comment claims it covers them. Correlation works only because traceIdHook (registered after) wraps Fastify's done in storage.run. Reordering/removing traceIdHook would silently lose request_id correlation.
   - **Failure scenario:** Future refactor registers traceIdHook before requestIdHook or drops it -> getCorrelationContext() undefined in handlers -> error responses and logs lose request_id with no test-visible signal.
   - **Suggested fix:** Remove the no-op call and misleading comment, or wrap the hook continuation like traceIdHook; keep a single hook responsible for ALS context.
-- [ ] **#90 — scryptSync blocks the event loop in the login path**
+- [x] **#90 — scryptSync blocks the event loop in the login path**
   - `apps/api/src/routes/auth.ts:37-53` · category: performance
+  - **Status:** fixed — hashPassword/verifyPassword use async scrypt (promisify) — login no longer blocks the event loop; all call sites (bootstrap, login, tests) awaited. Existing helper tests pin the behaviour. Verified: typecheck 0; unit 766/766; integration 175/176 (pre-existing only); e2e 29/29.
   - **Root cause:** hashPassword/verifyPassword use scryptSync (default N=16384,r=8,p=1, tens of ms) inside the request handler, stalling all concurrent requests on the single-threaded loop per login attempt.
   - **Failure scenario:** Burst of concurrent logins (or brute-force stream within rate limit): each attempt blocks the loop ~50-100ms; unrelated API requests and webhook deliveries queue behind KDF work.
   - **Suggested fix:** Use async crypto.scrypt (promisified) in verifyPassword/hashPassword.
-- [ ] **#91 — Unbounded per-username lockout map grows on failed logins**
+- [x] **#91 — Unbounded per-username lockout map grows on failed logins**
   - `apps/api/src/routes/auth.ts:61-71` · category: security
+  - **Status:** fixed — Failure map bounded at 10k entries: expired below-threshold entries pruned, then oldest evicted; registerFailure/isLocked/clearFailures exported + trackedFailureCount hook. Regression: auth-login.test.ts audit #91 (10,050 spray entries -> size <= 10,000). Verified: typecheck 0; unit 766/766.
   - **Root cause:** Module-level failures Map only deletes entries on successful login (clearFailures). registerFailure creates entries for nonexistent usernames too; nothing expires them; global rate limit (1000/min/IP) is the only brake.
   - **Failure scenario:** Attacker sprays login with random usernames at the allowed rate -> ~1.4M map entries/day accumulate permanently -> slow memory exhaustion of the API process.
   - **Suggested fix:** Prune expired below-threshold entries on a timer or when the map exceeds a size cap; key by username+IP or cap total entries.
-- [ ] **#92 — JWT TTL config ignored; 12h expiry hard-coded**
+- [x] **#92 — JWT TTL config ignored; 12h expiry hard-coded**
   - `apps/api/src/routes/auth.ts:112-119` · category: bug
+  - **Status:** fixed — Login honours LOOP_JWT_ACCESS_TTL via parseTtlSeconds (s/m/h/d); expires_in and JWT exp reflect the configured TTL (default 15m, was hard-coded 12h). Regression: auth-login.test.ts audit #92 (5m -> expires_in 300, exp-iat 300). Refresh TTL remains unused (no refresh endpoint — documented dead config). Verified: typecheck 0; unit 766/766; integration 175/176 (pre-existing only); e2e 29/29.
   - **Root cause:** Login signs with setExpirationTime(now + 12*60*60) and reports expires_in 12h, while config.ts:145-146 defines LOOP_JWT_ACCESS_TTL (default '15m') and LOOP_JWT_REFRESH_TTL ('7d'); neither read anywhere, no refresh endpoint exists.
   - **Failure scenario:** Operator sets LOOP_JWT_ACCESS_TTL=5m expecting short-lived tokens -> issued tokens remain valid 12 hours, widening the stolen-token window 144x beyond configured policy.
   - **Suggested fix:** Parse LOOP_JWT_ACCESS_TTL and use for setExpirationTime/expires_in; implement refresh issuance or remove dead refresh config.
@@ -645,8 +649,9 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** Unlike connectors/triggers routes, PUT and DELETE /api/v1/egress/policies/:id never check existence; store update/delete affects zero rows and the route returns updated:true / deleted:true (and invalidates cache).
   - **Failure scenario:** Admin UI deletes an already-deleted policy id (double click/stale list) -> API answers deleted:true -> UI believes the policy existed and was removed, masking state drift; PUT typo'd id answers updated:true while nothing changed.
   - **Suggested fix:** Load the policy first and throw NotFoundError when absent, matching other resource routes.
-- [ ] **#95 — Cron keeps firing during executor drain on shutdown**
+- [x] **#95 — Cron keeps firing during executor drain on shutdown**
   - `apps/api/src/server.ts:358-368` · category: concurrency
+  - **Status:** fixed — onClose stops cron BEFORE executor.drain so no new execution starts during the drain window. Verified: typecheck 0; unit 766/766; integration 175/176 (pre-existing only); e2e 29/29.
   - **Root cause:** onClose drains the executor (up to 10s) BEFORE cronHandler.shutdown(); a cron job firing inside that window creates and dispatches a new execution that store.close() then severs (completion writes fail and are swallowed).
   - **Failure scenario:** SIGTERM just before a cron tick: drain waits on old runs, cron fires mid-drain, new execution starts, store.close() runs -> execution left running/pending in DB, recovered (or failed) only on next startup.
   - **Suggested fix:** Call cronHandler.shutdown() before executor.drain() so no new executions start during the drain window.

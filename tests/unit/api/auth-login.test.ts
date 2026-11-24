@@ -49,16 +49,16 @@ async function buildServer(config: LoopConfig) {
 }
 
 describe('scrypt password helpers', () => {
-  it('hashes and verifies', () => {
-    const hash = hashPassword('s3cret!');
+  it('hashes and verifies', async () => {
+    const hash = await hashPassword('s3cret!');
     expect(hash.startsWith('scrypt$')).toBe(true);
-    expect(verifyPassword('s3cret!', hash)).toBe(true);
-    expect(verifyPassword('wrong', hash)).toBe(false);
+    expect(await verifyPassword('s3cret!', hash)).toBe(true);
+    expect(await verifyPassword('wrong', hash)).toBe(false);
   });
 
-  it('rejects malformed stored hashes without throwing', () => {
-    expect(verifyPassword('x', 'not-a-hash')).toBe(false);
-    expect(verifyPassword('x', 'scrypt$zz$zz')).toBe(false);
+  it('rejects malformed stored hashes without throwing', async () => {
+    expect(await verifyPassword('x', 'not-a-hash')).toBe(false);
+    expect(await verifyPassword('x', 'scrypt$zz$zz')).toBe(false);
   });
 });
 
@@ -72,7 +72,7 @@ describe('bootstrapAdminUser', () => {
     await bootstrapAdminUser(store, cfg);
     const user = await store.users.getByUsername('admin');
     expect(user?.role).toBe('admin');
-    expect(verifyPassword('bootstrap-pass-123', user!.password_hash)).toBe(true);
+    expect(await verifyPassword('bootstrap-pass-123', user!.password_hash)).toBe(true);
     // Second run must not duplicate or reset.
     await bootstrapAdminUser(store, cfg);
     expect(await store.users.getByUsername('admin')).toBeTruthy();
@@ -146,7 +146,7 @@ describe('account re-validation (audit #17)', () => {
     await store.users.create({
       id: crypto.randomUUID(),
       username: 'editor1',
-      password_hash: hashPassword('user-pass-123'),
+      password_hash: await hashPassword('user-pass-123'),
       email: 'editor1@test.local',
       role: 'write',
       display_name: 'Editor One',
@@ -225,5 +225,36 @@ describe('guard negative paths (audit #78)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/v1/workflows', headers: { 'x-api-key': 'wrong-key' } });
     expect(res.statusCode).toBe(401);
     await app.close();
+  });
+});
+
+describe('JWT TTL config (audit #92)', () => {
+  it('honours LOOP_JWT_ACCESS_TTL for expiry and expires_in', async () => {
+    const { clearFailures } = await import('../../../apps/api/src/routes/auth');
+    clearFailures('admin'); // the module-level lockout map is shared with the lockout test
+    const { app } = await buildServer(testConfig({ LOOP_JWT_ACCESS_TTL: '5m' }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { username: 'admin', password: 'bootstrap-pass-123' },
+    });
+    expect(res.statusCode).toBe(200);
+    const data = res.json().data;
+    expect(data.expires_in).toBe(300);
+    const [, payloadB64] = data.token.split('.');
+    const claims = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    expect(claims.exp - claims.iat).toBe(300);
+    await app.close();
+  });
+});
+
+describe('lockout map bounding (audit #91)', () => {
+  it('prunes expired entries and caps the map under username sprays', async () => {
+    const { registerFailure, clearFailures, trackedFailureCount } = await import('../../../apps/api/src/routes/auth');
+    // Fill past the cap with distinct usernames.
+    for (let i = 0; i < 10_050; i++) registerFailure(`spray-user-${i}`);
+    expect(trackedFailureCount()).toBeLessThanOrEqual(10_000);
+    // Cleanup so sibling tests are unaffected.
+    for (let i = 0; i < 10_050; i++) clearFailures(`spray-user-${i}`);
   });
 });

@@ -30,7 +30,7 @@ describe('Authentication (HTTP)', () => {
     await ctx.store.users.create({
       id,
       username,
-      password_hash: hashPassword('correct-horse-battery-staple'),
+      password_hash: await hashPassword('correct-horse-battery-staple'),
       email: `${username}@loop.test`,
       role,
       display_name: username,

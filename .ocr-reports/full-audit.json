@@ -1237,7 +1237,9 @@
     "root_cause": "runWithCorrelation({request_id}, () => {}) runs an empty function, establishing no context for downstream handlers; comment claims it covers them. Correlation works only because traceIdHook (registered after) wraps Fastify's done in storage.run. Reordering/removing traceIdHook would silently lose request_id correlation.",
     "suggested_fix": "Remove the no-op call and misleading comment, or wrap the hook continuation like traceIdHook; keep a single hook responsible for ALS context.",
     "failure_scenario": "Future refactor registers traceIdHook before requestIdHook or drops it -> getCorrelationContext() undefined in handlers -> error responses and logs lose request_id with no test-visible signal.",
-    "id": 89
+    "id": 89,
+    "status": "fixed",
+    "verification_notes": "Removed the no-op runWithCorrelation call and misleading comment from requestIdHook; traceIdHook solely owns the ALS context (documented). Existing trace tests cover correlation. Verified: typecheck 0; unit 766/766."
   },
   {
     "file": "apps/api/src/routes/auth.ts",
@@ -1249,7 +1251,9 @@
     "root_cause": "hashPassword/verifyPassword use scryptSync (default N=16384,r=8,p=1, tens of ms) inside the request handler, stalling all concurrent requests on the single-threaded loop per login attempt.",
     "suggested_fix": "Use async crypto.scrypt (promisified) in verifyPassword/hashPassword.",
     "failure_scenario": "Burst of concurrent logins (or brute-force stream within rate limit): each attempt blocks the loop ~50-100ms; unrelated API requests and webhook deliveries queue behind KDF work.",
-    "id": 90
+    "id": 90,
+    "status": "fixed",
+    "verification_notes": "hashPassword/verifyPassword use async scrypt (promisify) — login no longer blocks the event loop; all call sites (bootstrap, login, tests) awaited. Existing helper tests pin the behaviour. Verified: typecheck 0; unit 766/766; integration 175/176 (pre-existing only); e2e 29/29."
   },
   {
     "file": "apps/api/src/routes/auth.ts",
@@ -1261,7 +1265,9 @@
     "root_cause": "Module-level failures Map only deletes entries on successful login (clearFailures). registerFailure creates entries for nonexistent usernames too; nothing expires them; global rate limit (1000/min/IP) is the only brake.",
     "suggested_fix": "Prune expired below-threshold entries on a timer or when the map exceeds a size cap; key by username+IP or cap total entries.",
     "failure_scenario": "Attacker sprays login with random usernames at the allowed rate -> ~1.4M map entries/day accumulate permanently -> slow memory exhaustion of the API process.",
-    "id": 91
+    "id": 91,
+    "status": "fixed",
+    "verification_notes": "Failure map bounded at 10k entries: expired below-threshold entries pruned, then oldest evicted; registerFailure/isLocked/clearFailures exported + trackedFailureCount hook. Regression: auth-login.test.ts audit #91 (10,050 spray entries -> size <= 10,000). Verified: typecheck 0; unit 766/766."
   },
   {
     "file": "apps/api/src/routes/auth.ts",
@@ -1273,7 +1279,9 @@
     "root_cause": "Login signs with setExpirationTime(now + 12*60*60) and reports expires_in 12h, while config.ts:145-146 defines LOOP_JWT_ACCESS_TTL (default '15m') and LOOP_JWT_REFRESH_TTL ('7d'); neither read anywhere, no refresh endpoint exists.",
     "suggested_fix": "Parse LOOP_JWT_ACCESS_TTL and use for setExpirationTime/expires_in; implement refresh issuance or remove dead refresh config.",
     "failure_scenario": "Operator sets LOOP_JWT_ACCESS_TTL=5m expecting short-lived tokens -> issued tokens remain valid 12 hours, widening the stolen-token window 144x beyond configured policy.",
-    "id": 92
+    "id": 92,
+    "status": "fixed",
+    "verification_notes": "Login honours LOOP_JWT_ACCESS_TTL via parseTtlSeconds (s/m/h/d); expires_in and JWT exp reflect the configured TTL (default 15m, was hard-coded 12h). Regression: auth-login.test.ts audit #92 (5m -> expires_in 300, exp-iat 300). Refresh TTL remains unused (no refresh endpoint — documented dead config). Verified: typecheck 0; unit 766/766; integration 175/176 (pre-existing only); e2e 29/29."
   },
   {
     "file": "apps/api/src/routes/index.ts",
@@ -1309,7 +1317,9 @@
     "root_cause": "onClose drains the executor (up to 10s) BEFORE cronHandler.shutdown(); a cron job firing inside that window creates and dispatches a new execution that store.close() then severs (completion writes fail and are swallowed).",
     "suggested_fix": "Call cronHandler.shutdown() before executor.drain() so no new executions start during the drain window.",
     "failure_scenario": "SIGTERM just before a cron tick: drain waits on old runs, cron fires mid-drain, new execution starts, store.close() runs -> execution left running/pending in DB, recovered (or failed) only on next startup.",
-    "id": 95
+    "id": 95,
+    "status": "fixed",
+    "verification_notes": "onClose stops cron BEFORE executor.drain so no new execution starts during the drain window. Verified: typecheck 0; unit 766/766; integration 175/176 (pre-existing only); e2e 29/29."
   },
   {
     "file": "apps/canvas/src/components/canvas/CanvasEditor.tsx",

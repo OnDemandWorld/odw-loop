@@ -18,13 +18,24 @@
 
 import type { FastifyInstance } from 'fastify';
 import { SignJWT } from 'jose';
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
+
+const scryptAsync = promisify(scrypt) as (password: string, salt: Buffer, keylen: number) => Promise<Buffer>;
 import type { StateStore } from '@loop/state';
 import { AuthenticationError } from '@loop/types';
 import { createLogger } from '@loop/observability';
 import type { LoopConfig } from '../config.js';
 
 const logger = createLogger({ name: 'loop:api:auth-routes', component: 'api' });
+
+/** Parse a TTL like '15m' / '12h' / '7d' / '30s' into seconds (audit #92). */
+function parseTtlSeconds(ttl: string, fallback: number): number {
+  const m = /^(\d+)([smhd])$/.exec((ttl ?? '').trim());
+  if (!m) return fallback;
+  const mult: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+  return Number(m[1]) * (mult[m[2]!] ?? 1);
+}
 
 /** Legacy users.role → JWT RBAC role mapping (read/viewer, write/editor). */
 function mapRole(role: string): 'admin' | 'editor' | 'viewer' {
@@ -33,15 +44,16 @@ function mapRole(role: string): 'admin' | 'editor' | 'viewer' {
   return 'viewer';
 }
 
-/** Hash a password with scrypt: `scrypt$<saltHex>$<hashHex>`. */
-export function hashPassword(password: string): string {
+/** Hash a password with scrypt: `scrypt$<saltHex>$<hashHex>`.
+ *  Audit #90: async KDF — scryptSync blocked the event loop for every login. */
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
-  const hash = scryptSync(password, salt, 64);
+  const hash = await scryptAsync(password, salt, 64);
   return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
 }
 
 /** Constant-time scrypt verification against a stored `scrypt$…$…` hash. */
-export function verifyPassword(password: string, stored: string): boolean {
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const parts = stored.split('$');
   if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
   const salt = Buffer.from(parts[1]!, 'hex');
@@ -49,7 +61,7 @@ export function verifyPassword(password: string, stored: string): boolean {
   // Invalid hex (or a zero-length hash) must fail closed — an empty `expected`
   // would make timingSafeEqual compare two empty buffers and return true.
   if (salt.length === 0 || expected.length === 0) return false;
-  const actual = scryptSync(password, salt, expected.length);
+  const actual = await scryptAsync(password, salt, expected.length);
   return timingSafeEqual(actual, expected);
 }
 
@@ -59,8 +71,25 @@ const LOCKOUT_MAX_MS = 15 * 60_000;
 
 /** Per-username failure tracking (process-local). */
 const failures = new Map<string, { count: number; lockedUntil: number }>();
+const MAX_TRACKED_USERS = 10_000;
 
-function registerFailure(username: string): void {
+export function registerFailure(username: string): void {
+  // Audit #91: bound the map — random-username sprays must not grow it
+  // forever. Prune expired below-threshold entries, then oldest if still full.
+  if (failures.size >= MAX_TRACKED_USERS && !failures.has(username)) {
+    const now = Date.now();
+    for (const [k, v] of failures) {
+      if (v.lockedUntil <= now && v.count < MAX_FAILURES) failures.delete(k);
+    }
+    if (failures.size >= MAX_TRACKED_USERS) {
+      const excess = failures.size - MAX_TRACKED_USERS + 1;
+      let i = 0;
+      for (const k of failures.keys()) {
+        if (i++ >= excess) break;
+        failures.delete(k);
+      }
+    }
+  }
   const entry = failures.get(username) ?? { count: 0, lockedUntil: 0 };
   entry.count += 1;
   if (entry.count >= MAX_FAILURES) {
@@ -70,14 +99,19 @@ function registerFailure(username: string): void {
   failures.set(username, entry);
 }
 
-function isLocked(username: string): boolean {
+export function isLocked(username: string): boolean {
   const entry = failures.get(username);
   if (!entry) return false;
   return entry.lockedUntil > Date.now();
 }
 
-function clearFailures(username: string): void {
+export function clearFailures(username: string): void {
   failures.delete(username);
+}
+
+/** Test/observability hook: current tracked-username count (audit #91). */
+export function trackedFailureCount(): number {
+  return failures.size;
 }
 
 export interface AuthRoutesDeps {
@@ -99,7 +133,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRoutesDeps): 
 
     const user = await deps.store.users.getByUsername(username);
     const storedHash = user?.password_hash ?? '';
-    const ok = storedHash.length > 0 && verifyPassword(password, storedHash);
+    const ok = storedHash.length > 0 && (await verifyPassword(password, storedHash));
     if (!ok || !user || !user.is_active) {
       registerFailure(username);
       // Uniform error — never reveal whether the account exists.
@@ -111,11 +145,13 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRoutesDeps): 
 
     const secret = new TextEncoder().encode(deps.config.LOOP_JWT_SECRET);
     const now = Math.floor(Date.now() / 1000);
+    // Audit #92: honour LOOP_JWT_ACCESS_TTL (was hard-coded 12h, ignoring config).
+    const ttlSeconds = parseTtlSeconds(deps.config.LOOP_JWT_ACCESS_TTL, 15 * 60);
     const token = await new SignJWT({ role: mapRole(user.role) })
       .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
       .setSubject(user.id)
       .setIssuedAt(now)
-      .setExpirationTime(now + 12 * 60 * 60)
+      .setExpirationTime(now + ttlSeconds)
       .sign(secret);
 
     logger.info({ username }, 'User login succeeded');
@@ -124,7 +160,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthRoutesDeps): 
       data: {
         token,
         token_type: 'Bearer',
-        expires_in: 12 * 60 * 60,
+        expires_in: ttlSeconds,
         user: { id: user.id, username: user.username, email: user.email, role: mapRole(user.role) },
       },
     });
@@ -148,7 +184,7 @@ export async function bootstrapAdminUser(store: StateStore, config: LoopConfig):
   await store.users.create({
     id: randomUUID(),
     username,
-    password_hash: hashPassword(password),
+    password_hash: await hashPassword(password),
     email: config.LOOP_BOOTSTRAP_ADMIN_EMAIL ?? `${username}@localhost`,
     role: 'admin',
     display_name: 'Bootstrap Admin',
