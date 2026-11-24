@@ -2,7 +2,7 @@
  * Main execution executor — processes nodes in topological order (§6.1).
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { createLogger } from '@loop/observability';
 import { metricsRegistry } from '@loop/observability';
 // V1.6 M1 (F-2, SP3): execution/node lifecycle spans (best-effort observability).
@@ -320,6 +320,17 @@ export class ExecutionExecutor {
         // level runs — a decided branch must not execute both arms.
         const activeLevel = await this.pruneInactiveNodes(level, ctx, definition);
         const settled = await this.executeLevel(activeLevel, ctx, definition, controller.signal);
+        // Audit #10: the workflow deadline can fire while no node is in flight
+        // (during the store reads/pruning above, or between batches). In that
+        // case executeLevel returns no rejected result, so without this check
+        // the run would complete 'succeeded' with most nodes never executed.
+        if (controller.signal.aborted) {
+          throw new LoopError(
+            'WORKFLOW_TIMEOUT',
+            `Workflow '${executionId}' timed out after ${workflowTimeoutMs}ms (workflow_timeout)`,
+            500,
+          );
+        }
         // Abort the execution on the first node failure in this level; later
         // levels must not run (mirrors the previous fail-fast semantics).
         const failure = settled.find((r) => r.status === 'rejected');
@@ -384,19 +395,27 @@ export class ExecutionExecutor {
         continue;
       }
       ctx.skippedNodes.add(node.id);
-      const nodeExecId = randomUUID();
-      await this.store.nodeExecutions.create({
-        id: nodeExecId,
-        execution_id: ctx.executionId,
-        node_id: node.id,
-        node_type: node.type,
-        input: node.config,
-        idempotency_key: `${ctx.executionId}:${node.id}`,
-      });
-      await this.store.nodeExecutions.updateStatus(nodeExecId, {
-        status: 'skipped',
-        completed_at: new Date().toISOString(),
-      });
+      // Audit #9: resume/replay re-prunes the same nodes under the SAME
+      // execution id. The idempotency_key unique index (idx_node_exec_idem)
+      // rejects a second insert, so reuse the prior 'skipped' row instead —
+      // mirroring the findByIdempotencyKey guard in executeNodeInner.
+      const idemKey = `${ctx.executionId}:${node.id}`;
+      const existingSkipped = await this.store.nodeExecutions.findByIdempotencyKey(idemKey);
+      if (!existingSkipped) {
+        const nodeExecId = randomUUID();
+        await this.store.nodeExecutions.create({
+          id: nodeExecId,
+          execution_id: ctx.executionId,
+          node_id: node.id,
+          node_type: node.type,
+          input: node.config,
+          idempotency_key: idemKey,
+        });
+        await this.store.nodeExecutions.updateStatus(nodeExecId, {
+          status: 'skipped',
+          completed_at: new Date().toISOString(),
+        });
+      }
       await recordEvent(this.store, ctx.executionId, 'node_skipped', node.id, {
         reason: 'branch_not_taken',
       });
@@ -1088,17 +1107,26 @@ export class ExecutionExecutor {
       childVersion = parentExecution.workflow_version;
     }
 
-    const childExecutionId = randomUUID();
-    await this.store.executions.create({
-      id: childExecutionId,
-      workflow_id: childWorkflowId,
-      // The stored workflow's current version, or (for inline definitions
-      // reusing the parent's FK) the parent execution's version — a hardcoded
-      // 1 resolved stale definitions during replay.
-      workflow_version: childVersion,
-      trigger_type: 'event',
-      trigger_payload: childPayload,
-    });
+    // Audit #11: derive the child execution id deterministically from the
+    // parent's idempotency identity so executeWithRetry retries and crash
+    // resume reuse the SAME child execution — its succeeded-node skip path
+    // then prevents re-firing child side effects. A fresh randomUUID() per
+    // attempt gave every retry a brand-new child whose idempotency keys never
+    // matched, re-dispatching every child node.
+    const childExecutionId = subWorkflowExecutionId(ctx.executionId, node.id);
+    const existingChild = await this.store.executions.getById(childExecutionId);
+    if (!existingChild) {
+      await this.store.executions.create({
+        id: childExecutionId,
+        workflow_id: childWorkflowId,
+        // The stored workflow's current version, or (for inline definitions
+        // reusing the parent's FK) the parent execution's version — a hardcoded
+        // 1 resolved stale definitions during replay.
+        workflow_version: childVersion,
+        trigger_type: 'event',
+        trigger_payload: childPayload,
+      });
+    }
 
     const visited = new Set(ctx.visited);
     visited.add(key);
@@ -1125,6 +1153,27 @@ export class ExecutionExecutor {
  * guard — the stored workflow id when known, else the definition's name, else a
  * fingerprint of its node ids.
  */
+/** Fixed namespace for sub-workflow execution-id derivation (audit #11). */
+const SUBWORKFLOW_ID_NAMESPACE = '6ba7b814-9dad-11d1-80b4-00c04fd430c8';
+
+/**
+ * Deterministic UUIDv5 (RFC 4122, SHA-1) of `${parentExecutionId}:${nodeId}`.
+ * Retries and resume of the same parent node therefore resolve to the same
+ * child execution id, letting the child's idempotency/resume machinery skip
+ * already-succeeded nodes instead of re-firing their side effects.
+ */
+function subWorkflowExecutionId(parentExecutionId: string, nodeId: string): string {
+  const nsHex = SUBWORKFLOW_ID_NAMESPACE.replace(/-/g, '');
+  const nsBytes = Buffer.alloc(16);
+  for (let i = 0; i < 16; i++) nsBytes[i] = Number.parseInt(nsHex.slice(i * 2, i * 2 + 2), 16);
+  const digest = createHash('sha1').update(nsBytes).update(`${parentExecutionId}:${nodeId}`).digest();
+  const bytes = Buffer.from(digest.subarray(0, 16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50; // version 5
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80; // RFC 4122 variant
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function subWorkflowKey(definition: WorkflowDefinition, workflowId?: string): string {
   if (workflowId !== undefined) return `id:${workflowId}`;
   const name = definition.metadata?.name;

@@ -349,4 +349,71 @@ describe('ExecutionExecutor — workflow.invoke sub-workflows (V1.2 M3)', () => 
     const rootStarted = all.find((e) => e.type === 'execution_started' && e.executionId === executionId);
     expect(rootStarted?.parentExecutionId).toBeUndefined();
   });
+
+  it('audit #11: retrying workflow.invoke reuses the child execution (no duplicate child side effects)', async () => {
+    const { conn, store } = await createStore();
+    conns.push(conn);
+
+    const aCalls: Record<string, unknown>[] = [];
+    let bFailures = 1;
+    const connectors = new ConnectorRegistry();
+    connectors.registerAdapter(recordingAdapter('ca', aCalls));
+    const bAdapter: ConnectorAdapter = {
+      type: 'cb',
+      async execute() {
+        if (bFailures > 0) {
+          bFailures--;
+          throw new Error('child B transient failure');
+        }
+        return { output: { ok: true } };
+      },
+      async healthCheck() {
+        return true;
+      },
+      getCapabilities(): ConnectorCapabilities {
+        return { node_types: ['cb.op'], input_types: ['any'], output_types: ['any'] };
+      },
+    };
+    connectors.registerAdapter(bAdapter);
+
+    const child: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [
+        { id: 'child_a', type: 'ca.op', position: { x: 0, y: 0 }, config: { echo: 'side-effect' } },
+        { id: 'child_b', type: 'cb.op', position: { x: 100, y: 0 }, config: {} },
+      ],
+      edges: [{ id: 'ce1', source: 'child_a', target: 'child_b' }],
+      variables: {},
+      metadata: { name: 'retry-child' },
+    };
+    const parent: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [
+        {
+          id: 'node_sub',
+          type: 'workflow.invoke',
+          position: { x: 0, y: 0 },
+          config: { definition: child },
+          retry: { max_attempts: 1, backoff: 'fixed', initial_delay_ms: 1 },
+        },
+      ],
+      edges: [],
+      variables: {},
+      metadata: { name: 'retry-parent' },
+    };
+    const executionId = await seedExecution(store, parent);
+    const executor = new ExecutionExecutor(store, connectors, 10, 5_000, 30_000);
+
+    // Attempt 1: child_a succeeds, child_b fails -> invoke node retries.
+    // Attempt 2 must reuse the SAME child execution so child_a is skipped.
+    await executor.execute(executionId, parent, {});
+
+    const execution = await store.executions.getById(executionId);
+    expect(execution?.status).toBe('succeeded');
+    // child_a's side effect fired exactly ONCE despite the retry.
+    expect(aCalls).toHaveLength(1);
+    // Exactly one child execution row exists alongside the parent.
+    const rows = await store.executions.list({ workflow_id: execution!.workflow_id }, { page: 1, per_page: 50 });
+    expect(rows.total).toBe(2);
+  });
 });

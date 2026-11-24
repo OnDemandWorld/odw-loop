@@ -5,7 +5,7 @@
  *   - F3 workflow-level timeout: a hung run fails with reason workflow_timeout.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   createSqliteConnection,
   SqliteStateStore,
@@ -225,5 +225,36 @@ describe('ExecutionExecutor — workflow timeout (V1.1 M1 F3)', () => {
     await executor.execute(executionId, definition, {});
     const execution = await store.executions.getById(executionId);
     expect(execution?.status).toBe('succeeded');
+  });
+
+  it('audit #10: workflow timeout firing between levels fails the execution (not succeeded)', async () => {
+    const { conn, store } = await createStore();
+    conns.push(conn);
+
+    const { adapter, counter } = createCountingAdapter('track');
+    const connectors = new ConnectorRegistry();
+    connectors.registerAdapter(adapter);
+
+    const definition: WorkflowDefinition = { ...TWO_NODE, settings: { workflow_timeout_ms: 20 } };
+    const executionId = await seedExecution(store, definition);
+
+    // Delay the SECOND per-level cancellation-check read so the 20ms deadline
+    // fires while no node is in flight (between levels). executeLevel then
+    // returns no rejected result; the executor must still fail the run.
+    const realGetById = store.executions.getById.bind(store.executions);
+    let calls = 0;
+    vi.spyOn(store.executions, 'getById').mockImplementation(async (id: string) => {
+      calls += 1;
+      if (calls === 2) await new Promise((r) => setTimeout(r, 80));
+      return realGetById(id);
+    });
+
+    const executor = new ExecutionExecutor(store, connectors, 10, 5_000);
+    await expect(executor.execute(executionId, definition, {})).rejects.toThrow(/timed out/);
+
+    const execution = await realGetById(executionId);
+    expect(execution?.status).toBe('failed');
+    expect(execution?.error).toContain('workflow_timeout');
+    expect(counter.calls).toBe(1); // node 'b' never dispatched
   });
 });

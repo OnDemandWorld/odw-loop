@@ -111,7 +111,9 @@
     "root_cause": "pruneInactiveNodes unconditionally calls nodeExecutions.create with stable idempotency_key `${executionId}:${node.id}` for every branch-skipped node, without the findByIdempotencyKey reuse guard executeNodeInner (592-631) applies. Unique index idx_node_exec_idem (state migrations/index.ts:184, migrations-pg.ts:181) rejects a second insert for the same key.",
     "suggested_fix": "In pruneInactiveNodes look up findByIdempotencyKey first; if a row exists (e.g. 'skipped' from the prior attempt) reuse it / treat as idempotent hit instead of inserting.",
     "failure_scenario": "control.branch workflow: false-arm node gets a 'skipped' row, execution fails or process crashes. Recovery resume (or POST /executions/:id/replay?dryRun=false) restores the branch decision, prunes the same node again, create() throws UNIQUE constraint, executeInner catch marks execution 'failed'. Any execution with branch-skipped nodes can never be resumed or non-dry replayed.",
-    "id": 9
+    "id": 9,
+    "status": "fixed",
+    "verification_notes": "pruneInactiveNodes now looks up findByIdempotencyKey and reuses the prior skipped row instead of re-inserting (mirrors executeNodeInner guard). Regression: tests/unit/engine/executor-branch.test.ts audit #9 (fail-then-resume branch workflow). Verified: pnpm typecheck exit 0; pnpm test:unit 667/667; pnpm test:integration 168/169 (only pre-existing vault multipart failure); eslint changed files 0 errors / 10 warnings = baseline."
   },
   {
     "file": "packages/engine/src/executor.ts",
@@ -123,7 +125,9 @@
     "root_cause": "executeLevel breaks out of the batch loop when signal.aborted without producing any rejected result; executeInner (311-333) only fails on a rejected settled result and never checks workflowTimedOut/signal.aborted after the level loop. If the workflow timer fires while no node is in flight (during getById/prune awaits or between batches), every remaining level returns an empty settled array and the run completes 'succeeded'. TSD §6.1 requires timeout to mark failed.",
     "suggested_fix": "After each executeLevel (and after the level loop) check controller.signal.aborted/workflowTimedOut and throw WORKFLOW_TIMEOUT; or have executeLevel return a rejected result for unscheduled nodes when aborted.",
     "failure_scenario": "workflow_timeout_ms=1000; level-1 node finishes at 900ms; timer fires at 1000ms during level-2 store reads/pruning. Levels 2..N break immediately with settled=[], no failure found, completeExecution writes 'succeeded' and execution_succeeded recorded although most nodes never ran — silent partial execution reported as success.",
-    "id": 10
+    "id": 10,
+    "status": "fixed",
+    "verification_notes": "executeInner now throws WORKFLOW_TIMEOUT when controller.signal.aborted after each executeLevel, covering deadlines firing between levels/batches. Regression: tests/unit/engine/executor-resume.test.ts audit #10 (delayed second per-level store read). Verified: typecheck 0; unit 667/667; integration 168/169 (pre-existing failure only); eslint 0 new errors/warnings."
   },
   {
     "file": "packages/engine/src/executor.ts",
@@ -135,7 +139,9 @@
     "root_cause": "invokeSubWorkflow generates childExecutionId = randomUUID() on every invocation. executeWithRetry (default LOOP_DEFAULT_RETRY_COUNT=3 wired in server.ts) re-invokes dispatchNode on child failure, and parent resume re-invokes the node; each attempt gets a brand-new child execution id, so the child's completedOutputs/idempotency keys never match prior attempts and every child node re-dispatches.",
     "suggested_fix": "Derive child execution id deterministically from the parent idempotency key (UUIDv5 of `${executionId}:${node.id}`) or look up an existing child execution by parent node key, so retries/resume reuse the child's succeeded-node skip path.",
     "failure_scenario": "workflow.invoke node: child node A performs a POST (side effect, row succeeded), child node B fails transiently. Retry -> new child execution id -> A's idempotency key differs -> POST fires again. Same duplication when parent crashes after child completed but before parent node row marked succeeded and recovery resumes.",
-    "id": 11
+    "id": 11,
+    "status": "fixed",
+    "verification_notes": "Child execution id now deterministic UUIDv5 of parentExecutionId:nodeId (subWorkflowExecutionId helper); existing child row reused so retry/resume skips succeeded child nodes. Regression: tests/unit/engine/executor-subworkflow.test.ts audit #11 (invoke retry fires child side effect exactly once; single child row). Verified: typecheck 0; unit 667/667; integration 168/169 (pre-existing failure only); eslint 0 new errors/warnings."
   },
   {
     "file": "packages/secrets/src/manager.ts",

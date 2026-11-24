@@ -415,4 +415,60 @@ describe('defaultRetry (L-9)', () => {
     await executor.execute(execId, definition, {});
     expect(attempts).toBe(3); // 1 initial + 2 retries from the default
   });
+
+  it('audit #9: resume after a failed run reuses pruned-node rows (no UNIQUE collision)', async () => {
+    const ctx = await createStore();
+    contexts.push(ctx);
+    const connectors = new ConnectorRegistry();
+    const dispatches: string[] = [];
+    let failAlert = true;
+    const adapter: ConnectorAdapter = {
+      type: 'svc',
+      async execute(params) {
+        dispatches.push(params.operation);
+        if (params.operation === 'classify') return { output: { category: 'critical' } };
+        if (params.operation === 'alert' && failAlert) throw new Error('alert transient failure');
+        return { output: { ok: true } };
+      },
+      async healthCheck() {
+        return true;
+      },
+      getCapabilities(): ConnectorCapabilities {
+        return { node_types: ['svc.classify', 'svc.alert', 'svc.log'], input_types: ['any'], output_types: ['any'] };
+      },
+    };
+    connectors.registerAdapter(adapter);
+
+    const definition: WorkflowDefinition = {
+      version: '1.0',
+      nodes: [
+        node('n_src', 'svc.classify', {}, 0),
+        node('n_branch', 'control.branch', { condition: "{{n_src.output.category}} == 'critical'" }, 1),
+        node('n_critical', 'svc.alert', {}, 2),
+        node('n_normal', 'svc.log', {}, 2),
+      ],
+      edges: [
+        edge('e1', 'n_src', 'n_branch'),
+        edge('e2', 'n_branch', 'n_critical', 'true'),
+        edge('e3', 'n_branch', 'n_normal', 'false'),
+      ],
+      variables: {},
+    };
+    const execId = await seedExecution(ctx.store, definition);
+    const executor = new ExecutionExecutor(ctx.store, connectors, 10, 5_000, 30_000);
+
+    // First run: the taken arm fails; the false arm is pruned ('skipped' row).
+    await expect(executor.execute(execId, definition, {})).rejects.toThrow();
+    const skippedRow = await ctx.store.nodeExecutions.findByIdempotencyKey(`${execId}:n_normal`);
+    expect(skippedRow?.status).toBe('skipped');
+
+    // Resume the SAME execution: pruning must reuse the skipped row instead of
+    // re-inserting it (which violated idx_node_exec_idem and failed the run).
+    failAlert = false;
+    await executor.execute(execId, definition, {});
+    const execution = await ctx.store.executions.getById(execId);
+    expect(execution?.status).toBe('succeeded');
+    expect(dispatches.filter((o) => o === 'log')).toHaveLength(0);
+    expect(dispatches.filter((o) => o === 'alert')).toHaveLength(2);
+  });
 });
