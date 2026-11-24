@@ -245,7 +245,9 @@
     "root_cause": "GET /workflows/:id/triggers maps redactTriggerSecrets (529) and the comment states secrets never leave the API, but PUT /api/v1/triggers/:triggerId returns the raw store row including config.secret. POST create intentionally returns the secret once; PUT re-exposes it on every update.",
     "suggested_fix": "Apply redactTriggerSecrets to the PUT response (521) as done for the GET list.",
     "failure_scenario": "Editor (requiredRoleFor gives editor for PUT) sends PUT /api/v1/triggers/<webhook-trigger> {enabled:true} -> response contains config.secret in cleartext -> editor can forge correctly-signed webhook payloads to the public /webhooks/:triggerId endpoint, impersonating the external system.",
-    "id": 18
+    "id": 18,
+    "status": "fixed",
+    "verification_notes": "PUT /api/v1/triggers/:triggerId now applies redactTriggerSecrets to the response (parity with GET list). Regression: trigger-to-execution.test.ts audit #18 (PUT returns ***redacted***). Verified: pnpm typecheck 0; unit 685/685; integration 174/175 (pre-existing vault multipart failure only); e2e 30/30; eslint delta 0."
   },
   {
     "file": "apps/api/src/routes/index.ts",
@@ -269,7 +271,9 @@
     "root_cause": "When body.provider is set the route builds chain=[provider, ...every other configured vendor] and the router (llm/router.ts:37-76) tries each in order on ANY failure — including an egress block. With default LOOP_EGRESS_ALLOW_PRIVATE=false (config.ts:172) the local Ollama URL (localhost:11434) is always blocked by the private-address gate, so the 'forced' local provider deterministically fails over to cloud vendors.",
     "suggested_fix": "When provider explicitly specified pass chain=[body.provider] only (no fallback), or require an explicit allow_fallback flag; surface the egress block as the error instead of switching vendors.",
     "failure_scenario": "Deployment with Ollama + OpenAI key configured; caller POSTs /api/v1/llm/complete {provider:'ollama',prompt:'<confidential data>'} expecting local-only processing -> gate blocks localhost -> router sends the prompt to api.openai.com -> confidential data leaves the sovereign boundary contrary to the explicit provider choice.",
-    "id": 20
+    "id": 20,
+    "status": "fixed",
+    "verification_notes": "Forced provider chain is now exclusive: chain=[body.provider] (unknown provider still 400 via existing validation). Regression: router.test.ts audit #20 (explicit chain does not fall through to cloud vendor on failure). Verified: typecheck 0; unit 685/685; integration 174/175 (pre-existing only); e2e 30/30; eslint delta 0."
   },
   {
     "file": "apps/api/src/server.ts",
@@ -293,7 +297,9 @@
     "root_cause": "Readiness handler performs no database probe — checks.database is the literal 'ok' — and returns status:'ready' with HTTP 200 even when connectorsOk is false ('degraded'). Readiness reports ready regardless of actual dependency health. (Egress bypass on the same probe path is covered under the connectors healthCheck finding.)",
     "suggested_fix": "Probe the store (trivial query) and return 503 with status:'not_ready' when DB or required connectors are down.",
     "failure_scenario": "SQLite file corrupted / PG connection lost after startup -> /ready still answers 200 {database:'ok'} -> load balancer/k8s keeps routing traffic to an instance where every request 500s.",
-    "id": 22
+    "id": 22,
+    "status": "fixed",
+    "verification_notes": "/ready now probes the store (workflows.list page 1) and returns 503 not_ready when DB or connectors are down; database check reflects reality. buildTestApp also registers /ready for production parity. Regression: admin-routes.test.ts audit #22 (200 healthy; 503 with store.list rejecting). Verified: typecheck 0; unit 685/685; integration 174/175 (pre-existing only); e2e 30/30; eslint delta 0."
   },
   {
     "file": "apps/canvas/src/api/client.ts",
@@ -797,7 +803,9 @@
     "root_cause": "TriggerDispatcher.dispatch matches enabled event triggers and creates executions without checking workflow.status. Cron (cron.ts:69) and webhook (webhook.ts:66) have fire-time archived guards because registered triggers outlive archiving; the event path lacks it. Archiving via PUT /workflows/:id {status:'archived'} does not disarm triggers (only DELETE does, best-effort). The version read at 50-51 already fetches the row.",
     "suggested_fix": "Load the workflow in dispatch() and skip (or disable the trigger) when status==='archived', mirroring cron/webhook.",
     "failure_scenario": "Workflow with event trigger archived via PUT (triggers stay enabled): POST /api/v1/events with matching source/event_type creates an execution and runExecution executes the archived definition — real side effects for a 'deleted' flow.",
-    "id": 64
+    "id": 64,
+    "status": "fixed",
+    "verification_notes": "TriggerDispatcher.dispatch skips archived workflows at fire time (mirrors cron/webhook guards), logging the skip. Regression: dispatcher.test.ts audit #64 (archived workflow -> no execution). Verified: typecheck 0; unit 685/685; integration 174/175 (pre-existing only); e2e 30/30; eslint delta 0 (new mock typed without any)."
   },
   {
     "file": "packages/triggers/src/webhook.ts",
@@ -821,7 +829,9 @@
     "root_cause": "TriggerConfigSchema unions typed configs with z.record(z.unknown()) so any object validates; WebhookTriggerConfigSchema.secret has no min length. The create route (routes/index.ts:429+) enforces cron/event branches but not webhook, and WebhookTriggerHandler accepts unsigned events when config.secret is falsy (triggers/webhook.ts:37).",
     "suggested_fix": "Discriminate the union on trigger_type (or validate per-type in the route), require secret.min(16) for webhook triggers, auto-generate a secret at creation.",
     "failure_scenario": "POST /api/v1/workflows/:id/triggers {trigger_type:'webhook',config:{}} creates a secret-less trigger; anyone learning the trigger UUID can fire executions with arbitrary payloads via POST /webhooks/:triggerId without signature — unauthenticated side effects.",
-    "id": 66
+    "id": 66,
+    "status": "fixed",
+    "verification_notes": "Create route enforces webhook branch: config.secret must be a string >= 16 chars (400 VALIDATION_REQUIRED otherwise), matching the cron/event enforcement pattern; WebhookTriggerConfigSchema.secret now .min(16). Existing fixtures with short secrets updated to the new contract. Regression: trigger-to-execution.test.ts audit #66 (missing + short secret -> 400). Verified: typecheck 0; unit 685/685; integration 174/175 (pre-existing only); e2e 30/30; eslint delta 0. Note: auto-generation of secrets at creation not implemented (require-only, minimal scope); unsigned-legacy-trigger acceptance in webhook.ts remains for pre-existing rows."
   },
   {
     "file": "packages/types/src/schemas/workflow.ts",

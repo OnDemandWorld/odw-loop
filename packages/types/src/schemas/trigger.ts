@@ -10,7 +10,9 @@ export const CronTriggerConfigSchema = z.object({
 
 export const WebhookTriggerConfigSchema = z.object({
   path: z.string(),
-  secret: z.string(),
+  // Audit #66: a usable signing secret must have real entropy; the create
+  // route additionally enforces this branch (the union has a catch-all).
+  secret: z.string().min(16),
   method: z.enum(['POST', 'PUT']).default('POST'),
 });
 

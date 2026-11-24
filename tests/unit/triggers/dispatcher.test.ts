@@ -106,4 +106,32 @@ describe('TriggerDispatcher', () => {
     expect(executionIds).toHaveLength(0);
     expect(mockStore.executions.create).not.toHaveBeenCalled();
   });
+
+  it('audit #64: event triggers do not fire for archived workflows', async () => {
+    const mockStore = {
+      triggers: {
+        listEnabled: vi.fn().mockResolvedValue([
+          {
+            id: 'trigger-archived',
+            trigger_type: 'event',
+            workflow_id: 'wf-archived',
+            config: { source: 'odw', event_type: 'test.event' },
+          },
+        ]),
+      },
+      workflows: {
+        getById: vi.fn().mockResolvedValue({ id: 'wf-archived', version: 3, status: 'archived' }),
+      },
+      executions: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+    } as unknown as ConstructorParameters<typeof TriggerDispatcher>[0];
+
+    const dispatcher = new TriggerDispatcher(mockStore);
+    const event = { source: 'odw', event_type: 'test.event', payload: { data: 'test' } };
+    const executionIds = await dispatcher.dispatch(event);
+
+    expect(executionIds).toHaveLength(0);
+    expect(mockStore.executions.create).not.toHaveBeenCalled();
+  });
 });

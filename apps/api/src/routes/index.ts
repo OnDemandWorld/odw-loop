@@ -440,6 +440,16 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
         throw new LoopError('VALIDATION_REQUIRED', "cron triggers require config.expression (e.g. '*/5 * * * *')", 400);
       }
     }
+    if (body.trigger_type === 'webhook') {
+      // Audit #66: the catch-all TriggerConfigSchema union accepts any object,
+      // so enforce the webhook branch here (same pattern as cron/event). A
+      // secret-less webhook trigger lets anyone who learns the trigger id fire
+      // executions with arbitrary payloads, unsigned.
+      const secret = body.config['secret'];
+      if (typeof secret !== 'string' || secret.length < 16) {
+        throw new LoopError('VALIDATION_REQUIRED', 'webhook triggers require config.secret (at least 16 characters)', 400);
+      }
+    }
     if (body.trigger_type === 'event') {
       if (typeof body.config['source'] !== 'string' || typeof body.config['event_type'] !== 'string') {
         throw new LoopError('VALIDATION_REQUIRED', 'event triggers require config.source and config.event_type', 400);
@@ -518,7 +528,9 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
 
     const trigger = await deps.store.triggers.getById(triggerId);
-    return { success: true, data: trigger, meta: meta(request) };
+    // Audit #18: never echo the webhook signing secret on update — the GET
+    // list already redacts it; PUT must not re-expose it to editors.
+    return { success: true, data: trigger ? redactTriggerSecrets(trigger) : trigger, meta: meta(request) };
   });
 
   app.get('/api/v1/workflows/:id/triggers', async (request) => {
@@ -761,10 +773,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       ...(body.system ? [{ role: 'system' as const, content: body.system }] : []),
       { role: 'user' as const, content: body.prompt! },
     ];
-    // Forced provider first, then every other configured vendor as fallback.
-    const chain = body.provider
-      ? [body.provider, ...known.filter((n) => n !== body.provider)]
-      : undefined;
+    // Audit #20: an explicitly forced provider is exclusive — no silent
+    // fallback to cloud vendors (an egress-blocked local provider must surface
+    // as an error, not leak the prompt to another vendor).
+    const chain = body.provider ? [body.provider] : undefined;
     // API-side calls must pass the SAME egress gate as workflow nodes —
     // otherwise airgap mode only covered the executor path (B1).
     const result = await deps.llmRouter.complete(

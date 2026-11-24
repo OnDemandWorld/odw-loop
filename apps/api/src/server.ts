@@ -330,7 +330,15 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
   // ─── Health / readiness / metrics (§5.9) ─────────────────────────────────
 
   app.get('/health', async () => ({ status: 'ok' }));
-  app.get('/ready', async () => {
+  app.get('/ready', async (_req, reply) => {
+    // Audit #22: actually probe the database (previously a hardcoded 'ok') and
+    // answer 503 when a dependency is down so orchestrators stop routing here.
+    let databaseOk = true;
+    try {
+      await store.workflows.list({}, { page: 1, per_page: 1 });
+    } catch {
+      databaseOk = false;
+    }
     // Probe registered cross-product connector instances for real (bounded so a
     // dead sibling can never wedge the readiness probe). Instances fall back to
     // their adapter default base URLs when LOOP_*_URL is unset.
@@ -339,14 +347,15 @@ export async function buildApp(config?: LoopConfig): Promise<FastifyInstance> {
     for (const [id, ok] of connectorResults) connectorDetail[id] = ok ? 'ok' : 'unreachable';
     const connectorsOk =
       connectorResults.size === 0 || [...connectorResults.values()].every(Boolean);
-    return {
-      status: 'ready',
+    const ready = databaseOk && connectorsOk;
+    return reply.status(ready ? 200 : 503).send({
+      status: ready ? 'ready' : 'not_ready',
       checks: {
-        database: 'ok',
+        database: databaseOk ? 'ok' : 'unreachable',
         connectors: connectorsOk ? 'ok' : 'degraded',
         ...connectorDetail,
       },
-    };
+    });
   });
   app.get('/metrics', async (_req, reply) => {
     const metrics = await collectMetrics();

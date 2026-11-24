@@ -6,7 +6,7 @@
  *  - POST /api/v1/connectors     → persist + register live instance (B4)
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildTestApp, seedWorkflow, type TestApp } from '../_helpers/app.js';
 
@@ -99,7 +99,7 @@ describe('Trigger enable/disable API (A3)', () => {
     const trigRes = await app.inject({
       method: 'POST',
       url: `/api/v1/workflows/${wf.id}/triggers`,
-      payload: { trigger_type: 'webhook', config: { secret: 'whsec' } },
+      payload: { trigger_type: 'webhook', config: { secret: 'whsec-test-secret-32' } },
     });
     const id = trigRes.json().data.id;
 
@@ -113,7 +113,7 @@ describe('Trigger enable/disable API (A3)', () => {
     const trigRes = await app.inject({
       method: 'POST',
       url: `/api/v1/workflows/${wf.id}/triggers`,
-      payload: { trigger_type: 'webhook', config: { secret: 's' } },
+      payload: { trigger_type: 'webhook', config: { secret: 's-test-secret-32chars' } },
     });
     const id = trigRes.json().data.id;
     const res = await app.inject({ method: 'PUT', url: `/api/v1/triggers/${id}`, payload: {} });
@@ -225,5 +225,35 @@ describe('Connector create API (B4)', () => {
       payload: { connector_type: 'nonexistent', name: 'x', config: {} },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('Readiness probe (audit #22)', () => {
+  let ctx: TestApp;
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    ctx = await buildTestApp();
+    app = ctx.app;
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    ctx.conn.close();
+  });
+
+  it('reports real database health and answers 503 when the store is down', async () => {
+    const ok = await app.inject({ method: 'GET', url: '/ready' });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().status).toBe('ready');
+    expect(ok.json().checks.database).toBe('ok');
+
+    const spy = vi.spyOn(ctx.store.workflows, 'list').mockRejectedValueOnce(new Error('db down'));
+    const bad = await app.inject({ method: 'GET', url: '/ready' });
+    expect(bad.statusCode).toBe(503);
+    expect(bad.json().status).toBe('not_ready');
+    expect(bad.json().checks.database).toBe('unreachable');
+    spy.mockRestore();
   });
 });

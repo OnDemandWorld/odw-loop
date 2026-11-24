@@ -218,6 +218,30 @@ export async function buildTestApp(configOverrides: Partial<LoopConfig> = {}): P
 
   // Health endpoints
   app.get('/health', async () => ({ status: 'ok' }));
+  // Readiness probe — production parity with apps/api/src/server.ts (audit #22):
+  // real DB probe + connector probes, 503 when a dependency is down.
+  app.get('/ready', async (_req, reply) => {
+    let databaseOk = true;
+    try {
+      await store.workflows.list({}, { page: 1, per_page: 1 });
+    } catch {
+      databaseOk = false;
+    }
+    const connectorResults = await connectors.healthCheckAll();
+    const connectorDetail: Record<string, string> = {};
+    for (const [id, ok] of connectorResults) connectorDetail[id] = ok ? 'ok' : 'unreachable';
+    const connectorsOk =
+      connectorResults.size === 0 || [...connectorResults.values()].every(Boolean);
+    const ready = databaseOk && connectorsOk;
+    return reply.status(ready ? 200 : 503).send({
+      status: ready ? 'ready' : 'not_ready',
+      checks: {
+        database: databaseOk ? 'ok' : 'unreachable',
+        connectors: connectorsOk ? 'ok' : 'degraded',
+        ...connectorDetail,
+      },
+    });
+  });
 
   return {
     app,

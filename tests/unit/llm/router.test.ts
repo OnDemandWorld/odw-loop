@@ -158,4 +158,29 @@ describe('LLMRouter', () => {
     expect(provider.complete).toHaveBeenCalledTimes(10);
     expect(fallbackProvider.complete).toHaveBeenCalledTimes(4);
   });
+
+  it('audit #20: an explicit chain is exclusive — no fallthrough to other vendors', async () => {
+    const localProvider: LLMProvider = {
+      name: 'local',
+      complete: vi.fn().mockRejectedValue(new Error('egress blocked')),
+      isAvailable: vi.fn().mockResolvedValue(true),
+    };
+    const cloudProvider: LLMProvider = {
+      name: 'cloud',
+      complete: vi.fn().mockResolvedValue({
+        content: 'cloud response',
+        model: 'test-model',
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        finish_reason: 'stop',
+      }),
+      isAvailable: vi.fn().mockResolvedValue(true),
+    };
+    const router = new LLMRouter([localProvider, cloudProvider]);
+    const req: CompletionRequest = { model: 'test', messages: [{ role: 'user', content: 'confidential' }] };
+
+    // Forced-provider route passes chain=[provider]; a failure must surface,
+    // not silently send the prompt to another vendor.
+    await expect(router.complete(req, ['local'])).rejects.toThrow('egress blocked');
+    expect(cloudProvider.complete).not.toHaveBeenCalled();
+  });
 });

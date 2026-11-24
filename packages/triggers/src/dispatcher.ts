@@ -48,7 +48,15 @@ export class TriggerDispatcher {
         let workflowVersion = 1;
         try {
           const workflow = await this.store.workflows.getById(trigger.workflow_id);
-          if (workflow) workflowVersion = workflow.version;
+          if (workflow) {
+            // Audit #64: fire-time archived guard, mirroring cron/webhook —
+            // registered event triggers outlive archiving via PUT.
+            if (workflow.status === 'archived') {
+              logger.warn({ triggerId: trigger.id, workflowId: trigger.workflow_id }, 'Event trigger skipped: workflow is archived');
+              continue;
+            }
+            workflowVersion = workflow.version;
+          }
         } catch {
           logger.warn({ workflowId: trigger.workflow_id }, 'Failed to read workflow version, defaulting to 1');
         }

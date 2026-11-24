@@ -93,7 +93,7 @@ describe('Trigger → Execution flow', () => {
 
   it('POST /webhooks/:triggerId with invalid signature is rejected', async () => {
     const wf = await seedWorkflow(ctx.store);
-    const webhookSecret = 'another-secret';
+    const webhookSecret = 'another-secret-key-32';
     const triggerRes = await app.inject({
       method: 'POST',
       url: `/api/v1/workflows/${wf.id}/triggers`,
@@ -167,14 +167,14 @@ describe('Trigger → Execution flow', () => {
     const triggerRes = await app.inject({
       method: 'POST',
       url: `/api/v1/workflows/${wf.id}/triggers`,
-      payload: { trigger_type: 'webhook', config: { secret: 's' } },
+      payload: { trigger_type: 'webhook', config: { secret: 'short-but-valid-secret-16' } },
     });
     const triggerId = triggerRes.json().data.id;
     await ctx.store.triggers.update(triggerId, { enabled: false });
 
     const payload = { event: 'y' };
     const rawBody = JSON.stringify(payload);
-    const signature = hmacSignature('s', rawBody);
+    const signature = hmacSignature('short-but-valid-secret-16', rawBody);
 
     const res = await app.inject({
       method: 'POST',
@@ -227,5 +227,42 @@ describe('Trigger → Execution flow', () => {
     const execution = await ctx.store.executions.getById(executionId);
     expect(execution!.trigger_type).toBe('manual');
     expect(execution!.trigger_payload).toEqual({ manual: true });
+  });
+
+  it('audit #66: webhook trigger without a usable secret is rejected (400)', async () => {
+    const wf = await seedWorkflow(ctx.store, { name: 'Webhook-NoSecret' });
+    const missing = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workflows/${wf.id}/triggers`,
+      payload: { trigger_type: 'webhook', config: {} },
+    });
+    expect(missing.statusCode).toBe(400);
+    expect(missing.json().error.code).toBe('VALIDATION_REQUIRED');
+
+    const short = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workflows/${wf.id}/triggers`,
+      payload: { trigger_type: 'webhook', config: { secret: 'too-short' } },
+    });
+    expect(short.statusCode).toBe(400);
+  });
+
+  it('audit #18: PUT /triggers never echoes the webhook signing secret', async () => {
+    const wf = await seedWorkflow(ctx.store, { name: 'Webhook-Redact' });
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workflows/${wf.id}/triggers`,
+      payload: { trigger_type: 'webhook', config: { secret: 'redaction-test-secret-32', path: '/webhook' } },
+    });
+    expect(created.statusCode).toBe(201);
+    const triggerId = created.json().data.id;
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/triggers/${triggerId}`,
+      payload: { enabled: true },
+    });
+    expect(put.statusCode).toBe(200);
+    expect(put.json().data.config.secret).toBe('***redacted***');
   });
 });
