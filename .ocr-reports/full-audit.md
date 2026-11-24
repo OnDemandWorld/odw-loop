@@ -704,28 +704,33 @@ Remediation checklist — tick each item after fixing and verifying (IDs match f
   - **Root cause:** api.getExecution(id).then(setExecution) has no alive/request-id check. Back/forward navigation between execution URLs re-runs load with a new id while the old fetch may be in flight; the late old response overwrites the new execution.
   - **Failure scenario:** View execution A (slow request), Back then open B quickly: A's response lands last, page shows A's data under B's URL while B's live events mutate it.
   - **Suggested fix:** Track an effect-scoped alive flag or compare id before applying the response.
-- [ ] **#103 — Node trace keys differ between WS-created and REST rows; expansion collapses**
+- [x] **#103 — Node trace keys differ between WS-created and REST rows; expansion collapses**
   - `apps/canvas/src/pages/ExecutionDetail.tsx:245-247` · category: bug
+  - **Status:** fixed — Node trace rows keyed by node_id (stable across WS/REST sources) — polling swaps no longer remount and collapse expanded rows. Verified: canvas tsc 0; vite build OK.
   - **Root cause:** NodeTraceRow keyed by node.id: WS/snapshot rows use node_id as id (blankNode), REST rows use DB uuid. When the 4s poll replaces a WS row with its REST counterpart the key changes, remounting the row and resetting local expanded state.
   - **Failure scenario:** During a live run user expands a node's output; next poll swaps row id from 'node_3' to uuid and the panel collapses every few seconds.
   - **Suggested fix:** Key rows by node_id (stable across both sources).
-- [ ] **#104 — Executions list polls every 8s unconditionally, even when idle**
+- [x] **#104 — Executions list polls every 8s unconditionally, even when idle**
   - `apps/canvas/src/pages/Executions.tsx:24-28` · category: performance
+  - **Status:** fixed — Executions list polls only while a row is pending/running/paused — idle lists no longer issue ~10,800 needless requests/day. Verified: canvas tsc 0; vite build OK.
   - **Root cause:** Comment says 'Live refresh while any execution is running' but the interval is created regardless of active rows and never pauses on hidden tabs.
   - **Failure scenario:** Executions tab left open overnight on idle system: ~10,800 needless list requests, each scanning the executions table.
   - **Suggested fix:** Only poll when some row is active (and/or use document.visibilityState).
-- [ ] **#105 — Create wizard shows Tags field for templates but silently discards it**
+- [x] **#105 — Create wizard shows Tags field for templates but silently discards it**
   - `apps/canvas/src/pages/Workflows.tsx:66-84` · category: bug
+  - **Status:** fixed — Template-mode wizard applies the user's Tags edits via a follow-up updateWorkflow instead of silently discarding them. Verified: canvas tsc 0; vite build OK.
   - **Root cause:** Template branch calls instantiateTemplate with only name/description (API accepts only those), yet step 2 renders an editable Tags input prefilled from the template. User tag edits dropped without notice.
   - **Failure scenario:** Pick template, edit tags to 'finance, prod', create — workflow carries template's original tags; user edits vanished.
   - **Suggested fix:** Hide/disable tags input in template mode, or apply tags via follow-up updateWorkflow.
-- [ ] **#106 — Snapshot merge never updates status of already-known nodes**
+- [x] **#106 — Snapshot merge never updates status of already-known nodes**
   - `apps/canvas/src/store/executions.ts:40-59` · category: bug
+  - **Status:** fixed — reduceNodes snapshot branch merges fresher status/output/error into known rows (REST row identity preserved). Regression: graph.test.ts audit #106 (running row + succeeded snapshot -> merged). Verified: canvas tsc 0; vite build OK; unit canvas tests 8/8.
   - **Root cause:** reduceNodes's snapshot branch only inserts nodes whose node_id is unseen; existing rows keep stale status/output. Snapshot rows also lack started_at/completed_at so duration renders '—'.
   - **Failure scenario:** REST load returns node X 'running'; X completes before WS snapshot. Snapshot says 'succeeded' but existing row kept; execution flips to succeeded (poll stops) leaving node X displayed 'running' on a finished execution.
   - **Suggested fix:** Merge snapshot fields (status/output/error) into existing rows, preferring newer snapshot data.
-- [ ] **#107 — Archive removes row locally; 'archived' filter shows nothing until reload**
+- [x] **#107 — Archive removes row locally; 'archived' filter shows nothing until reload**
   - `apps/canvas/src/store/workflows.ts:56-59` · category: bug
+  - **Status:** fixed — Archive updates the local row status to 'archived' instead of removing it — the archived filter shows it without a reload, matching the server. Verified: canvas tsc 0; vite build OK.
   - **Root cause:** deleteWorkflow filters the workflow out of the store instead of updating status to 'archived'. List endpoint includes archived rows; server and client disagree until next load.
   - **Failure scenario:** Archive a workflow, click 'archived' filter — list empty though workflow exists server-side; reappears only after navigating away and back.
   - **Suggested fix:** Update the row's status to 'archived' in place rather than removing it.

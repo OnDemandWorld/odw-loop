@@ -1431,7 +1431,9 @@
     "root_cause": "NodeTraceRow keyed by node.id: WS/snapshot rows use node_id as id (blankNode), REST rows use DB uuid. When the 4s poll replaces a WS row with its REST counterpart the key changes, remounting the row and resetting local expanded state.",
     "suggested_fix": "Key rows by node_id (stable across both sources).",
     "failure_scenario": "During a live run user expands a node's output; next poll swaps row id from 'node_3' to uuid and the panel collapses every few seconds.",
-    "id": 103
+    "id": 103,
+    "status": "fixed",
+    "verification_notes": "Node trace rows keyed by node_id (stable across WS/REST sources) — polling swaps no longer remount and collapse expanded rows. Verified: canvas tsc 0; vite build OK."
   },
   {
     "file": "apps/canvas/src/pages/Executions.tsx",
@@ -1443,7 +1445,9 @@
     "root_cause": "Comment says 'Live refresh while any execution is running' but the interval is created regardless of active rows and never pauses on hidden tabs.",
     "suggested_fix": "Only poll when some row is active (and/or use document.visibilityState).",
     "failure_scenario": "Executions tab left open overnight on idle system: ~10,800 needless list requests, each scanning the executions table.",
-    "id": 104
+    "id": 104,
+    "status": "fixed",
+    "verification_notes": "Executions list polls only while a row is pending/running/paused — idle lists no longer issue ~10,800 needless requests/day. Verified: canvas tsc 0; vite build OK."
   },
   {
     "file": "apps/canvas/src/pages/Workflows.tsx",
@@ -1455,7 +1459,9 @@
     "root_cause": "Template branch calls instantiateTemplate with only name/description (API accepts only those), yet step 2 renders an editable Tags input prefilled from the template. User tag edits dropped without notice.",
     "suggested_fix": "Hide/disable tags input in template mode, or apply tags via follow-up updateWorkflow.",
     "failure_scenario": "Pick template, edit tags to 'finance, prod', create — workflow carries template's original tags; user edits vanished.",
-    "id": 105
+    "id": 105,
+    "status": "fixed",
+    "verification_notes": "Template-mode wizard applies the user's Tags edits via a follow-up updateWorkflow instead of silently discarding them. Verified: canvas tsc 0; vite build OK."
   },
   {
     "file": "apps/canvas/src/store/executions.ts",
@@ -1467,7 +1473,9 @@
     "root_cause": "reduceNodes's snapshot branch only inserts nodes whose node_id is unseen; existing rows keep stale status/output. Snapshot rows also lack started_at/completed_at so duration renders '—'.",
     "suggested_fix": "Merge snapshot fields (status/output/error) into existing rows, preferring newer snapshot data.",
     "failure_scenario": "REST load returns node X 'running'; X completes before WS snapshot. Snapshot says 'succeeded' but existing row kept; execution flips to succeeded (poll stops) leaving node X displayed 'running' on a finished execution.",
-    "id": 106
+    "id": 106,
+    "status": "fixed",
+    "verification_notes": "reduceNodes snapshot branch merges fresher status/output/error into known rows (REST row identity preserved). Regression: graph.test.ts audit #106 (running row + succeeded snapshot -> merged). Verified: canvas tsc 0; vite build OK; unit canvas tests 8/8."
   },
   {
     "file": "apps/canvas/src/store/workflows.ts",
@@ -1479,7 +1487,9 @@
     "root_cause": "deleteWorkflow filters the workflow out of the store instead of updating status to 'archived'. List endpoint includes archived rows; server and client disagree until next load.",
     "suggested_fix": "Update the row's status to 'archived' in place rather than removing it.",
     "failure_scenario": "Archive a workflow, click 'archived' filter — list empty though workflow exists server-side; reappears only after navigating away and back.",
-    "id": 107
+    "id": 107,
+    "status": "fixed",
+    "verification_notes": "Archive updates the local row status to 'archived' instead of removing it — the archived filter shows it without a reload, matching the server. Verified: canvas tsc 0; vite build OK."
   },
   {
     "file": "apps/canvas/vite.config.ts",

@@ -111,3 +111,22 @@ describe('sourcePortsByNode (audit #24)', () => {
     expect(sourcePortsByNode(edges)).toEqual({ cond: ['auto_approve', 'needs_review'] });
   });
 });
+
+describe('reduceNodes — snapshot merge (audit #106)', () => {
+  it('updates status/output of already-known nodes from a fresher snapshot', async () => {
+    const { reduceNodes } = await import('../../../apps/canvas/src/store/executions');
+    const existing = [{
+      id: 'row-1', execution_id: 'exec-1', node_id: 'n1', node_type: 'vault.search',
+      status: 'running' as const, input: {}, output: {}, error: null,
+      started_at: null, completed_at: null, retry_count: 0,
+    }];
+    const merged = reduceNodes(existing as never, {
+      type: 'snapshot',
+      executionId: 'exec-1',
+      nodes: [{ nodeId: 'n1', nodeType: 'vault.search', status: 'succeeded', output: { done: true } }],
+    } as never);
+    expect(merged[0]!.status).toBe('succeeded');
+    expect(merged[0]!.output).toEqual({ done: true });
+    expect(merged[0]!.id).toBe('row-1'); // REST row identity preserved
+  });
+});

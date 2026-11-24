@@ -299,8 +299,10 @@ export function ExecutionDetail() {
         </Card>
       ) : (
         <div className="space-y-2">
+          {/* Audit #103: keyed by node_id — stable across WS-created and REST
+              rows, so polling swaps don't remount/collapse expanded rows. */}
           {nodes.map((node, i) => (
-            <NodeTraceRow key={node.id} node={node} index={i} />
+            <NodeTraceRow key={node.node_id} node={node} index={i} />
           ))}
         </div>
       )}

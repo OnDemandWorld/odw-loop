@@ -21,11 +21,14 @@ export function Executions() {
 
   useEffect(load, [load]);
 
-  // Live refresh while any execution is running
+  // Live refresh while any execution is running (audit #104: idle lists no
+  // longer poll every 8s forever).
+  const hasActive = (executions ?? []).some((e) => ['pending', 'running', 'paused'].includes(e.status));
   useEffect(() => {
+    if (!hasActive) return;
     const t = setInterval(load, 8000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [hasActive, load]);
 
   const filtered = useMemo(() => {
     if (!executions) return [];

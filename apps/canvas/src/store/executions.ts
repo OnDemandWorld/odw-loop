@@ -40,7 +40,17 @@ export function reduceNodes(nodes: NodeExecution[], event: ExecutionStreamEvent)
   if (event.type === 'snapshot') {
     const byId = new Map(nodes.map((n) => [n.node_id, n]));
     for (const snap of event.nodes ?? []) {
-      if (!byId.has(snap.nodeId)) {
+      const existing = byId.get(snap.nodeId);
+      if (existing) {
+        // Audit #106: merge fresher snapshot data into known rows — keeping
+        // the stale status left finished nodes displayed 'running' forever.
+        byId.set(snap.nodeId, {
+          ...existing,
+          status: snap.status,
+          output: snap.output ?? existing.output,
+          error: snap.error ?? existing.error,
+        });
+      } else {
         byId.set(snap.nodeId, {
           id: snap.nodeId,
           execution_id: event.executionId ?? '',

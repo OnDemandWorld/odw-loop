@@ -55,6 +55,8 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
   async deleteWorkflow(id) {
     await api.archiveWorkflow(id);
-    set({ workflows: get().workflows.filter((w) => w.id !== id) });
+    // Audit #107: archive flips status server-side — mirror that locally so
+    // the 'archived' filter shows the row without a reload.
+    set({ workflows: get().workflows.map((w) => (w.id === id ? { ...w, status: 'archived' as const } : w)) });
   },
 }));

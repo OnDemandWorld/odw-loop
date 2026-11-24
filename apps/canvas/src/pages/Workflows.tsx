@@ -69,6 +69,12 @@ function CreateWorkflowModal({
           name: name.trim(),
           ...(description.trim() ? { description: description.trim() } : {}),
         });
+        // Audit #105: the wizard's Tags field used to be silently discarded in
+        // template mode — apply the user's edits via a follow-up update.
+        const templateTags = tags.split(',').map((t) => t.trim()).filter(Boolean);
+        if (templateTags.length > 0) {
+          wf = await api.updateWorkflow(wf.id, { tags: templateTags });
+        }
       } else {
         const tagList = tags.split(',').map((t) => t.trim()).filter(Boolean);
         const definition: WorkflowDefinition = {
