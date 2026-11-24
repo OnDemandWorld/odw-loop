@@ -209,4 +209,26 @@ ALTER TABLE secrets_new RENAME TO secrets;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_name_scope ON secrets(name, scope, COALESCE(scope_id, ''));
 `,
   },
+  {
+    version: '004',
+    name: 'repair_double_encoded_json',
+    // Audit #60: json-mode columns were written pre-stringified, so drizzle
+    // serialized them AGAIN (a JSON string of JSON). New writes pass raw
+    // objects; this repairs legacy rows in place. json_type(x)='text' means
+    // the stored JSON value is a string (double-encoded); json_extract(x,'$')
+    // unwraps one layer. Single-encoded rows are untouched.
+    sql: `
+UPDATE workflows SET definition = json_extract(definition, '$') WHERE json_type(definition) = 'text';
+UPDATE workflows SET tags = json_extract(tags, '$') WHERE json_type(tags) = 'text';
+UPDATE workflow_definitions SET definition = json_extract(definition, '$') WHERE json_type(definition) = 'text';
+UPDATE workflow_executions SET trigger_payload = json_extract(trigger_payload, '$') WHERE json_type(trigger_payload) = 'text';
+UPDATE node_executions SET input = json_extract(input, '$') WHERE json_type(input) = 'text';
+UPDATE node_executions SET output = json_extract(output, '$') WHERE output IS NOT NULL AND json_type(output) = 'text';
+UPDATE node_executions SET metadata = json_extract(metadata, '$') WHERE json_type(metadata) = 'text';
+UPDATE execution_events SET payload = json_extract(payload, '$') WHERE json_type(payload) = 'text';
+UPDATE workflow_triggers SET config = json_extract(config, '$') WHERE json_type(config) = 'text';
+UPDATE audit_events SET details = json_extract(details, '$') WHERE json_type(details) = 'text';
+UPDATE connectors SET config = json_extract(config, '$') WHERE json_type(config) = 'text';
+`,
+  },
 ];

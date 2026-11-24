@@ -231,10 +231,14 @@ export class PostgresStateStore implements StateStore {
       // into the pool (follow-up queries join a phantom transaction).
       const client = await this.conn.pool.connect();
       try {
-        const execResult = await client.query('SELECT id FROM workflow_executions WHERE workflow_id = $1', [id]);
-        const execIds = (execResult.rows as Array<{ id: string }>).map((r) => r.id);
         await client.query('BEGIN');
         try {
+          // Audit #133: read the execution ids INSIDE the transaction so the
+          // snapshot and the cascading deletes are consistent (an execution
+          // inserted between the old pre-BEGIN SELECT and the DELETEs caused
+          // an FK violation and rolled the whole delete back).
+          const execResult = await client.query('SELECT id FROM workflow_executions WHERE workflow_id = $1', [id]);
+          const execIds = (execResult.rows as Array<{ id: string }>).map((r) => r.id);
           if (execIds.length > 0) {
             await client.query('DELETE FROM execution_events WHERE execution_id = ANY($1::uuid[])', [execIds]);
             await client.query('DELETE FROM node_executions WHERE execution_id = ANY($1::uuid[])', [execIds]);

@@ -96,3 +96,21 @@ describe('Migration Runner', () => {
     expect(tableNames.length).toBeGreaterThanOrEqual(11);
   });
 });
+
+describe('Migration checksum verification (audit #132)', () => {
+  let conn: SqliteConnection;
+  beforeEach(() => {
+    conn = createSqliteConnection({ path: ':memory:', wal: false });
+  });
+  afterEach(() => {
+    if (conn) conn.close();
+  });
+
+  it('fails loudly when an applied migration SQL was edited', async () => {
+    await runMigrations(conn);
+    // Simulate a developer editing an already-applied migration: the stored
+    // checksum no longer matches the current SQL hash.
+    conn.client.prepare("UPDATE schema_migrations SET checksum = 'tampered' WHERE version = '001'").run();
+    await expect(runMigrations(conn)).rejects.toThrow(/checksum mismatch/);
+  });
+});

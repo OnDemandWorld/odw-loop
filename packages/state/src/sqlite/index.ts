@@ -112,9 +112,9 @@ export class SqliteStateStore implements StateStore {
       const now = new Date().toISOString();
       this.db.insert(schema.workflows).values({
         id: data.id, name: data.name, description: data.description,
-        definition: JSON.stringify(data.definition) as never,
+        definition: (data.definition) as never,
         version: 1, status: 'draft',
-        tags: JSON.stringify(data.tags ?? []) as never,
+        tags: (data.tags ?? []) as never,
         created_by: data.created_by, updated_by: data.created_by,
         created_at: now, updated_at: now,
       }).run();
@@ -161,12 +161,13 @@ export class SqliteStateStore implements StateStore {
       if (data.name !== undefined) updates.name = data.name;
       if (data.description !== undefined) updates.description = data.description;
       if (data.definition !== undefined) {
-        updates.definition = JSON.stringify(data.definition);
-        const current = this.db.select().from(schema.workflows).where(eq(schema.workflows.id, id)).get();
-        if (current) updates.version = current.version + 1;
+        updates.definition = data.definition;
+        // Audit #134: atomic SQL increment (PG parity) — the old read-then-write
+        // lost updates across processes sharing the SQLite file.
+        updates.version = sql`${schema.workflows.version} + 1`;
       }
       if (data.status !== undefined) updates.status = data.status;
-      if (data.tags !== undefined) updates.tags = JSON.stringify(data.tags);
+      if (data.tags !== undefined) updates.tags = data.tags;
       this.db.update(schema.workflows).set(updates).where(eq(schema.workflows.id, id)).run();
       return (await this.workflows.getById(id))!;
     },
@@ -210,7 +211,7 @@ export class SqliteStateStore implements StateStore {
       const now = new Date().toISOString();
       this.db.insert(schema.workflowDefinitions).values({
         id: data.id, workflow_id: data.workflow_id, version: data.version,
-        definition: JSON.stringify(data.definition) as never,
+        definition: (data.definition) as never,
         commit_hash: data.commit_hash, created_by: data.created_by,
         created_at: now, change_summary: data.change_summary ?? '',
       }).run();
@@ -253,7 +254,7 @@ export class SqliteStateStore implements StateStore {
       this.db.insert(schema.workflowExecutions).values({
         id: data.id, workflow_id: data.workflow_id, workflow_version: data.workflow_version,
         trigger_type: data.trigger_type,
-        trigger_payload: JSON.stringify(data.trigger_payload ?? {}) as never,
+        trigger_payload: (data.trigger_payload ?? {}) as never,
         status: 'pending', initiated_by: data.initiated_by ?? null,
       }).run();
       const row = this.db.select().from(schema.workflowExecutions).where(eq(schema.workflowExecutions.id, data.id)).get();
@@ -337,7 +338,7 @@ export class SqliteStateStore implements StateStore {
     create: async (data: { id: string; execution_id: string; node_id: string; node_type: string; input?: Record<string, unknown>; idempotency_key?: string }) => {
       this.db.insert(schema.nodeExecutions).values({
         id: data.id, execution_id: data.execution_id, node_id: data.node_id, node_type: data.node_type,
-        status: 'pending', input: JSON.stringify(data.input ?? {}) as never,
+        status: 'pending', input: (data.input ?? {}) as never,
         idempotency_key: data.idempotency_key ?? null,
       }).run();
       const row = this.db.select().from(schema.nodeExecutions).where(eq(schema.nodeExecutions.id, data.id)).get();
@@ -368,10 +369,10 @@ export class SqliteStateStore implements StateStore {
         status: data.status,
         ...(data.started_at !== undefined ? { started_at: data.started_at } : {}),
         ...(data.completed_at !== undefined ? { completed_at: data.completed_at } : {}),
-        ...(data.output !== undefined ? { output: JSON.stringify(data.output) as never } : {}),
+        ...(data.output !== undefined ? { output: (data.output) as never } : {}),
         ...(data.error !== undefined ? { error: data.error } : {}),
         ...(data.retry_count !== undefined ? { retry_count: data.retry_count } : {}),
-        ...(data.metadata !== undefined ? { metadata: JSON.stringify(data.metadata) as never } : {}),
+        ...(data.metadata !== undefined ? { metadata: (data.metadata) as never } : {}),
       }).where(eq(schema.nodeExecutions.id, id)).run();
     },
   };
@@ -388,7 +389,7 @@ export class SqliteStateStore implements StateStore {
       this.db.insert(schema.executionEvents).values({
         id: data.id, execution_id: data.execution_id, event_type: data.event_type,
         node_id: data.node_id ?? null,
-        payload: JSON.stringify(data.payload ?? {}) as never,
+        payload: (data.payload ?? {}) as never,
         created_at: data.created_at ?? Date.now(),
       }).run();
     },
@@ -408,7 +409,7 @@ export class SqliteStateStore implements StateStore {
       const now = new Date().toISOString();
       this.db.insert(schema.workflowTriggers).values({
         id: data.id, workflow_id: data.workflow_id, trigger_type: data.trigger_type,
-        config: JSON.stringify(data.config) as never, enabled: true, created_at: now, updated_at: now,
+        config: (data.config) as never, enabled: true, created_at: now, updated_at: now,
       }).run();
       const row = this.db.select().from(schema.workflowTriggers).where(eq(schema.workflowTriggers.id, data.id)).get();
       const r = row!;
@@ -433,7 +434,7 @@ export class SqliteStateStore implements StateStore {
 
     update: async (id: string, data: { config?: Record<string, unknown>; enabled?: boolean }) => {
       this.db.update(schema.workflowTriggers).set({
-        config: data.config ? (JSON.stringify(data.config) as never) : undefined,
+        config: data.config ? ((data.config) as never) : undefined,
         enabled: data.enabled, updated_at: new Date().toISOString(),
       }).where(eq(schema.workflowTriggers.id, id)).run();
     },
@@ -454,7 +455,7 @@ export class SqliteStateStore implements StateStore {
           this.db.insert(schema.auditEvents).values({
             id: event.id, timestamp: now, actor: event.actor, action: event.action,
             resource_type: event.resource_type, resource_id: event.resource_id ?? null,
-            details: JSON.stringify(event.details ?? {}) as never,
+            details: (event.details ?? {}) as never,
             ip_address: event.ip_address ?? null,
           }).run();
           return;
@@ -614,7 +615,7 @@ export class SqliteStateStore implements StateStore {
       const now = new Date().toISOString();
       this.db.insert(schema.connectors).values({
         id: data.id, connector_type: data.connector_type, name: data.name,
-        config: JSON.stringify(data.config) as never, status: 'disconnected', created_at: now, updated_at: now,
+        config: (data.config) as never, status: 'disconnected', created_at: now, updated_at: now,
       }).run();
       const row = this.db.select().from(schema.connectors).where(eq(schema.connectors.id, data.id)).get();
       const r = row!;
@@ -634,7 +635,7 @@ export class SqliteStateStore implements StateStore {
 
     update: async (id: string, data: { name?: string; config?: Record<string, unknown>; status?: 'connected' | 'disconnected' | 'error'; last_health_check?: string }) => {
       this.db.update(schema.connectors).set({
-        name: data.name, config: data.config ? (JSON.stringify(data.config) as never) : undefined,
+        name: data.name, config: data.config ? ((data.config) as never) : undefined,
         status: data.status, last_health_check: data.last_health_check, updated_at: new Date().toISOString(),
       }).where(eq(schema.connectors.id, id)).run();
     },

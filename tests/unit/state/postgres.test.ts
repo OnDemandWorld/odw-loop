@@ -491,7 +491,7 @@ describe('PostgresStateStore — migration locking (audit #59)', () => {
 
     expect(calls[0]!.sql).toContain('pg_advisory_lock');
     // Applied versions are re-read INSIDE the lock.
-    expect(calls[1]!.sql).toContain('SELECT version FROM schema_migrations');
+    expect(calls[1]!.sql).toContain('SELECT version, checksum FROM schema_migrations');
     expect(calls[calls.length - 1]!.sql).toContain('pg_advisory_unlock');
     expect(client.release).toHaveBeenCalled();
   });
@@ -517,5 +517,30 @@ describe('PostgresStateStore — completeIfActive race guard (audit #85)', () =>
     mock.enqueueRows([]); // no active row matched
     const applied = await store.executions.completeIfActive('exec-1', { status: 'failed' });
     expect(applied).toBe(false);
+  });
+});
+
+describe('PostgresStateStore — workflows.delete transaction (audit #133)', () => {
+  it('reads execution ids INSIDE the transaction', async () => {
+    const mock = createMockConn();
+    const store = new PostgresStateStore(mock.conn);
+    const calls: string[] = [];
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        calls.push(sql);
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    (mock.conn.pool as unknown as { connect: () => Promise<unknown> }).connect = vi.fn(async () => client);
+
+    await store.workflows.delete('wf-1');
+
+    const beginIdx = calls.findIndex((s) => s === 'BEGIN');
+    const selectIdx = calls.findIndex((s) => s.includes('SELECT id FROM workflow_executions'));
+    const commitIdx = calls.findIndex((s) => s === 'COMMIT');
+    expect(beginIdx).toBeGreaterThanOrEqual(0);
+    expect(selectIdx).toBeGreaterThan(beginIdx);
+    expect(commitIdx).toBeGreaterThan(selectIdx);
   });
 });

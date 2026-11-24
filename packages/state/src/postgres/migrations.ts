@@ -33,16 +33,23 @@ export async function runPostgresMigrations(conn: PostgresConnection): Promise<v
   try {
     await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_ID]);
 
-    const { rows: appliedRows } = await client.query('SELECT version FROM schema_migrations');
+    const { rows: appliedRows } = await client.query('SELECT version, checksum FROM schema_migrations');
     const appliedSet = new Set(appliedRows.map((r: { version: string }) => r.version));
+    const appliedChecksums = new Map(appliedRows.map((r: { version: string; checksum: string }) => [r.version, r.checksum]));
 
     for (const migration of MIGRATIONS_PG) {
+      const checksum = createHash('sha256').update(migration.sql).digest('hex');
       if (appliedSet.has(migration.version)) {
+        // Audit #132: verify the stored checksum catches edited migrations.
+        if (appliedChecksums.get(migration.version) !== checksum) {
+          throw new Error(
+            `Migration ${migration.version} checksum mismatch: the applied migration's SQL was edited. Restore the original SQL or add a new migration.`,
+          );
+        }
         logger.debug({ version: migration.version }, 'Migration already applied');
         continue;
       }
 
-      const checksum = createHash('sha256').update(migration.sql).digest('hex');
       logger.info({ version: migration.version, checksum: checksum.slice(0, 12) }, 'Applying migration');
 
       try {

@@ -58,10 +58,11 @@ describe('Postgres workflows.delete — dedicated transaction client', () => {
 
     expect(pool.connect).toHaveBeenCalledTimes(1);
     expect(pool.query).not.toHaveBeenCalled();
-    // All statements (SELECT + BEGIN + DELETEs + COMMIT) went to ONE client.
+    // All statements went to ONE client; audit #133: the execution-id SELECT
+    // runs INSIDE the transaction (after BEGIN), not before it.
     const sqls = poolClient.query.mock.calls.map((c) => String(c[0]));
-    expect(sqls[0]).toContain('SELECT id FROM workflow_executions');
-    expect(sqls).toContain('BEGIN');
+    expect(sqls[0]).toBe('BEGIN');
+    expect(sqls[1]).toContain('SELECT id FROM workflow_executions');
     expect(sqls).toContain('COMMIT');
     expect(poolClient.release).toHaveBeenCalledTimes(1);
   });
@@ -69,8 +70,8 @@ describe('Postgres workflows.delete — dedicated transaction client', () => {
   it('rolls back and still releases when a DELETE fails', async () => {
     const { poolClient, store } = mockPoolConn();
     poolClient.query
-      .mockResolvedValueOnce({ rows: [] }) // SELECT executions
       .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce({ rows: [] }) // SELECT executions (inside txn, audit #133)
       .mockRejectedValueOnce(new Error('FK violation'));
     await expect(store.workflows.delete('wf-1')).rejects.toThrow('FK violation');
     const sqls = poolClient.query.mock.calls.map((c) => String(c[0]));

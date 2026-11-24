@@ -29,14 +29,22 @@ export async function runMigrations(conn: SqliteConnection): Promise<void> {
 
   const appliedRows = db.select().from(schema.schemaMigrations).all();
   const appliedSet = new Set(appliedRows.map((r) => r.version));
+  const appliedChecksums = new Map(appliedRows.map((r) => [r.version, r.checksum]));
 
   for (const migration of MIGRATIONS) {
+    const checksum = createHash('sha256').update(migration.sql).digest('hex');
     if (appliedSet.has(migration.version)) {
+      // Audit #132: the checksum column exists to catch edited migrations —
+      // actually verify it instead of skipping on version alone.
+      if (appliedChecksums.get(migration.version) !== checksum) {
+        throw new Error(
+          `Migration ${migration.version} checksum mismatch: the applied migration's SQL was edited. Restore the original SQL or add a new migration.`,
+        );
+      }
       logger.debug({ version: migration.version }, 'Migration already applied');
       continue;
     }
 
-    const checksum = createHash('sha256').update(migration.sql).digest('hex');
     logger.info({ version: migration.version, checksum: checksum.slice(0, 12) }, 'Applying migration');
 
     // Apply the migration and its tracking row atomically. Without the

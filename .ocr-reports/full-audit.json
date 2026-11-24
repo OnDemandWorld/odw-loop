@@ -836,8 +836,8 @@
     "suggested_fix": "Pass raw objects to drizzle json-mode columns (let drizzle serialize once), or switch columns to plain text mode and keep manual stringify. Never both.",
     "failure_scenario": "SELECT json_extract(definition,'$.nodes') FROM workflows returns NULL on SQLite (top-level value is a JSON string, not object); the equivalent PG JSONB column works. Core->Scale data migration or any external SQL/analytics consumer sees corrupted double-encoded data masked in-app by safeJsonParse.",
     "id": 60,
-    "status": "skipped",
-    "verification_notes": "Deferred for data-migration design: switching json-mode columns to single-encoding requires migrating existing double-encoded rows and a read-compat shim (safeJsonParse currently masks both forms). Also blocks exact-element tag matching on both tiers (#57 aligned to substring semantics as the interim). NOT fixed."
+    "status": "fixed",
+    "verification_notes": "All SQLite json-mode writes now pass raw objects (drizzle serializes once); safeJsonParse already accepts both forms so reads are compatible. Migration 004 repairs legacy double-encoded rows in place (json_type='text' -> json_extract unwrap) across all 11 affected columns. Regression: json-encoding.test.ts (json_extract works on new writes; 004 repairs legacy rows; round-trips intact). Unblocks exact-element tag matching in a future round (#57 stays substring for PG parity). Verified: typecheck 0; unit 749/749; integration 175/176 (pre-existing only); e2e 29/29; eslint 0 new errors."
   },
   {
     "file": "packages/state/src/sqlite/index.ts",
@@ -1755,7 +1755,9 @@
     "root_cause": "Both runners compute sha256(migration.sql) and store it, but only compare the version string against appliedSet; stored checksum never read back. Same gap in postgres/migrations.ts:29-41.",
     "suggested_fix": "On startup compare each applied migration's stored checksum to the current SQL hash; fail/warn on mismatch.",
     "failure_scenario": "Developer edits an applied migration's SQL keeping the version: runner skips it, checksum mismatch undetected, live schema drifts from code despite the checksum column existing to catch this.",
-    "id": 132
+    "id": 132,
+    "status": "fixed",
+    "verification_notes": "Both migration runners verify stored checksums against current SQL hashes and throw on mismatch (edited applied migrations detected at startup). Regression: migrations.test.ts audit #132 (tampered checksum -> rejects /checksum mismatch/). Verified: typecheck 0; unit 749/749; integration 175/176 (pre-existing only)."
   },
   {
     "file": "packages/state/src/postgres/index.ts",
@@ -1767,7 +1769,9 @@
     "root_cause": "SELECT id FROM workflow_executions (line 221) runs on the dedicated client BEFORE BEGIN (223). SQLite performs the equivalent read inside its transaction. An execution inserted between SELECT and DELETEs is missed by execIds.",
     "suggested_fix": "Move the SELECT inside the BEGIN...COMMIT block.",
     "failure_scenario": "New execution created after SELECT but before DELETE workflow_executions: its child rows not in execIds, DELETE hits node_executions FK -> whole transaction rolls back, delete fails.",
-    "id": 133
+    "id": 133,
+    "status": "fixed",
+    "verification_notes": "PG workflows.delete reads execution ids AFTER BEGIN (inside the transaction). Updated review-round4 order assertions + added postgres.test.ts audit #133 (BEGIN < SELECT < COMMIT on one client). Verified: typecheck 0; unit 749/749; eslint 0 new errors."
   },
   {
     "file": "packages/state/src/sqlite/index.ts",
@@ -1779,7 +1783,9 @@
     "root_cause": "workflows.update SELECTs current.version (162) and writes version+1 computed in JS (163), not in a transaction. PG (postgres/index.ts:197) uses atomic 'version = version + 1'. Within single-process Core the synchronous better-sqlite3 block cannot interleave; only bites across processes sharing the file.",
     "suggested_fix": "Use SQL increment (version = sql`version + 1`) or wrap read+write in a transaction.",
     "failure_scenario": "Two processes sharing the SQLite file both read version N and write N+1 (lost update); duplicated version trips UNIQUE(workflow_id,version) on snapshot.",
-    "id": 134
+    "id": 134,
+    "status": "fixed",
+    "verification_notes": "SQLite workflow version bump uses atomic SQL increment (version = version + 1), matching PG — no read-then-write lost update across processes. Regression: json-encoding.test.ts (two definition updates -> version 3). Verified: typecheck 0; unit 749/749."
   },
   {
     "file": "packages/templates/src/registry.ts",
