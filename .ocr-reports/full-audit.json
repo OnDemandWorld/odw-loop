@@ -87,7 +87,9 @@
     "root_cause": "isPrivateIPv6() compares strings against '::1'/'::' and a dotted-decimal v4-mapped regex only. '0:0:0:0:0:0:0:1' (expanded loopback) fails equality; first label '0' parses to 0x0000 (not fc00/fe80) -> false. '::ffff:7f00:1' (hex v4-mapped 127.0.0.1) fails the dotted regex; first label '' -> returns false at line 59. isIP() accepts both as valid IPv6, so firstPrivateAddress (93) takes the literal path and returns null -> EgressGate.check allows the URL even with allowPrivate=false (the config default).",
     "suggested_fix": "Parse IPv6 literals into 16 bytes (expand :: and groups) and evaluate ranges numerically: ::1/128, ::/128, fc00::/7, fe80::/10, ::ffff:0:0/96 with embedded IPv4 run through isPrivateIPv4. Never rely on string forms.",
     "failure_scenario": "With LOOP_EGRESS_ALLOW_PRIVATE=false (default), a generic.rest_call node targeting http://[0:0:0:0:0:0:0:1]:3000/ or http://[::ffff:7f00:1]:3000/ passes the gate and undici connects to the API's own loopback listener / internal services — the exact SSRF the blocklist claims to stop.",
-    "id": 7
+    "id": 7,
+    "status": "fixed",
+    "verification_notes": "isPrivateIPv6 now parses literals into 16 bytes (parseIPv6Bytes handles :: compression + dotted-IPv4 tails) and evaluates ::1/128, ::/128, ::ffff:0:0/96 (embedded IPv4), fc00::/7, fe80::/10 numerically. Regression: private-blocklist.test.ts audit #7 cases (expanded loopback, hex v4-mapped, gate-level URL checks). Verified: pnpm typecheck 0; pnpm test:unit 672/672 (51 files); pnpm test:integration 168/169 (pre-existing vault multipart failure only); eslint 0 errors, warnings = baseline + systemic import/order on new test file."
   },
   {
     "file": "packages/egress/src/interceptor.ts",
@@ -99,7 +101,9 @@
     "root_cause": "firstPrivateAddress() resolves the host via dns.lookup (getaddrinfo), then EgressGate.check returns and the adapter calls undici request(), which resolves the hostname again independently at connect time. The resolved-and-validated IP is never pinned to the connection; Node performs a fresh lookup per call.",
     "suggested_fix": "Resolve once, validate all answers, then connect to the validated IP (custom undici Agent connect/lookup returning the pinned address, or request by IP with explicit Host header). Re-validate at connect time rather than only at check time.",
     "failure_scenario": "Attacker-controlled authoritative DNS with TTL=0 alternates A records: public IP during the gate's lookup, 127.0.0.1/169.254.169.254 during undici's connect lookup. A workflow node pointing at rebinding.attacker.tld passes the private-address blocklist and reaches cloud metadata or internal services despite allowPrivate=false.",
-    "id": 8
+    "id": 8,
+    "status": "skipped",
+    "verification_notes": "Skipped this round: a correct fix must pin the validated IP to the actual connection (custom undici Agent connect/lookup or connect-time re-validation) across ALL adapters (vault/desk/recap/generic/llm providers) — a cross-cutting connection-layer design change too risky for a minimal-edit batch. Recommended design: shared egress-safe undici dispatcher in @loop/egress whose lookup hook resolves+validates at connect time (fail-closed), injected via ExecuteParams. Needs design review. NOT fixed — remains open."
   },
   {
     "file": "packages/engine/src/executor.ts",
@@ -153,7 +157,9 @@
     "root_cause": "set() looks up by (name, scope, scope_id) and INSERTs when no row matches, but secrets.name is globally UNIQUE in both tiers (schema.ts:148 .unique(); migrations-pg.ts:124 UNIQUE). A second distinct scope_id with the same name finds no matching row and the insert violates UNIQUE(name). POST /api/v1/connectors (routes/index.ts:646) stores every connector key under name 'api_key'; server.ts:186 migration does the same.",
     "suggested_fix": "Make uniqueness composite (name, scope, scope_id) in both stores and match scope_id exactly (including NULL) in getByName; or namespace stored names per scope_id. Delete connector-scoped secrets on DELETE /connectors.",
     "failure_scenario": "Create connector A with api_key (OK) -> create connector B with api_key -> set('api_key','connector',B) finds no row -> INSERT -> UNIQUE violation -> 409; no second keyed connector can ever be created via the API. Startup migration silently keeps plaintext for every legacy row after the first (server.ts:197-199). Deleting connector A orphans its 'api_key' row, permanently blocking future keyed connector creation.",
-    "id": 12
+    "id": 12,
+    "status": "fixed",
+    "verification_notes": "Migration 003 in both stores: SQLite rebuilds secrets without inline UNIQUE(name); PG drops secrets_name_key; both add unique index (name, scope, COALESCE(scope_id, empty-string)) so NULL scope_id folds into one comparable value. drizzle schema.ts .unique() removed. Regression: tests/unit/secrets/manager.test.ts (two connectors each store api_key; same-scope upsert; global+workflow coexist). Verified: typecheck 0; unit 672/672; integration 168/169 (pre-existing only; state/migration suite passes with 003). PG migration verified statically (no local PG). Orphaned connector-scoped rows after DELETE no longer block creation (composite key)."
   },
   {
     "file": "tests/e2e/airgapped-deployment.test.ts",

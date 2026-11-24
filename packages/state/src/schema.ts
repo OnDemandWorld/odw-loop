@@ -145,7 +145,9 @@ export const auditEvents = sqliteTable('audit_events', {
 
 export const secrets = sqliteTable('secrets', {
   id: text('id').primaryKey(),
-  name: text('name').notNull().unique(),
+  // Audit #12: uniqueness is composite (name, scope, COALESCE(scope_id,''))
+  // via idx_secrets_name_scope (migration 003), not global on name.
+  name: text('name').notNull(),
   encrypted_value: text('encrypted_value').notNull(),
   scope: text('scope', { enum: ['global', 'workflow', 'connector'] }).notNull(),
   scope_id: text('scope_id'),

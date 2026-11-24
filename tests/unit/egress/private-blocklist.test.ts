@@ -48,6 +48,23 @@ describe('isPrivateIp', () => {
     expect(isPrivateIp('::ffff:8.8.8.8')).toBe(false);
     expect(isPrivateIp('2606:4700::1111')).toBe(false);
   });
+
+  it('audit #7: classifies non-canonical IPv6 spellings (expanded loopback, hex v4-mapped)', () => {
+    for (const ip of [
+      '0:0:0:0:0:0:0:1',
+      '0000:0000:0000:0000:0000:0000:0000:0001',
+      '::ffff:7f00:1',
+      '0:0:0:0:0:ffff:a9fe:a9fe',
+      'fe80:0:0:0:0:0:0:1',
+      'fc00:0:0:0:0:0:0:1',
+      '0:0:0:0:0:0:0:0',
+    ]) {
+      expect(isPrivateIp(ip), ip).toBe(true);
+    }
+    for (const ip of ['2001:db8:0:0:0:0:0:1', '0:0:0:0:0:ffff:0808:0808', '2606:4700:0:0:0:0:0:1111']) {
+      expect(isPrivateIp(ip), ip).toBe(false);
+    }
+  });
 });
 
 describe('firstPrivateAddress', () => {
@@ -86,5 +103,12 @@ describe('EgressGate private blocklist (unconfigured allow)', () => {
     const g = gate();
     // `localhost` resolves to 127.0.0.1/::1 on every supported platform.
     await expect(g.check('http://localhost:8765/query')).rejects.toThrow(/private\/reserved/);
+  });
+
+  it('audit #7: blocks non-canonical IPv6 loopback/v4-mapped URLs', async () => {
+    const g = gate();
+    await expect(g.check('http://[0:0:0:0:0:0:0:1]:3000/')).rejects.toThrow(/private\/reserved/);
+    await expect(g.check('http://[::ffff:7f00:1]:3000/')).rejects.toThrow(/private\/reserved/);
+    await expect(g.check('http://[0:0:0:0:0:ffff:a9fe:a9fe]/latest/meta-data/')).rejects.toThrow(/private\/reserved/);
   });
 });

@@ -181,4 +181,15 @@ ALTER TABLE node_executions ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_node_exec_idem ON node_executions(idempotency_key);
 `,
   },
+  {
+    version: '003',
+    name: 'secrets_composite_uniqueness_pg',
+    // Audit #12: mirror the SQLite change — uniqueness per (name, scope,
+    // scope_id) instead of globally on name. COALESCE folds NULL scope_id into
+    // a single comparable value so two global rows with the same name conflict.
+    sql: `
+ALTER TABLE secrets DROP CONSTRAINT IF EXISTS secrets_name_key;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_name_scope ON secrets(name, scope, COALESCE(scope_id::text, ''));
+`,
+  },
 ];

@@ -184,4 +184,29 @@ ALTER TABLE node_executions ADD COLUMN idempotency_key TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_node_exec_idem ON node_executions(idempotency_key);
 `,
   },
+  {
+    version: '003',
+    name: 'secrets_composite_uniqueness',
+    // Audit #12: secret names must be unique per (name, scope, scope_id), not
+    // globally — every connector stores its key under 'api_key', so the inline
+    // UNIQUE(name) blocked creating a second keyed connector. SQLite cannot
+    // drop an inline table constraint, so rebuild the table preserving data.
+    sql: `
+CREATE TABLE secrets_new (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  encrypted_value TEXT NOT NULL,
+  scope TEXT NOT NULL CHECK(scope IN ('global','workflow','connector')),
+  scope_id TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+  updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+INSERT INTO secrets_new (id, name, encrypted_value, scope, scope_id, created_by, created_at, updated_at)
+  SELECT id, name, encrypted_value, scope, scope_id, created_by, created_at, updated_at FROM secrets;
+DROP TABLE secrets;
+ALTER TABLE secrets_new RENAME TO secrets;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_name_scope ON secrets(name, scope, COALESCE(scope_id, ''));
+`,
+  },
 ];

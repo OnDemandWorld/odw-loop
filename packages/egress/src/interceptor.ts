@@ -48,23 +48,69 @@ export function isPrivateIPv4(ip: string): boolean {
   return PRIVATE_V4_RANGES.some(([base, bits]) => ipv4InCidr(ip, base, bits));
 }
 
+/**
+ * Parse an IPv6 literal into 16 bytes, handling '::' compression and embedded
+ * dotted-IPv4 tails. Returns null for anything malformed. Audit #7: range
+ * checks must run on the parsed bytes — string-form comparisons miss
+ * non-canonical spellings like '0:0:0:0:0:0:0:1' or '::ffff:7f00:1'.
+ */
+function parseIPv6Bytes(ip: string): number[] | null {
+  const halves = ip.split('::');
+  if (halves.length > 2) return null;
+
+  const expand = (segment: string): number[] | null => {
+    if (segment === '') return [];
+    const groups = segment.split(':');
+    const bytes: number[] = [];
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i]!;
+      if (g.includes('.')) {
+        // Embedded IPv4 is only valid as the final group.
+        if (i !== groups.length - 1) return null;
+        const octets = g.split('.');
+        if (octets.length !== 4) return null;
+        for (const o of octets) {
+          if (!/^\d{1,3}$/.test(o)) return null;
+          const n = Number(o);
+          if (n > 255) return null;
+          bytes.push(n);
+        }
+        continue;
+      }
+      if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+      const n = Number.parseInt(g, 16);
+      bytes.push(n >> 8, n & 0xff);
+    }
+    return bytes;
+  };
+
+  const left = expand(halves[0]!);
+  if (!left) return null;
+  if (halves.length === 1) return left.length === 16 ? left : null;
+  const right = expand(halves[1]!);
+  if (!right) return null;
+  const fill = 16 - left.length - right.length;
+  if (fill < 1) return null; // '::' must stand for at least one zero group
+  return [...left, ...new Array<number>(fill).fill(0), ...right];
+}
+
 /** True for loopback/ULA/link-local/unspecified/v4-mapped-private IPv6 addresses. */
 export function isPrivateIPv6(ip: string): boolean {
   const normalized = ip.toLowerCase().replace(/^\[|\]$/g, '');
-  if (normalized === '::1' || normalized === '::') return true;
-  // v4-mapped (::ffff:a.b.c.d) — evaluate the embedded IPv4.
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized);
-  if (mapped) return isPrivateIPv4(mapped[1]!);
-  const first = normalized.split(':')[0] ?? '';
-  if (first.length === 0) return false;
-  // fc00::/7 unique-local and fe80::/10 link-local by leading 16 bits.
-  const high16 = Number.parseInt(first.padEnd(4, '0'), 16);
-  if (Number.isFinite(high16)) {
-    // eslint-disable-next-line no-bitwise
-    if (((high16 & 0xfe00) >>> 0) === 0xfc00) return true;
-    // eslint-disable-next-line no-bitwise
-    if (((high16 & 0xffc0) >>> 0) === 0xfe80) return true;
+  const bytes = parseIPv6Bytes(normalized);
+  if (!bytes) return false;
+  // ::/128 unspecified and ::1/128 loopback.
+  if (bytes.every((b) => b === 0)) return true;
+  if (bytes[15] === 1 && bytes.slice(0, 15).every((b) => b === 0)) return true;
+  // ::ffff:0:0/96 v4-mapped — evaluate the embedded IPv4 numerically.
+  if (bytes[10] === 0xff && bytes[11] === 0xff && bytes.slice(0, 10).every((b) => b === 0)) {
+    return isPrivateIPv4(`${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}`);
   }
+  // fc00::/7 unique-local and fe80::/10 link-local.
+  // eslint-disable-next-line no-bitwise
+  if ((bytes[0]! & 0xfe) === 0xfc) return true;
+  // eslint-disable-next-line no-bitwise
+  if (bytes[0] === 0xfe && (bytes[1]! & 0xc0) === 0x80) return true;
   return false;
 }
 
